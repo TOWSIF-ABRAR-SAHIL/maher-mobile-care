@@ -3,10 +3,10 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { prisma } from "@/lib/prisma";
+import { resolveBackupDir } from "@/lib/db-path";
 
 export const dynamic = "force-dynamic";
 
-const BACKUP_DIR = join(process.cwd(), "backups");
 // Only our own generated filenames — no paths, no traversal.
 const NAME_RE = /^(maher-\d{8}-\d{6}(-\d{3})?|safety-\d{8}-\d{6}(-\d{3})?)\.db$/;
 
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     if (!NAME_RE.test(file)) {
       return NextResponse.json({ error: "ভুল ব্যাকআপ ফাইল" }, { status: 400 });
     }
+    const BACKUP_DIR = resolveBackupDir();
     mkdirSync(BACKUP_DIR, { recursive: true });
     const abs = resolve(BACKUP_DIR, file);
     if (!abs.startsWith(resolve(BACKUP_DIR)) || !existsSync(abs)) {

@@ -1,12 +1,12 @@
 {
-  "name": "fixtrack",
+  "name": "maher-mobile-care",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "lint": "next lint",
+    "test": "node scripts/run-tests.js",
     "seed": "tsx scripts/seed-maher.ts",
     "cleanup:test-data": "tsx scripts/cleanup-test-data.ts",
     "postinstall": "prisma generate"

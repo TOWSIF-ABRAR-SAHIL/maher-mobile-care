@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
+import { GlobalServiceSearch } from "@/components/GlobalServiceSearch";
 import { MonthlySummary } from "@/components/MonthlySummary";
+import { OutstandingDues } from "@/components/OutstandingDues";
 import { Receipt, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -38,6 +40,7 @@ export default function Home() {
   const [editing, setEditing] = useState<ServiceDTO | null>(null);
   const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
   const [showRestore, setShowRestore] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef(date);
@@ -312,7 +315,12 @@ export default function Home() {
 
         <TechnicianStats stats={stats?.techStats ?? []} loading={loading} />
 
-        <TodayStats stats={stats?.today ?? null} loading={loading} />
+        <TodayStats
+          stats={stats?.today ?? null}
+          loading={loading}
+          date={date}
+          today={dhakaDateKey(new Date())}
+        />
 
         <MonthlySummary
           summary={monthly?.summary ?? null}
@@ -323,6 +331,17 @@ export default function Home() {
           loading={loading}
         />
 
+        <OutstandingDues
+          refreshKey={dataVersion}
+          onEdit={edit}
+          onReceipt={setReceipt}
+        />
+        <GlobalServiceSearch
+          refreshKey={dataVersion}
+          onEdit={edit}
+          onReceipt={setReceipt}
+        />
+
         <div className="grid items-start gap-4 lg:grid-cols-10">
           <div ref={formRef} className="min-w-0 scroll-mt-4 lg:col-span-3">
             <ServiceForm
@@ -331,6 +350,7 @@ export default function Home() {
               serviceDate={date}
               onSaved={() => {
                 setEditing(null);
+                setDataVersion((v) => v + 1);
                 void load(date, false);
                 void fetchMonthly(range);
               }}
@@ -346,6 +366,7 @@ export default function Home() {
               onReceipt={setReceipt}
               onChanged={() => {
                 if (editing) setEditing(null);
+                setDataVersion((v) => v + 1);
                 void load(date, false);
                 void fetchMonthly(range);
               }}
@@ -389,6 +410,7 @@ export default function Home() {
         onClose={() => setShowRestore(false)}
         onRestored={() => {
           setShowRestore(false);
+          setDataVersion((v) => v + 1);
           void load(dateRef.current, false);
           void fetchMonthly(rangeRef.current);
         }}

@@ -167,7 +167,10 @@ export function ServiceTable({
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-md">
+    <section
+      data-testid="daily-services"
+      className="rounded-xl border bg-white p-4 shadow-md"
+    >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold tracking-tight text-gray-800">
           {showArchived ? (
@@ -203,6 +206,7 @@ export function ServiceTable({
           <div className="relative sm:w-72 print:hidden">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <Input
+              id="svc-search"
               placeholder="🔍 নাম, আইডি, ফোন বা মডেল খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

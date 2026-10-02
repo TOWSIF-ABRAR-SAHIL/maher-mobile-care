@@ -1,12 +1,7 @@
 import type { Metadata } from "next";
-import { Noto_Sans_Bengali } from "next/font/google";
+import "./fonts/noto-sans-bengali.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-
-const bengali = Noto_Sans_Bengali({
-  subsets: ["bengali", "latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export const metadata: Metadata = {
   title: "MAHER MOBILE CARE — দৈনিক সার্ভিস ট্র্যাকার",
@@ -20,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="bn">
-      <body className={bengali.className}>
+      <body>
         {children}
         <Toaster richColors position="top-center" />
       </body>

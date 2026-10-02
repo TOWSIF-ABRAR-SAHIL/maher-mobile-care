@@ -10,6 +10,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { resolveBackupDir } from "../lib/db-path";
 import { prisma } from "../lib/prisma";
 
 const confirm = process.argv.includes("--confirm");
@@ -56,7 +57,7 @@ async function main() {
   }
 
   // Safety snapshot first, using the same naming the backup list recognises.
-  const dir = join(process.cwd(), "backups");
+  const dir = resolveBackupDir();
   mkdirSync(dir, { recursive: true });
   const d = new Date();
   const safety = `safety-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(

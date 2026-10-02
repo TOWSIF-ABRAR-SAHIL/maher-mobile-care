@@ -21,6 +21,7 @@ import {
   formatTaka,
   parseBnNumber,
 } from "@/lib/utils";
+import { validateServicePayload } from "@/lib/service-validation";
 import type { ServiceDTO } from "@/lib/types";
 
 const empty = {
@@ -31,6 +32,7 @@ const empty = {
   problem: "",
   totalBill: "",
   advance: "",
+  cashReceived: "",
   status: "Pending",
   shopExpense: "",
   serviceDate: "",
@@ -41,6 +43,9 @@ const empty = {
  * the parent remounts this form per editing id (key), so values are correct
  * from the very first render. Setting Select values in an effect instead
  * makes Radix fire onValueChange("") and silently wipe technician/status.
+ *
+ * `cashReceived` is deliberately not restored: it is a till calculator for
+ * the current payment, never part of the saved record.
  */
 function toForm(s: ServiceDTO) {
   return {
@@ -51,6 +56,7 @@ function toForm(s: ServiceDTO) {
     problem: s.problem,
     totalBill: String(s.totalBill),
     advance: String(s.advance),
+    cashReceived: "",
     status: s.status,
     shopExpense: s.shopExpense ?? "",
     serviceDate: s.serviceDate.slice(0, 10),
@@ -82,48 +88,63 @@ export function ServiceForm({
   const advNum = parseBnNumber(f.advance) ?? 0;
   const due = computeDue(billNum, advNum);
 
+  // Till calculator only — cash above the bill is change to hand back, so it
+  // is never stored. Overpay is rejected on save; this just previews it.
+  const cashNum = parseBnNumber(f.cashReceived) ?? 0;
+  const changeGap = cashNum > 0 ? Math.abs(cashNum - billNum) : 0;
+  const changeLabel =
+    cashNum <= 0
+      ? "ফেরত দেওয়ার টাকা (হিসাবের জন্য)"
+      : cashNum > billNum
+        ? "ফেরত দিন (বাকি টাকা)"
+        : cashNum === billNum
+          ? "ঠিক আছে"
+          : "আরও দরকার";
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
 
-    if (!f.customerName.trim()) return toast.error("কাস্টমারের নাম দিন");
-    if (!f.phone.trim()) return toast.error("মোবাইল নম্বর দিন");
-    if (!f.model.trim()) return toast.error("মোবাইলের মডেল দিন");
-    if (!f.problem.trim()) return toast.error("সমস্যা লিখুন");
-    if (!(TECHNICIANS as readonly string[]).includes(f.technician)) {
-      return toast.error("সঠিক টেকনিশিয়ান বাছুন");
-    }
-    if (!(STATUSES as readonly string[]).includes(f.status)) {
-      return toast.error("সঠিক অবস্থা বাছুন");
-    }
-    const totalBill = parseBnNumber(f.totalBill);
-    if (totalBill === null) return toast.error("মোট বিলে সঠিক সংখ্যা দিন");
-    const advance = f.advance.trim() === "" ? 0 : parseBnNumber(f.advance);
-    if (advance === null) return toast.error("জমায় সঠিক সংখ্যা দিন");
-    if (editing && !/^\d{4}-\d{2}-\d{2}$/.test(f.serviceDate)) {
-      return toast.error("সঠিক তারিখ দিন");
+    let payload;
+    try {
+      payload = validateServicePayload({
+        customerName: f.customerName,
+        phone: f.phone,
+        model: f.model,
+        technician: f.technician,
+        problem: f.problem,
+        totalBill: f.totalBill,
+        advance: f.advance,
+        status: f.status,
+        shopExpense: f.shopExpense,
+        serviceDate: editing ? f.serviceDate : serviceDate,
+      });
+    } catch (err) {
+      return toast.error(
+        err instanceof Error ? err.message : "সঠিক তথ্য দিন"
+      );
     }
 
     setSaving(true);
     try {
-      const payload = {
-        customerName: f.customerName.trim(),
-        phone: f.phone.trim(),
-        model: f.model.trim(),
-        technician: f.technician,
-        problem: f.problem.trim(),
-        totalBill,
-        advance,
-        status: f.status,
-        shopExpense: f.shopExpense.trim(),
-        ...(editing ? { serviceDate: f.serviceDate } : { serviceDate }),
+      const body = {
+        customerName: payload.customerName,
+        phone: payload.phone,
+        model: payload.model,
+        technician: payload.technician,
+        problem: payload.problem,
+        totalBill: payload.totalBill,
+        advance: payload.advance,
+        status: payload.status,
+        shopExpense: payload.shopExpense ?? "",
+        serviceDate: editing ? payload.serviceDateKey : serviceDate,
       };
       const res = await fetch(
         editing ? `/api/services/${initial!.id}` : "/api/services",
         {
           method: editing ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -220,6 +241,29 @@ export function ServiceForm({
               inputMode="numeric"
             />
           </div>
+        </div>
+        <div>
+          <Label htmlFor="svc-cash">কাস্টমারের কাছ থেকে পাওয়া টাকা (৳)</Label>
+          <Input
+            id="svc-cash"
+            value={f.cashReceived}
+            onChange={set("cashReceived")}
+            placeholder="0"
+            inputMode="numeric"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            শুধু হিসাবের জন্য — সেভ হয় না। বিলের বেশি টাকা হলে ফেরত দেওয়ার টাকা
+            নিচে দেখা যাবে।
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="svc-change">{changeLabel} (৳)</Label>
+          <Input
+            id="svc-change"
+            value={formatTaka(changeGap).replace("৳", "").trim()}
+            readOnly
+            className="bg-gray-50 font-semibold"
+          />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>

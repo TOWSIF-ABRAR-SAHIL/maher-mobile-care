@@ -2,13 +2,16 @@
 // npm install --save-dev prisma dotenv
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { resolveDatabaseFile } from "./lib/db-path";
 
+// Same resolver the app uses (lib/db-path), so the Prisma CLI, the API routes
+// and the test harness can never migrate one database while reading another.
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: `file:${resolveDatabaseFile()}`,
   },
 });

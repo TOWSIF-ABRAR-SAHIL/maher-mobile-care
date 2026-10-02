@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
+import { resolveBackupDir } from "@/lib/db-path";
 
 export const dynamic = "force-dynamic";
 
-const BACKUP_DIR = join(process.cwd(), "backups");
 const KEEP_SNAPSHOTS = 30;
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -24,7 +24,11 @@ function stamp(): string {
 
 const csvCell = (v: unknown): string => {
   const s = v === null || v === undefined ? "" : String(v);
-  return `"${s.replace(/"/g, '""')}"`;
+  // Prevent spreadsheet formula execution for values such as "=CMD()", "+1",
+  // "-2", or "@user", including after leading whitespace. A leading apostrophe
+  // forces spreadsheet apps to treat the cell as text.
+  const guard = /^\s*[=+\-@]/.test(s) ? "'" : "";
+  return `"${guard}${s.replace(/"/g, '""')}"`;
 };
 
 export async function GET(_req: NextRequest) {
@@ -82,6 +86,7 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(_req: NextRequest) {
   try {
+    const BACKUP_DIR = resolveBackupDir();
     mkdirSync(BACKUP_DIR, { recursive: true });
     const file = `maher-${stamp()}.db`;
     const abs = join(BACKUP_DIR, file);

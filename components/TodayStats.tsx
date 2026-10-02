@@ -29,10 +29,17 @@ function DayCard({
 export function TodayStats({
   stats,
   loading,
+  date,
+  today,
 }: {
   stats: DayStats | null;
   loading: boolean;
+  /** Selected YYYY-MM-DD day whose totals are shown. */
+  date: string;
+  /** Current YYYY-MM-DD day in Dhaka time. */
+  today: string;
 }) {
+  const prefix = date === today ? "আজকের" : "নির্বাচিত দিনের";
   if (loading || !stats) {
     return (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -46,24 +53,24 @@ export function TodayStats({
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <DayCard
         border="border-l-blue-500"
-        label="আজকের মোট কাজ"
+        label={`${prefix} মোট কাজ`}
         value={`${stats.count} টি`}
       />
       <DayCard
         border="border-l-green-500"
-        label="আজকের মোট বিল"
+        label={`${prefix} মোট বিল`}
         value={formatTaka(stats.bill)}
         valueClass="text-green-600"
       />
       <DayCard
         border="border-l-red-500"
-        label="আজকের মোট বাকি"
+        label={`${prefix} মোট বাকি`}
         value={formatTaka(stats.due)}
         valueClass="text-red-600"
       />
       <DayCard
         border="border-l-orange-500"
-        label="আজকের মোট খরচ"
+        label={`${prefix} মোট খরচ`}
         value={formatTaka(stats.expense)}
         valueClass="text-orange-600"
         hint={stats.codeCount > 0 ? `+ ${stats.codeCount}টি কোড` : undefined}

@@ -1,31 +1,39 @@
-/* E2E smoke test for MAHER MOBILE CARE (system google-chrome).
- * Run: node scripts/e2e-maher.js  (server must be on :3100)
+/* E2E smoke test for MAHER MOBILE CARE.
+ * Run directly only against a throwaway database: npm test sets MAHER_TEST_URL.
  */
-const puppeteer = require("puppeteer-core");
+const {
+  api,
+  closeBrowser,
+  clickDailyRowButton,
+  dailyRows,
+  dhakaToday,
+  launchBrowser,
+  resolveTestBase,
+  shiftDay,
+  submitButton,
+  trackErrors,
+  typeInto,
+  uniqueName,
+  waitDailyRow,
+} = require("./test-support");
 
-const BASE = "http://localhost:3000";
-const E2E_NAME = "E2E Test " + Date.now();
+const BASE = resolveTestBase();
+const TODAY = dhakaToday();
+const YESTERDAY = shiftDay(TODAY, -1);
+const E2E_NAME = uniqueName("E2E Test ");
 let failed = false;
 const check = (name, ok, extra = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? " — " + extra : ""}`);
   if (!ok) failed = true;
 };
 
+let browser = null;
+
 (async () => {
-  const browser = await puppeteer.launch({
-    executablePath: "/usr/bin/google-chrome",
-    headless: true,
-    args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
-    protocolTimeout: 60000,
-  });
+  browser = await launchBrowser();
   const page = await browser.newPage();
   await page.setViewport({ width: 1366, height: 900 });
-  const errors = [];
-  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
-  page.on("console", (m) => {
-    if (m.type() === "error" && !m.text().includes("favicon"))
-      errors.push("console: " + m.text().slice(0, 150));
-  });
+  const errors = trackErrors(page);
 
   await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForFunction(
@@ -33,16 +41,13 @@ const check = (name, ok, extra = "") => {
     { timeout: 15000 }
   );
 
-  const typeInto = async (id, value) => {
-    await page.click(`#${id}`, { clickCount: 3 });
-    await page.keyboard.type(value);
-  };
+  // Deterministic fill via the shared test-support helpers.
 
   // 1. Create via the entry form (plain HTML form submit)
-  await typeInto("svc-name", E2E_NAME);
-  await typeInto("svc-phone", "01000000099");
-  await typeInto("svc-model", "E2E Model");
-  await typeInto("svc-problem", "E2E সমস্যা");
+  await typeInto(page,"svc-name", E2E_NAME);
+  await typeInto(page,"svc-phone", "01000000099");
+  await typeInto(page,"svc-model", "E2E Model");
+  await typeInto(page,"svc-problem", "E2E সমস্যা");
   // Native-setter technique: direct el.value assignment is swallowed by
   // React 18's instance value-tracker (no onChange fires). The prototype
   // setter bypasses the tracker so the change is detected.
@@ -67,56 +72,39 @@ const check = (name, ok, extra = "") => {
   );
   check("due auto-calculates (2000-500=1500)", true);
   await page.screenshot({ path: "/tmp/maher-form.png" });
-  await page.evaluate(() =>
-    [...document.querySelectorAll("form button[type='submit']")]
-      .find((b) => b.textContent.includes("সেভ করুন"))
-      .click()
-  );
-  await page.waitForFunction(
-    (name) => document.body.textContent.includes(name),
-    { timeout: 15000 },
-    E2E_NAME
-  );
+  await submitButton(page, "সেভ করুন");
+  await waitDailyRow(page, E2E_NAME, true);
   check("create service via form", true);
 
   // verify server-side totals
-  const created = await page.evaluate(async (name) => {
-    const r = await fetch("/api/services?date=2026-09-30").then((x) => x.json());
-    return r.services.find((s) => s.customerName === name);
-  }, E2E_NAME);
+  const createdResponse = await api(page, `/api/services?date=${TODAY}`);
+  const created = createdResponse.body.services.find(
+    (s) => s.customerName === E2E_NAME
+  );
   check(
     "server totals (bill 2000, adv 500, due 1500)",
     created && created.totalBill === 2000 && created.advance === 500 && created.due === 1500,
     JSON.stringify(created && { b: created.totalBill, a: created.advance, d: created.due })
   );
 
-  // 2. Edit: click pencil on the new row → form pre-fills → update
-  await page.evaluate((name) => {
-    const rows = [...document.querySelectorAll("tbody tr")];
-    const row = rows.find((tr) => tr.textContent.includes(name));
-    row.querySelector("button[title='এডিট']").click();
-  }, E2E_NAME);
+  // 2. Edit: click pencil on the new daily row → form pre-fills → update
+  await clickDailyRowButton(page, E2E_NAME, "এডিট");
   await page.waitForFunction(
     () => document.body.textContent.includes("আপডেট করুন"),
     { timeout: 8000 }
   );
   const prefilled = await page.$eval("#svc-name", (el) => el.value);
   check("edit pre-fills form", prefilled === E2E_NAME, prefilled);
-  await typeInto("svc-problem", "E2E সমস্যা আপডেট");
-  await page.evaluate(() =>
-    [...document.querySelectorAll("form button[type='submit']")]
-      .find((b) => b.textContent.includes("আপডেট করুন"))
-      .click()
-  );
-  await page.waitForFunction(
-    () => document.body.textContent.includes("E2E সমস্যা আপডেট"),
-    { timeout: 15000 }
-  );
+  await typeInto(page,"svc-problem", "E2E সমস্যা আপডেট");
+  await submitButton(page, "আপডেট করুন");
+  await waitDailyRow(page, "E2E সমস্যা আপডেট", true);
   check("update service", true);
 
-  // 3. Search filters the table (seed-independent: use our own row)
-  await page.click('input[placeholder*="খুঁজুন"]');
-  await page.keyboard.type("ZZZ_NO_MATCH_XYZ");
+  // 3. Search filters the table (seed-independent: use our own row).
+  // Typing goes through the React value setter instead of page.click() +
+  // keyboard, so a sticky header or an overlapping element can never swallow
+  // the keystrokes and make this step time out for the wrong reason.
+  await typeInto(page, "svc-search", "ZZZ_NO_MATCH_XYZ");
   await page.waitForFunction(
     () => document.body.textContent.includes("কোন সার্ভিস এন্ট্রি নেই"),
     { timeout: 8000 }
@@ -131,54 +119,51 @@ const check = (name, ok, extra = "") => {
   );
 
   // 4. Date navigation: previous day shows its own title + list.
-  // (Row count not asserted — DB content belongs to the user now.)
+  // Compare against yesterday's API count — never an absolute 0, so suite
+  // order can't break this (suites share one throwaway DB).
+  const yesterdayApiCount = (await api(page, `/api/services?date=${YESTERDAY}`)).body
+    .services.length;
   await page.evaluate(() =>
     [...document.querySelectorAll("header button")].find((b) => b.textContent.includes("আগের দিন")).click()
   );
   await page.waitForFunction(
-    () => document.body.textContent.includes("সার্ভিস তালিকা (2026-09-29)"),
-    { timeout: 8000 }
+    (day) => document.body.textContent.includes(`সার্ভিস তালিকা (${day})`),
+    { timeout: 8000 },
+    YESTERDAY
   );
   // Title updates instantly on date change, but rows arrive after fetch —
-  // wait for loading skeletons to disappear before counting.
+  // wait for loading skeletons to disappear before counting the daily list.
   await page.waitForFunction(
     () => document.querySelectorAll('[class*="animate-pulse"]').length === 0,
     { timeout: 10000 }
   );
-  const prevCount = await page.evaluate(() => document.querySelectorAll("tbody tr").length);
-  check("prev-day navigation", true, `${prevCount} rows on 09-29`);
+  const prevCount = (await dailyRows(page)).length;
+  check(
+    "prev-day navigation",
+    prevCount === yesterdayApiCount,
+    `${prevCount} daily rows on ${YESTERDAY} (API: ${yesterdayApiCount})`
+  );
   await page.screenshot({ path: "/tmp/maher-prevday.png" });
 
   // back to today, delete the E2E row
   await page.evaluate(() =>
     [...document.querySelectorAll("header button")].find((b) => b.textContent.includes("পরের দিন")).click()
   );
-  await page.waitForFunction(
-    (name) => document.body.textContent.includes(name),
-    { timeout: 8000 },
-    E2E_NAME
-  );
-  await page.evaluate((name) => {
-    const rows = [...document.querySelectorAll("tbody tr")];
-    const row = rows.find((tr) => tr.textContent.includes(name));
-    row.querySelector("button[title='ডিলিট']").click();
-  }, E2E_NAME);
+  await waitDailyRow(page, E2E_NAME, true);
+  await clickDailyRowButton(page, E2E_NAME, "ডিলিট");
   await page.waitForSelector('[role="alertdialog"]', { timeout: 8000 });
   await page.evaluate(() =>
     [...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.includes("আর্কাইভ")).click()
   );
-  await page.waitForFunction(
-    (name) => !document.body.textContent.includes(name),
-    { timeout: 10000 },
-    E2E_NAME
-  );
+  await waitDailyRow(page, E2E_NAME, false);
   check("delete with confirm", true);
 
   check("zero JS errors", errors.length === 0, errors.slice(0, 3).join(" | "));
-  await browser.close();
+  await closeBrowser(browser);
 })()
   .then(() => process.exit(failed ? 1 : 0))
-  .catch((e) => {
+  .catch(async (e) => {
     console.error("E2E CRASH:", e.message);
+    await closeBrowser(browser);
     process.exit(1);
   });

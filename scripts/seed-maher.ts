@@ -4,7 +4,7 @@
  *   npm run seed            → inserts samples (keeps existing data)
  *   npm run seed -- --fresh → clears all services first, then inserts
  *
- * Fully offline against ./prisma/dev.db.
+ * Fully offline against the database selected by lib/db-path.
  */
 import { prisma } from "../lib/prisma";
 import { computeDue, parseBnNumber } from "../lib/utils";
@@ -80,7 +80,7 @@ let ok = 0;
       `#${created.id} | ${created.customerName} | ${created.technician} | বিল=${created.totalBill} জমা=${created.advance} বাকি=${created.due} | খরচ=${created.shopExpense ?? "—"} (${created.expenseAmount}) | ${created.status}`
     );
   }
-  console.log(`\nSeeded ${ok} services into ./prisma/dev.db`);
+    console.log(`\nSeeded ${ok} services`);
   await prisma.$disconnect();
 }
 

@@ -121,7 +121,10 @@ export function RestoreDialog({
                       ) : null}
                     </p>
                     <p className="truncate text-xs text-gray-500">
-                      {s.file} • {s.sizeKB} KB
+                      {s.file} • {s.sizeKB} KB •{" "}
+                      {s.rowCount === null
+                        ? "রেকর্ড পড়া যায়নি"
+                        : `${s.rowCount}টি রেকর্ড`}
                     </p>
                   </div>
                   <Button

@@ -1,9 +1,29 @@
 /* Lanes B+C: reports, backup/restore, print, mobile, keyboard.
- * Only creates ONE marker row for restore test; removes it via restore.
- * Run: node scripts/laneBC.js  (server :3000) */
-const puppeteer = require("puppeteer-core");
+ * Only creates marker rows on the throwaway test database and archives the
+ * report baseline at the end. npm test sets MAHER_TEST_URL. */
+const {
+  api,
+  closeBrowser,
+  clickDailyRowButton,
+  dayLabel,
+  dhakaToday,
+  launchBrowser,
+  monthContaining,
+  monthLabel,
+  resolveTestBase,
+  shiftDay,
+  trackErrors,
+  uniqueName,
+} = require("./test-support");
 
-const BASE = "http://localhost:3000";
+const BASE = resolveTestBase();
+const TODAY = dhakaToday();
+const YESTERDAY = shiftDay(TODAY, -1);
+const THIS_MONTH = monthContaining(TODAY);
+const LAST_MONTH = monthContaining(shiftDay(THIS_MONTH.from, -1));
+const PROBE_DATE = `${LAST_MONTH.from.slice(0, 8)}15`;
+const REPORT_BASE = uniqueName("BCBase");
+const MARKER = uniqueName("RestoreMark");
 let failed = false;
 const results = [];
 const check = (id, name, ok, extra = "") => {
@@ -13,25 +33,13 @@ const check = (id, name, ok, extra = "") => {
 
 const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
 
+let browser = null;
+
 (async () => {
-  const browser = await puppeteer.launch({
-    executablePath: "/usr/bin/google-chrome",
-    headless: true,
-    args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
-    protocolTimeout: 60000,
-  });
+  browser = await launchBrowser();
   const page = await browser.newPage();
   await page.setViewport({ width: 1366, height: 900 });
-  const errors = [];
-  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
-  page.on("console", (m) => {
-    if (
-      m.type() === "error" &&
-      !m.text().includes("favicon") &&
-      !m.text().toLowerCase().includes("download")
-    )
-      errors.push("console: " + m.text().slice(0, 120));
-  });
+  const errors = trackErrors(page);
 
   await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
@@ -40,23 +48,91 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   );
   await new Promise((r) => setTimeout(r, 1500));
   const body = () => page.evaluate(() => document.body.textContent);
-  const api = (path) =>
-    page.evaluate(async (p) => {
-      const r = await fetch(p);
-      return r.json();
-    }, path);
+  const get = async (path) => (await api(page, path)).body;
 
-  // ---------- B1: today cards == hand calc (Sahil: 1/1700/500/1200/1500) ----------
-  const t = await api("/api/stats?date=2026-09-30");
+  // Order-independent baseline: suites share this throwaway DB, and earlier
+  // ones may leave active rows behind (laneA keeps a LaneARef row for today).
+  // Every report check below asserts a delta from this snapshot — never an
+  // absolute 1. The snapshot must be taken before the baseline row is created.
+  const before = {
+    day: await get(`/api/stats?date=${TODAY}`),
+    month: await get(
+      `/api/stats/monthly?from=${THIS_MONTH.from}&to=${THIS_MONTH.to}`
+    ),
+    last: await get(
+      `/api/stats/monthly?from=${LAST_MONTH.from}&to=${LAST_MONTH.to}`
+    ),
+    custom: await get(`/api/stats/monthly?from=${YESTERDAY}&to=${TODAY}`),
+  };
+  const nurulBefore =
+    before.day.techStats.find((x) => x.technician === "NURUL") ?? {
+      count: 0,
+      bill: 0,
+    };
+
+  // Self-contained report baseline: 1/1700/500/1200/1500 on the test database.
+  const baseline = await api(page, "/api/services", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: REPORT_BASE,
+      phone: "01000000555",
+      model: "BC Model",
+      technician: "NURUL",
+      problem: "Report baseline",
+      totalBill: 1700,
+      advance: 500,
+      status: "Pending",
+      shopExpense: "1500",
+      serviceDate: TODAY,
+    }),
+  });
+  if (!baseline.ok) {
+    throw new Error("report baseline not created: " + JSON.stringify(baseline.body));
+  }
+  // The baseline was created via API — reload so the dashboard cards render it.
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForFunction(
+    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    { polling: 500, timeout: 30000 }
+  );
+  await page.waitForFunction(
+    (name) => document.body.textContent.includes(name),
+    { polling: 500, timeout: 15000 },
+    REPORT_BASE
+  );
+
+  // ---------- B1: today cards == snapshot + hand calc (1/1700/500/1200/1500) ----------
+  const t = await get(`/api/stats?date=${TODAY}`);
+  const expected = {
+    count: before.day.today.count + 1,
+    bill: before.day.today.bill + 1700,
+    due: before.day.today.due + 1200,
+    expense: before.day.today.expense + 1500,
+  };
+  // The cards must render the same totals the API reports.
+  await page.waitForFunction(
+    (bill, due, expense) => {
+      const text = document.body.textContent;
+      return text.includes(bill) && text.includes(due) && text.includes(expense);
+    },
+    { polling: 500, timeout: 10000 },
+    tk(expected.bill),
+    tk(expected.due),
+    tk(expected.expense)
+  );
   const b = await body();
   console.log("reached B1");
   check(
     "B1",
-    "today cards match hand calc",
-    t.today.count === 1 &&
-      b.includes(tk(1700)) &&
-      b.includes(tk(1200)) &&
-      b.includes(tk(1500)),
+    "today cards = snapshot + hand calc (1/1700/500/1200/1500)",
+    t.today.count === expected.count &&
+      t.today.bill === expected.bill &&
+      t.today.due === expected.due &&
+      t.today.expense === expected.expense &&
+      b.includes(tk(expected.bill)) &&
+      b.includes(tk(expected.due)) &&
+      b.includes(tk(expected.expense)),
     JSON.stringify(t.today)
   );
 
@@ -72,7 +148,14 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   });
   const nurul = t.techStats.find((x) => x.technician === "NURUL");
   console.log("reached B2");
-  check("B2", "tech cards (NURUL 1/1700)", techOk && nurul.count === 1 && nurul.bill === 1700);
+  check(
+    "B2",
+    "tech cards (NURUL snapshot+1 / snapshot+1700)",
+    techOk &&
+      nurul.count === nurulBefore.count + 1 &&
+      nurul.bill === nurulBefore.bill + 1700,
+    JSON.stringify(nurul)
+  );
 
   // ---------- B3: presets ----------
   const rangeText = () =>
@@ -93,30 +176,37 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
     }, label);
   await chip("এই মাস");
   await new Promise((r) => setTimeout(r, 900));
-  const mSep = await api("/api/stats/monthly?from=2026-09-01&to=2026-09-30");
+  const mThis = await get(
+    `/api/stats/monthly?from=${THIS_MONTH.from}&to=${THIS_MONTH.to}`
+  );
   console.log("reached B3");
   check(
     "B3a",
-    "this-month preset (Sep, count 1)",
-    (await rangeText()).includes("1 Sep") && mSep.summary.count === 1
+    `this-month preset (${monthLabel(THIS_MONTH.from)}, snapshot+1)`,
+    (await rangeText()).includes(`1 ${monthLabel(THIS_MONTH.from)}`) &&
+      mThis.summary.count === before.month.summary.count + 1 &&
+      mThis.summary.bill === before.month.summary.bill + 1700
   );
   await chip("গত মাস");
   await new Promise((r) => setTimeout(r, 900));
-  const mAug = await api("/api/stats/monthly?from=2026-08-01&to=2026-08-31");
+  const mLast = await get(
+    `/api/stats/monthly?from=${LAST_MONTH.from}&to=${LAST_MONTH.to}`
+  );
   check(
     "B3b",
-    "last-month preset (Aug, count 0)",
-    (await rangeText()).includes("Aug") && mAug.summary.count === 0
+    `last-month preset (${monthLabel(LAST_MONTH.from)}, untouched)`,
+    (await rangeText()).includes(monthLabel(LAST_MONTH.from)) &&
+      mLast.summary.count === before.last.summary.count
   );
   await chip("বিগত ৩০ দিন");
   await new Promise((r) => setTimeout(r, 900));
 
   // ---------- B4: custom range ----------
-  await page.evaluate(() => {
+  await page.evaluate((from, to) => {
     const sec = [...document.querySelectorAll("section")].find((s) =>
       s.textContent.includes("ওভারঅল রিপোর্ট")
     );
-    const [f, to] = sec.querySelectorAll('input[type="date"]');
+    const [f, end] = sec.querySelectorAll('input[type="date"]');
     const set = (el, v) => {
       Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
@@ -124,44 +214,48 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
       ).set.call(el, v);
       el.dispatchEvent(new Event("input", { bubbles: true }));
     };
-    set(f, "2026-09-29");
-    set(to, "2026-09-30");
-  });
+    set(f, from);
+    set(end, to);
+  }, YESTERDAY, TODAY);
   await new Promise((r) => setTimeout(r, 1000));
   const customLabel = await rangeText();
-  const mCustom = await api("/api/stats/monthly?from=2026-09-29&to=2026-09-30");
+  const customExpected = dayLabel(YESTERDAY);
+  const mCustom = await get(
+    `/api/stats/monthly?from=${YESTERDAY}&to=${TODAY}`
+  );
   console.log("reached B4");
   check(
     "B4",
-    "custom 09-29→09-30 (count 1, মোট labels)",
-    customLabel.includes("29 Sep") &&
-      mCustom.summary.count === 1 &&
+    `custom ${YESTERDAY}→${TODAY} (snapshot+1, মোট labels)`,
+    customLabel.includes(customExpected) &&
+      mCustom.summary.count === before.custom.summary.count + 1 &&
+      mCustom.summary.bill === before.custom.summary.bill + 1700 &&
       (await body()).includes("মোট বিল"),
     customLabel
   );
 
   // ---------- B5: navbar connection ----------
-  await page.evaluate(() => {
+  await page.evaluate((probe) => {
     const i = document.querySelector("header input[type='date']");
     Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value"
-    ).set.call(i, "2026-08-15");
+    ).set.call(i, probe);
     i.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  }, PROBE_DATE);
   await new Promise((r) => setTimeout(r, 1200));
   console.log("reached B5");
   check(
     "B5a",
     "custom persists across navbar move",
-    (await rangeText()).includes("29 Sep")
+    (await rangeText()).includes(customExpected)
   );
   await chip("এই মাস");
   await new Promise((r) => setTimeout(r, 900));
   check(
     "B5b",
-    "preset follows navbar (Aug)",
-    (await rangeText()).includes("1 Aug")
+    `preset follows navbar (${monthLabel(PROBE_DATE)})`,
+    (await rangeText()).includes(`1 ${monthLabel(PROBE_DATE)}`)
   );
   // back to today + rolling
   await page.evaluate(() =>
@@ -173,7 +267,9 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   await new Promise((r) => setTimeout(r, 900));
 
   // ---------- B6: invalid range ----------
-  await page.evaluate(() => {
+  const rollingBefore = await rangeText();
+  const invalidFrom = shiftDay(TODAY, 10);
+  await page.evaluate((from) => {
     const sec = [...document.querySelectorAll("section")].find((s) =>
       s.textContent.includes("ওভারঅল রিপোর্ট")
     );
@@ -181,13 +277,13 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
     Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value"
-    ).set.call(f, "2026-10-10");
+    ).set.call(f, from);
     f.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  }, invalidFrom);
   await new Promise((r) => setTimeout(r, 800));
   const stillRolling = await rangeText();
   console.log("reached B6");
-  check("B6", "from>to rejected, range kept", stillRolling.includes("Sep"));
+  check("B6", "from>to rejected, range kept", stillRolling === rollingBefore);
 
   // ---------- C1: backup button ----------
   await page.evaluate(() =>
@@ -209,55 +305,43 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   check("C1", "backup toast + label", !!lbl, lbl);
 
   // ---------- C2: restore roundtrip (marker removed via restore) ----------
-  const snap = await page.evaluate(async () => {
-    const r = await fetch("/api/backup", { method: "POST" });
-    return r.json();
+  const snap = await api(page, "/api/backup", { method: "POST" });
+  if (!snap.ok) throw new Error("snapshot failed: " + JSON.stringify(snap.body));
+  const marker = await api(page, "/api/services", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: MARKER,
+      phone: "01000000333",
+      model: "M",
+      technician: "NURUL",
+      problem: "P",
+      totalBill: 100,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "",
+      serviceDate: TODAY,
+    }),
   });
-  const marker = await page.evaluate(async () => {
-    const r = await fetch("/api/services", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customerName: "RestoreMark",
-        phone: "01000000333",
-        model: "M",
-        technician: "NURUL",
-        problem: "P",
-        totalBill: 100,
-        advance: 0,
-        status: "Pending",
-        shopExpense: "",
-        serviceDate: "2026-09-30",
-      }),
-    });
-    return r.json();
+  if (!marker.ok) throw new Error("marker failed: " + JSON.stringify(marker.body));
+  const rs = await api(page, "/api/backup/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: snap.body.file }),
   });
-  const rs = await page.evaluate(async (f) => {
-    const r = await fetch("/api/backup/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file: f }),
-    });
-    return { ok: r.ok, body: await r.json() };
-  }, snap.file);
-  const after = await api("/api/services?date=2026-09-30");
+  const after = await get(`/api/services?date=${TODAY}`);
   console.log("reached C2");
   check(
     "C2",
-    "restore roundtrip (marker gone, Sahil intact)",
+    "restore roundtrip (marker gone, baseline intact)",
     rs.ok &&
-      !after.services.some((s) => s.customerName === "RestoreMark") &&
-      after.services.some((s) => s.customerName === "Sahil"),
-    `marker#${marker.id} removed=${!after.services.some((s) => s.id === marker.id)}`
+      !after.services.some((s) => s.customerName === MARKER) &&
+      after.services.some((s) => s.customerName === REPORT_BASE),
+    `marker#${marker.body.id} removed=${!after.services.some((s) => s.id === marker.body.id)}`
   );
 
   // ---------- C3: receipt paper ----------
-  await page.evaluate(() => {
-    [...document.querySelectorAll("tbody tr")]
-      .find((tr) => tr.textContent.includes("Sahil"))
-      .querySelector("button[title='বিল প্রিন্ট']")
-      .click();
-  });
+  await clickDailyRowButton(page, REPORT_BASE, "বিল প্রিন্ট");
   await page.waitForFunction(
     () => document.body.textContent.includes("বিল প্রিভিউ"),
     { polling: 500, timeout: 8000 }
@@ -278,6 +362,16 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   check("C3", "receipt paper: dashboard+dialog hidden", paperOk.dashHidden, JSON.stringify(paperOk));
   await page.emulateMediaType("screen");
   await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    const close = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent.trim() === "বন্ধ করুন"
+    );
+    if (close) close.click();
+  });
+  await page.waitForFunction(
+    () => !document.querySelector('[role="dialog"]'),
+    { polling: 200, timeout: 8000 }
+  );
 
   // ---------- C4: dashboard paper ----------
   await page.emulateMediaType("print");
@@ -291,24 +385,48 @@ const tk = (n) => `৳${Math.round(n).toLocaleString("en-IN")}`;
   await page.emulateMediaType("screen");
 
   // ---------- C6: keyboard ----------
+  const titleYesterday = `সার্ভিস তালিকা (${YESTERDAY})`;
+  const titleToday = `সার্ভিস তালিকা (${TODAY})`;
   await page.keyboard.press("ArrowLeft");
   await page.waitForFunction(
-    () => document.body.textContent.includes("সার্ভিস তালিকা (2026-09-29)"),
-    { polling: 500, timeout: 8000 }
+    (title) => document.body.textContent.includes(title),
+    { polling: 500, timeout: 8000 },
+    titleYesterday
   );
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(
-    () => document.body.textContent.includes("সার্ভিস তালিকা (2026-09-30)"),
-    { polling: 500, timeout: 8000 }
+    (title) => document.body.textContent.includes(title),
+    { polling: 500, timeout: 8000 },
+    titleToday
   );
   check("C6", "keyboard arrows navigate", true);
 
+  // ---------- C7: test-database cleanup ----------
+  const baselineRow = (await get(`/api/services?date=${TODAY}`)).services.find(
+    (s) => s.customerName === REPORT_BASE
+  );
+  if (baselineRow) {
+    await api(page, `/api/services/${baselineRow.id}`, { method: "DELETE" });
+  }
+  const finalDay = await get(`/api/services?date=${TODAY}`);
+  check(
+    "C7",
+    "baseline archived, no active laneBC rows",
+    !finalDay.services.some(
+      (s) =>
+        s.customerName === REPORT_BASE ||
+        s.customerName === MARKER ||
+        s.customerName.startsWith("BCBase")
+    )
+  );
+
   check("Z", "zero JS errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   console.log(results.join("\n"));
-  await browser.close();
+  await closeBrowser(browser);
 })()
   .then(() => process.exit(failed ? 1 : 0))
-  .catch((e) => {
+  .catch(async (e) => {
     console.error("LANE-BC CRASH:", e.message);
+    await closeBrowser(browser);
     process.exit(1);
   });

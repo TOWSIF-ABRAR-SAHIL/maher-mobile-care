@@ -44,19 +44,6 @@ export function dhakaDateKey(date: Date | string | number): string {
   return `${y}-${pad(m)}-${pad(day)}`;
 }
 
-/** [start, end] of the Dhaka day containing `date`, as real Dates. */
-export function dhakaDayBounds(date: Date = new Date()): {
-  start: Date;
-  end: Date;
-} {
-  const { y, m, d } = dhakaParts(date);
-  const base = `${y}-${pad(m)}-${pad(d)}`;
-  return {
-    start: new Date(`${base}T00:00:00.000${OFFSET}`),
-    end: new Date(`${base}T23:59:59.999${OFFSET}`),
-  };
-}
-
 /** [start, end) of an inclusive Dhaka date range "YYYY-MM-DD"→"YYYY-MM-DD". */
 export function dhakaRangeBounds(dateFrom: string, dateTo: string): {
   start: Date;
@@ -66,16 +53,6 @@ export function dhakaRangeBounds(dateFrom: string, dateTo: string): {
     start: new Date(`${dateFrom}T00:00:00.000${OFFSET}`),
     end: new Date(`${dateTo}T23:59:59.999${OFFSET}`),
   };
-}
-
-/** Last `n` Dhaka day keys ending today, oldest first (for charts). */
-export function lastNDhakaDays(n: number): string[] {
-  const out: string[] = [];
-  const now = Date.now();
-  for (let i = n - 1; i >= 0; i--) {
-    out.push(dhakaDateKey(new Date(now - i * 24 * 60 * 60 * 1000)));
-  }
-  return out;
 }
 
 /** Short label for a "YYYY-MM-DD" key, e.g. "30 Sep". */

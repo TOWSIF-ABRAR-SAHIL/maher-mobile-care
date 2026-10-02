@@ -1,15 +1,15 @@
-import path from "path";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "./generated/prisma/client";
+import { databaseUrl } from "./db-path";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
 function createClient(): PrismaClient {
-  // Absolute path — immune to whatever the process working directory is.
-  const url = `file:${path.join(process.cwd(), "prisma", "dev.db")}`;
-  const adapter = new PrismaBetterSqlite3({ url });
+  // Database selection is shared through lib/db-path, so API routes, scripts,
+  // and Prisma configuration can never diverge silently.
+  const adapter = new PrismaBetterSqlite3({ url: databaseUrl() });
   return new PrismaClient({ adapter });
 }
 

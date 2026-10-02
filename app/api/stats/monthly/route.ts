@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { dhakaDateKey, dhakaRangeBounds } from "@/lib/dhaka";
+import { dhakaDateKey, dhakaRangeBounds, isDateKey } from "@/lib/dhaka";
 import type { MonthlyResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +24,7 @@ export async function GET(req: NextRequest) {
     let from: string;
     let to: string;
     if (fromParam !== null || toParam !== null) {
-      const ok = (v: string | null) =>
-        v !== null && /^\d{4}-\d{2}-\d{2}$/.test(v);
-      if (!ok(fromParam) || !ok(toParam)) {
+      if (!isDateKey(fromParam) || !isDateKey(toParam)) {
         return NextResponse.json(
           { error: "সঠিক তারিখ দিন (YYYY-MM-DD)" },
           { status: 400 }
@@ -59,7 +57,14 @@ export async function GET(req: NextRequest) {
         );
       }
     } else {
-      to = req.nextUrl.searchParams.get("date") || dhakaDateKey(new Date());
+      const dateParam = req.nextUrl.searchParams.get("date");
+      if (dateParam !== null && !isDateKey(dateParam)) {
+        return NextResponse.json(
+          { error: "সঠিক তারিখ দিন (YYYY-MM-DD)" },
+          { status: 400 }
+        );
+      }
+      to = dateParam || dhakaDateKey(new Date());
       from = shiftKey(to, -29); // 30-day window ending on the selected date
     }
     const { start, end } = dhakaRangeBounds(from, to);
