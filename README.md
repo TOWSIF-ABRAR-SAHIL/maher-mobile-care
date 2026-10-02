@@ -150,7 +150,9 @@ lib/
                              card list (active ∪ worked-today), last-active guard
   service-validation.ts    → shared create/update rules (UI and API can't drift)
   dhaka.ts                 → Asia/Dhaka day bounds, real calendar-date validation
-  utils.ts                 → technicians, statuses, Bengali-digit parse, due, ৳ format
+  utils.ts                 → statuses, Bengali-digit parse, due, ৳ format
+                             (+ FALLBACK_TECHNICIANS, only used if the roster
+                             request fails)
   types.ts                 → shared DTOs (ServiceDTO, stats, RangeMode…)
   contact.ts               → WhatsApp/phone message text
   shop.ts                  → shop name/address/phone (receipt + footer source)
