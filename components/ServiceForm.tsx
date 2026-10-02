@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 import {
   STATUS_BN,
   STATUSES,
-  TECHNICIANS,
+  FALLBACK_TECHNICIANS,
   computeDue,
   formatTaka,
   parseBnNumber,
@@ -28,7 +28,9 @@ const empty = {
   customerName: "",
   phone: "",
   model: "",
-  technician: "NURUL",
+  // Filled from the fetched roster on mount (see the reconciliation effect) —
+  // there is no hardcoded default name any more.
+  technician: "",
   problem: "",
   totalBill: "",
   advance: "",
@@ -66,6 +68,7 @@ function toForm(s: ServiceDTO) {
 export function ServiceForm({
   initial,
   serviceDate,
+  technicians,
   onSaved,
   onCancelEdit,
 }: {
@@ -73,12 +76,47 @@ export function ServiceForm({
   initial: ServiceDTO | null;
   /** Selected day (YYYY-MM-DD) — new entries are booked on this day. */
   serviceDate: string;
+  /** Active roster from /api/technicians. */
+  technicians: string[];
   onSaved: () => void;
   onCancelEdit: () => void;
 }) {
   const [f, setF] = useState(() => (initial ? toForm(initial) : empty));
   const [saving, setSaving] = useState(false);
   const editing = initial !== null;
+
+  /**
+   * Options = active roster, PLUS the edited row's own technician when that
+   * person has since been deactivated (F11). Without this, saving an old job of
+   * a technician who left the shop would silently reassign the job to somebody
+   * else, because their name is no longer selectable.
+   */
+  const techOptions = useMemo(() => {
+    const active = technicians.length > 0 ? technicians : [...FALLBACK_TECHNICIANS];
+    const current = initial?.technician ?? "";
+    if (!current || active.includes(current)) return active;
+    return [...active, current];
+  }, [technicians, initial?.technician]);
+
+  const isInactiveOption = useMemo(
+    () =>
+      technicians.length > 0 &&
+      !!initial?.technician &&
+      !technicians.includes(initial.technician),
+    [technicians, initial?.technician]
+  );
+
+  // Roster changed under an open form (rename/delete elsewhere): keep the
+  // stored value if it is still offered, otherwise fall back to the first one.
+  useEffect(() => {
+    setF((prev) => {
+      const stillValid = techOptions.includes(prev.technician);
+      const next = stillValid ? prev.technician : techOptions[0] ?? "";
+      return stillValid || next === prev.technician
+        ? prev
+        : { ...prev, technician: next };
+    });
+  }, [techOptions]);
 
   const set = (key: keyof typeof empty) => (
     e: React.ChangeEvent<HTMLInputElement>
@@ -107,18 +145,23 @@ export function ServiceForm({
 
     let payload;
     try {
-      payload = validateServicePayload({
-        customerName: f.customerName,
-        phone: f.phone,
-        model: f.model,
-        technician: f.technician,
-        problem: f.problem,
-        totalBill: f.totalBill,
-        advance: f.advance,
-        status: f.status,
-        shopExpense: f.shopExpense,
-        serviceDate: editing ? f.serviceDate : serviceDate,
-      });
+      payload = validateServicePayload(
+        {
+          customerName: f.customerName,
+          phone: f.phone,
+          model: f.model,
+          technician: f.technician,
+          problem: f.problem,
+          totalBill: f.totalBill,
+          advance: f.advance,
+          status: f.status,
+          shopExpense: f.shopExpense,
+          serviceDate: editing ? f.serviceDate : serviceDate,
+        },
+        // An inactive technician's own historical job stays editable, so the
+        // option list (not the active-only roster) is what we validate against.
+        { allowedTechnicians: techOptions }
+      );
     } catch (err) {
       return toast.error(
         err instanceof Error ? err.message : "সঠিক তথ্য দিন"
@@ -203,9 +246,12 @@ export function ServiceForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TECHNICIANS.map((t) => (
+              {techOptions.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
+                  {isInactiveOption && t === initial?.technician
+                    ? " (নিষ্ক্রিয়)"
+                    : ""}
                 </SelectItem>
               ))}
             </SelectContent>

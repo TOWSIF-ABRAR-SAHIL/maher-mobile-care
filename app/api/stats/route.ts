@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dhakaDateKey, dhakaRangeBounds, isDateKey } from "@/lib/dhaka";
-import { TECHNICIANS, parseBnNumber } from "@/lib/utils";
+import { FALLBACK_TECHNICIANS, parseBnNumber } from "@/lib/utils";
+import { cardRows } from "@/lib/technicians";
 import type { StatsResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +24,16 @@ export async function GET(req: NextRequest) {
       select: { technician: true, totalBill: true, due: true, expenseAmount: true, shopExpense: true },
     });
 
-    const techStats = TECHNICIANS.map((t) => {
-      const mine = rows.filter((r) => r.technician === t);
+    const specs = await cardRows(rows.map((r) => r.technician));
+    const techStats = specs.map(({ technician, isActive }) => {
+      // Case-insensitive so a card total can never drift from the day total
+      // just because a historical row was typed in a different case.
+      const mine = rows.filter(
+        (r) => r.technician.toUpperCase() === technician.toUpperCase()
+      );
       return {
-        technician: t,
+        technician,
+        isActive,
         count: mine.length,
         bill: mine.reduce((s, r) => s + r.totalBill, 0),
       };

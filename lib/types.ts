@@ -19,8 +19,19 @@ export interface ServiceDTO {
   updatedAt: string;
 }
 
+/** Shop roster entry (v1.1). `isActive=false` means the technician left. */
+export interface TechnicianDTO {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface TechStat {
   technician: string;
+  /** false = no longer on the roster but has rows on the shown date, so the
+   *  card is greyed out instead of disappearing (day totals must reconcile). */
+  isActive: boolean;
   count: number;
   bill: number;
 }

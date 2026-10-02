@@ -22,6 +22,7 @@ const DEFAULT_SUITES = [
   "scripts/laneA.js",
   "scripts/laneBC.js",
   "scripts/api-check.js",
+  "scripts/technician-mgmt.js",
   "scripts/responsive-check.js",
 ];
 
@@ -131,6 +132,16 @@ async function runSuite(suite, index, tempRoot, baseEnv) {
     env,
     `prisma migrate deploy (${suite})`
   );
+  // lib/generated/prisma is gitignored, so after any schema change the client
+  // on disk can predate the model the app now imports (e.g. Technician).
+  // Regenerating per suite keeps the build honest instead of relying on the
+  // one-off postinstall hook.
+  await run(
+    NPX,
+    ["prisma", "generate"],
+    env,
+    `prisma generate (${suite})`
+  );
 
   console.log(`\n===== ${suite} =====`);
   console.log(`Throwaway database: ${dbFile}`);
@@ -203,6 +214,7 @@ async function main() {
     };
     fs.mkdirSync(buildEnv.MAHER_BACKUP_DIR, { recursive: true });
     await run(NPX, ["prisma", "migrate", "deploy"], buildEnv, "prisma migrate deploy");
+    await run(NPX, ["prisma", "generate"], buildEnv, "prisma generate");
     await run(NPM, ["run", "build"], buildEnv, "next build");
 
     for (let i = 0; i < suites.length; i++) {

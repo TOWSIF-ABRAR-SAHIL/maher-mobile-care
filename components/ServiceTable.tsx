@@ -45,6 +45,8 @@ export function ServiceTable({
   onEdit,
   onReceipt,
   onChanged,
+  technicianFilter,
+  onClearTechnician,
 }: {
   services: ServiceDTO[];
   loading: boolean;
@@ -52,6 +54,9 @@ export function ServiceTable({
   onEdit: (service: ServiceDTO) => void;
   onReceipt: (service: ServiceDTO) => void;
   onChanged: () => void;
+  /** v1.1: show only this technician's rows, or null for everyone. */
+  technicianFilter?: string | null;
+  onClearTechnician?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ServiceDTO | null>(null);
@@ -85,19 +90,32 @@ export function ServiceTable({
   const source = showArchived ? archived : services;
   const busy = showArchived ? archLoading : loading;
 
+  /**
+   * Client-side roster filter. Applied BEFORE the status chips and the search
+   * box so their counts describe the filtered view, and matched
+   * case-insensitively to stay consistent with /api/stats.
+   */
+  const techFiltered = useMemo(() => {
+    const tech = technicianFilter?.trim().toUpperCase();
+    if (!tech) return source;
+    return source.filter(
+      (s) => (s.technician ?? "").trim().toUpperCase() === tech
+    );
+  }, [source, technicianFilter]);
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { All: source.length };
+    const c: Record<string, number> = { All: techFiltered.length };
     for (const st of STATUSES) {
-      c[st] = source.filter((s) => s.status === st).length;
+      c[st] = techFiltered.filter((s) => s.status === st).length;
     }
     return c;
-  }, [source]);
+  }, [techFiltered]);
 
   const filtered = useMemo(() => {
     const byStatus =
       statusFilter === "All"
-        ? source
-        : source.filter((s) => s.status === statusFilter);
+        ? techFiltered
+        : techFiltered.filter((s) => s.status === statusFilter);
     const q = search.trim().toLowerCase();
     if (!q) return byStatus;
     return byStatus.filter((s) =>
@@ -106,7 +124,7 @@ export function ServiceTable({
         .toLowerCase()
         .includes(q)
     );
-  }, [source, search, statusFilter]);
+  }, [techFiltered, search, statusFilter]);
 
   /** One tap on the badge moves the job to the next stage. */
   const advanceStatus = async (s: ServiceDTO) => {
@@ -216,6 +234,23 @@ export function ServiceTable({
         </div>
       </div>
 
+      {/* v1.1 filter notice. Deliberately NOT inside a `div.mb-3`: laneA's chip
+          helper selects `div.mb-3 button` inside this section, so a status chip
+          look-alike here would break that suite. */}
+      {technicianFilter ? (
+        <div
+          data-testid="tech-filter-notice"
+          className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900 print:hidden"
+        >
+          <span>
+            🔍 শুধু <strong>{technicianFilter}</strong> এর কাজ দেখানো হচ্ছে
+          </span>
+          <Button size="sm" variant="outline" onClick={onClearTechnician}>
+            ✕ ফিল্টার সরান
+          </Button>
+        </div>
+      ) : null}
+
       {busy ? (
         <div className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
@@ -245,9 +280,13 @@ export function ServiceTable({
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-12 text-center">
           <ClipboardList className="h-8 w-8 text-gray-400" />
           <p className="font-medium text-gray-700">
-            {showArchived
-              ? "আর্কাইভ খালি।"
-              : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
+            {technicianFilter
+              ? showArchived
+                ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
+                : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
+              : showArchived
+                ? "আর্কাইভ খালি।"
+                : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
           </p>
         </div>
       ) : (

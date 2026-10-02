@@ -320,6 +320,192 @@ async function main() {
       `got id ${nextCreate.body && nextCreate.body.id}, restored max(id) ${HIGH_ID}`
     );
 
+    // ---- TC: v1.1 dynamic technicians -----------------------------------
+    // The technician list is database-backed now, so the seeded four must be
+    // present and the rules (unique, normalized, last-active, cascade) must
+    // hold at the API level.
+    const techList = await api("/api/technicians");
+    const seededNames = ["NURUL", "RONI", "ASRAFUL", "NAYEM"];
+    check(
+      "TC1",
+      "seeded technicians are active after migration",
+      techList.ok &&
+        seededNames.every((n) =>
+          techList.body.technicians.some((t) => t.name === n && t.isActive)
+        ),
+      JSON.stringify(techList.body.technicians || techList.body.error || null)
+    );
+
+    const blankTech = await api("/api/technicians", json({ name: "   " }));
+    check(
+      "TC2",
+      "blank technician name rejected",
+      blankTech.status === 400,
+      `${blankTech.status} ${JSON.stringify(blankTech.body.error || "")}`
+    );
+
+    const dupTech = await api("/api/technicians", json({ name: "nurul" }));
+    check(
+      "TC3",
+      "duplicate name rejected case-insensitively and normalized",
+      dupTech.status === 400 &&
+        String(dupTech.body.error || "").includes("ইতিমধ্যে"),
+      `${dupTech.status} ${JSON.stringify(dupTech.body.error || "")}`
+    );
+
+    const addedTech = await api("/api/technicians", json({ name: "  rakib  " }));
+    check(
+      "TC4",
+      "new technician stored normalized (trim + uppercase)",
+      addedTech.ok && addedTech.body.technician?.name === "RAKIB",
+      JSON.stringify(addedTech.body.technician || addedTech.body.error || null)
+    );
+    const rakibId = addedTech.body.technician?.id;
+
+    const badTechId = await api("/api/technicians/not-an-id", { method: "DELETE" });
+    check(
+      "TC5",
+      "malformed technician id returns 400",
+      badTechId.status === 400,
+      String(badTechId.status)
+    );
+    const missingTech = await api("/api/technicians/2147483647", {
+      method: "DELETE",
+    });
+    check("TC6", "unknown technician id returns 404", missingTech.status === 404, String(missingTech.status));
+
+    // A service row keeps its technician name after deactivation, and the
+    // daily stats still include that (inactive) technician as a card.
+    const rakibService = await api("/api/services", json({
+      customerName: unique("TechRow"),
+      phone: "01000000666",
+      model: "M",
+      technician: "RAKIB",
+      problem: "P",
+      totalBill: 900,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "",
+      serviceDate: TODAY,
+    }));
+    if (rakibService.ok) createdIds.push(rakibService.body.id);
+    const deactivated = await api(`/api/technicians/${rakibId}`, { method: "DELETE" });
+    check("TC7", "soft-delete deactivates (not hard delete)", deactivated.ok, String(deactivated.status));
+    const afterDeactivate = await api("/api/technicians?all=true");
+    const rakibRow = (afterDeactivate.body.technicians || []).find(
+      (t) => t.name === "RAKIB"
+    );
+    check(
+      "TC8",
+      "deactivated technician kept with isActive=false",
+      !!rakibRow && rakibRow.isActive === false,
+      JSON.stringify(rakibRow || null)
+    );
+    const dayAfter = await api(`/api/services?date=${TODAY}`);
+    const oldRowStillNamed = (dayAfter.body.services || []).some(
+      (s) => s.customerName.startsWith("TechRow") && s.technician === "RAKIB"
+    );
+    check("TC9", "old service row still shows the technician name", oldRowStillNamed);
+
+    const statsAfter = await api(`/api/stats?date=${TODAY}`);
+    const inactiveCard = (statsAfter.body.techStats || []).find(
+      (t) => t.technician === "RAKIB"
+    );
+    check(
+      "TC10",
+      "inactive technician with today's work still gets a card (isActive=false)",
+      !!inactiveCard && inactiveCard.isActive === false && inactiveCard.count === 1,
+      JSON.stringify(inactiveCard || null)
+    );
+    const cardSum = (statsAfter.body.techStats || []).reduce((s, t) => s + t.count, 0);
+    check(
+      "TC11",
+      "cards always reconcile with the day's job count",
+      cardSum === statsAfter.body.today.count,
+      `cards ${cardSum} vs today ${statsAfter.body.today.count}`
+    );
+
+    const inactiveCreate = await api("/api/services", json({
+      customerName: unique("BadTech"),
+      phone: "01000000777",
+      model: "M",
+      technician: "RAKIB",
+      problem: "P",
+      totalBill: 100,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "",
+      serviceDate: TODAY,
+    }));
+    check(
+      "TC12",
+      "service cannot be created with an inactive technician",
+      inactiveCreate.status === 400,
+      String(inactiveCreate.status)
+    );
+
+    // Cascade rename: the affected count is reported first, and only an
+    // explicit confirmCascade performs the historical rewrite.
+    const newName = `RENAMED${Date.now().toString().slice(-6)}`;
+    const preview = await api(`/api/technicians/${rakibId}`, put({ name: newName }));
+    check(
+      "TC13",
+      "rename with affected rows returns 409 + count, writes nothing",
+      preview.status === 409 &&
+        preview.body.affected === 1 &&
+        (await api("/api/technicians?all=true")).body.technicians.some(
+          (t) => t.name === "RAKIB"
+        ),
+      `${preview.status} ${JSON.stringify(preview.body)}`
+    );
+    const confirmed = await api(
+      `/api/technicians/${rakibId}`,
+      put({ name: newName, confirmCascade: true })
+    );
+    const afterRenameRows = (await api(`/api/services?date=${TODAY}`)).body.services || [];
+    check(
+      "TC14",
+      "confirmed rename cascades to historical service rows",
+      confirmed.ok &&
+        confirmed.body.updatedServices === 1 &&
+        afterRenameRows.some((s) => s.customerName.startsWith("TechRow") && s.technician === newName) &&
+        !afterRenameRows.some((s) => s.customerName.startsWith("TechRow") && s.technician === "RAKIB"),
+      `${confirmed.status} ${JSON.stringify(confirmed.body)}`
+    );
+
+    // Renaming a technician who has no rows must not ask for a confirm.
+    const noRows = await api("/api/technicians", json({ name: "SOLO" }));
+    const soloRename = await api(
+      `/api/technicians/${noRows.body.technician.id}`,
+      put({ name: `SOLO${Date.now().toString().slice(-4)}` })
+    );
+    check(
+      "TC15",
+      "rename with 0 affected rows succeeds without confirm",
+      soloRename.ok && soloRename.body.updatedServices === 0,
+      `${soloRename.status} ${JSON.stringify(soloRename.body)}`
+    );
+
+    // The last active technician must never be removable.
+    const allNow = await api("/api/technicians");
+    for (const t of allNow.body.technicians.filter((x) => x.name !== "NURUL")) {
+      await api(`/api/technicians/${t.id}`, { method: "DELETE" });
+    }
+    const onlyLeft = await api("/api/technicians");
+    const nurul = onlyLeft.body.technicians[0];
+    const lastDelete = await api(`/api/technicians/${nurul.id}`, { method: "DELETE" });
+    check(
+      "TC16",
+      "deleting the last active technician is blocked",
+      lastDelete.status === 400 &&
+        String(lastDelete.body.error || "").includes("কমপক্ষে"),
+      `${lastDelete.status} ${JSON.stringify(lastDelete.body.error || "")}`
+    );
+    // Put the seeded list back so later checks see a normal shop.
+    for (const n of ["RONI", "ASRAFUL", "NAYEM"]) {
+      await api("/api/technicians", json({ name: n }));
+    }
+
     const badRange = await api("/api/stats/monthly?from=2026-10-01&to=2026-09-01");
     check("M1", "inverted report range returns 400", badRange.status === 400, String(badRange.status));
     const impossible = await api("/api/stats/monthly?from=2026-02-30&to=2026-02-30");

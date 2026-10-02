@@ -1,6 +1,14 @@
 "use client";
 
-import { CalendarDays, Download, History, Loader2, Printer, RefreshCw } from "lucide-react";
+import {
+  CalendarDays,
+  Download,
+  History,
+  Loader2,
+  Printer,
+  RefreshCw,
+  Settings,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -16,6 +24,7 @@ export function Header({
   onBackup,
   backingUp,
   onRestore,
+  onManageTechnicians,
   onPrint,
 }: {
   date: string;
@@ -29,6 +38,7 @@ export function Header({
   onBackup: () => void;
   backingUp: boolean;
   onRestore: () => void;
+  onManageTechnicians: () => void;
   onPrint: () => void;
 }) {
   return (
@@ -113,6 +123,17 @@ export function Header({
               <Download className="mr-1 h-4 w-4" />
             )}
             ব্যাকআপ
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="border border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+            onClick={onManageTechnicians}
+            title="টেকনিশিয়ান যোগ / বদল / ডিলিট"
+          >
+            <Settings className="mr-1 h-4 w-4 sm:mr-0 lg:mr-1" />
+            <span className="sm:hidden">টেকনিশিয়ান</span>
+            <span className="hidden sm:inline">⚙️ টেকনিশিয়ান</span>
           </Button>
           <Button
             size="sm"

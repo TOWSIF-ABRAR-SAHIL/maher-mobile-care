@@ -4,6 +4,7 @@ import {
   isServiceValidationError,
   validateServiceUpdate,
 } from "@/lib/service-validation";
+import { activeTechnicianNames } from "@/lib/technicians";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,21 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const data = validateServiceUpdate(body, {
-      totalBill: existing.totalBill,
-      advance: existing.advance,
-    });
+    const allowedTechnicians = await activeTechnicianNames();
+    if (allowedTechnicians.length === 0) {
+      return NextResponse.json(
+        { error: "প্রথমে একজন টেকনিশিয়ান যোগ করুন।" },
+        { status: 400 }
+      );
+    }
+    const data = validateServiceUpdate(
+      body,
+      {
+        totalBill: existing.totalBill,
+        advance: existing.advance,
+      },
+      { allowedTechnicians }
+    );
 
     const updated = await prisma.service.update({ where: { id }, data });
     return NextResponse.json(updated);

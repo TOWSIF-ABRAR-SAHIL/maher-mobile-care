@@ -9,8 +9,13 @@ export function cn(...inputs: ClassValue[]) {
 /* Domain constants                                                     */
 /* ------------------------------------------------------------------ */
 
-export const TECHNICIANS = ["NURUL", "RONI", "ASRAFUL", "NAYEM"] as const;
-export type Technician = (typeof TECHNICIANS)[number];
+/**
+ * Pre-v1.1 hardcoded roster, kept ONLY as a fallback for when the technician
+ * list request fails, plus the type alias. The live list lives in the database
+ * (prisma `Technician` model) and is fetched from /api/technicians.
+ */
+export const FALLBACK_TECHNICIANS = ["NURUL", "RONI", "ASRAFUL", "NAYEM"] as const;
+export type Technician = string;
 
 export const STATUSES = [
   "Pending",

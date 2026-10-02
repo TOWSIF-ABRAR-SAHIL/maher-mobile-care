@@ -33,3 +33,15 @@ model Service {
   @@index([status])
   @@index([archived])
 }
+
+/// Shop employees. `Service.technician` stays a plain String on purpose: a
+/// foreign key would break the backup/restore column validation, which
+/// deliberately never references this table.
+model Technician {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique // stored normalized: trim() + UPPERCASE
+  isActive  Boolean  @default(true) // false = left the shop (soft-delete)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}

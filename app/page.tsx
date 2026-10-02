@@ -7,6 +7,7 @@ import { Header } from "@/components/Header";
 import { GlobalServiceSearch } from "@/components/GlobalServiceSearch";
 import { MonthlySummary } from "@/components/MonthlySummary";
 import { OutstandingDues } from "@/components/OutstandingDues";
+import { TechnicianManager } from "@/components/TechnicianManager";
 import { Receipt, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -40,6 +41,11 @@ export default function Home() {
   const [editing, setEditing] = useState<ServiceDTO | null>(null);
   const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
   const [showRestore, setShowRestore] = useState(false);
+  const [showTechManager, setShowTechManager] = useState(false);
+  // v1.1: active roster drives the form dropdown and the dashboard cards.
+  const [technicians, setTechnicians] = useState<string[]>([]);
+  // Client-side card → table filter. Reset on every date change.
+  const [techFilter, setTechFilter] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -73,8 +79,22 @@ export default function Home() {
   /** Navbar date change — presets recompute from the new day, custom stays. */
   const applyDate = (d: string, mode: RangeMode = rangeMode) => {
     setDate(d);
+    // A roster filter belongs to the day it was picked on.
+    setTechFilter(null);
     if (mode !== "custom") setRange(computeRange(mode, d));
   };
+
+  const loadTechnicians = useCallback(async () => {
+    try {
+      const res = await fetch("/api/technicians");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.technicians)) {
+        setTechnicians(data.technicians.filter((t: { isActive: boolean }) => t.isActive).map((t: { name: string }) => t.name));
+      }
+    } catch {
+      /* the form falls back to its built-in list */
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -158,6 +178,10 @@ export default function Home() {
   useEffect(() => {
     void load(date, true);
   }, [date, load]);
+
+  useEffect(() => {
+    void loadTechnicians();
+  }, [loadTechnicians]);
 
   const sync = () => {
     setSyncing(true);
@@ -310,10 +334,16 @@ export default function Home() {
           onBackup={() => void backup()}
           backingUp={backingUp}
           onRestore={() => setShowRestore(true)}
+          onManageTechnicians={() => setShowTechManager(true)}
           onPrint={print}
         />
 
-        <TechnicianStats stats={stats?.techStats ?? []} loading={loading} />
+        <TechnicianStats
+          stats={stats?.techStats ?? []}
+          loading={loading}
+          selected={techFilter}
+          onSelect={setTechFilter}
+        />
 
         <TodayStats
           stats={stats?.today ?? null}
@@ -348,6 +378,7 @@ export default function Home() {
               key={editing?.id ?? "new"}
               initial={editing}
               serviceDate={date}
+              technicians={technicians}
               onSaved={() => {
                 setEditing(null);
                 setDataVersion((v) => v + 1);
@@ -364,6 +395,8 @@ export default function Home() {
               date={date}
               onEdit={edit}
               onReceipt={setReceipt}
+              technicianFilter={techFilter}
+              onClearTechnician={() => setTechFilter(null)}
               onChanged={() => {
                 if (editing) setEditing(null);
                 setDataVersion((v) => v + 1);
@@ -405,6 +438,8 @@ export default function Home() {
         onClose={() => setReceipt(null)}
         onPrint={print}
       />
+      {/* Mounted last so `document.querySelector('[role="dialog"]')` in the
+          suites keeps resolving to the receipt dialog first. */}
       <RestoreDialog
         open={showRestore}
         onClose={() => setShowRestore(false)}
@@ -413,6 +448,15 @@ export default function Home() {
           setDataVersion((v) => v + 1);
           void load(dateRef.current, false);
           void fetchMonthly(rangeRef.current);
+        }}
+      />
+      <TechnicianManager
+        open={showTechManager}
+        onClose={() => setShowTechManager(false)}
+        onChanged={() => {
+          void loadTechnicians();
+          setDataVersion((v) => v + 1);
+          void load(dateRef.current, false);
         }}
       />
     </div>

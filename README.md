@@ -115,6 +115,9 @@ app/
                               CSS + OFL.txt licence (bundled, zero network)
   api/
     health/route.ts        → GET = readiness probe (reports which DB file is live)
+    technicians/route.ts   → GET (?all=true) roster, POST add
+    technicians/[id]/route.ts → PUT rename (2-step cascade), DELETE deactivate,
+                                POST reactivate
     services/route.ts      → GET ?date= / ?archived=true, POST create
     services/[id]/route.ts → PUT update (incl. serviceDate), DELETE = archive
     services/[id]/restore/route.ts → POST un-archive
@@ -138,10 +141,13 @@ components/
   StatusBadge.tsx          → colored Bengali status badges
   Receipt.tsx              → customer bill (preview dialog + print-only bill)
   RestoreDialog.tsx        → snapshot list + 2-step restore confirm
+  TechnicianManager.tsx    → roster dialog: add / rename / deactivate / reactivate
   ui/                      → shadcn primitives (button, input, table, dialog…)
 lib/
   prisma.ts                → cached Prisma client + local SQLite adapter
   db-path.ts               → single source of truth for the DB file + backup dir
+  technicians.ts           → roster rules: normalize, duplicate guard, cascade rename,
+                             card list (active ∪ worked-today), last-active guard
   service-validation.ts    → shared create/update rules (UI and API can't drift)
   dhaka.ts                 → Asia/Dhaka day bounds, real calendar-date validation
   utils.ts                 → technicians, statuses, Bengali-digit parse, due, ৳ format
@@ -151,8 +157,9 @@ lib/
   generated/               → Prisma client output (generated, do not edit)
 prisma/
   schema.prisma            → Service model (16 columns, incl. archived soft-delete)
+                              + Technician model (v1.1 roster)
   dev.db                   → THE database (all shop records — back this up!)
-  migrations/              → init + add_archived
+  migrations/              → init + add_archived + add_technician
 backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
@@ -161,7 +168,8 @@ scripts/
   e2e-p0.js                → P0 features E2E (13 checks)
   laneA.js                 → Lane A audit (22 checks)
   laneBC.js                → Lanes B+C audit (15 checks)
-  api-check.js             → API contract + validation + restore-guard checks (27)
+  api-check.js             → API contract + validation + restore-guard + roster (43)
+  technician-mgmt.js       → v1.1 roster dialog + card filtering (21 checks)
   responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
@@ -177,7 +185,11 @@ scripts/
 **Dashboard (one page):**
 - Sticky blue-gradient navbar — date prev/next/picker, **আজ** button, Sync,
   Backup, Restore, Print. Keyboard `←`/`→` changes day (not while typing).
-- 4 technician cards (always all four) — কাজ + মোট বিল.
+- Technician cards — one per **active** technician (card count follows the
+  roster), plus a greyed “নিষ্ক্রিয়” card for anyone who has left the shop but
+  still has work on the shown date, so the day's cards always add up to
+  আজকের মোট কাজ. **Clicking a card filters the daily table to that technician**;
+  clicking it again clears the filter.
 - 4 daily cards — কাজ / বিল / বাকি / খরচ (+কোড hint).
 - Range report — presets (বিগত ৩০ দিন / এই মাস / গত মাস) + custom
   থেকে–পর্যন্ত. Presets follow the navbar date; custom stays fixed.
@@ -198,6 +210,9 @@ scripts/
   stays 100% accurate even when the rendered list is capped.
 - **🌍 সব তারিখে খুঁজুন** — global search by name / phone / model / problem /
   bill no, minimum 2 characters. Runs on the server across every date.
+- **⚙️ টেকনিশিয়ান** (header) → **টেকনিশিয়ান ব্যবস্থাপনা** dialog: add, rename and
+  deactivate technicians. Renaming asks first when it would rewrite history;
+  deleting is a soft-delete that keeps every old record intact.
 - Service table — client-side filter within the selected day (name / ID /
   phone / model / problem), status chips with counts, eye-toggle for the খরচ
   column (hidden by default = customer privacy), **1-click status advance**
@@ -244,7 +259,20 @@ scripts/
   like rent is NOT in the system; “লাভ” = gross margin).
 - Dates are Asia/Dhaka day boundaries; new entries stored ~midday +06:00.
 - Archived rows are excluded from every list/stat.
-- Technicians: `NURUL, RONI, ASRAFUL, NAYEM` (fixed list in `lib/utils.ts`).
+- **The roster is data, not code (v1.1).** Technicians live in the `Technician`
+  table; `lib/utils.ts` keeps only a fallback list for when the roster request
+  fails. Names are stored `trim()`ed and UPPERCASEd, and duplicates are rejected
+  case-insensitively (SQLite's UNIQUE index alone would allow “nurul” + “NURUL”).
+- **Rename rewrites history, with consent.** Because `Service.technician` is a
+  plain String (a foreign key would break restore validation), a rename that
+  would touch old rows answers `409` with the count first and only cascades
+  after an explicit confirmation — the roster row and the service rows move in
+  one transaction.
+- **Deleting is deactivating.** Old receipts and records keep the name; only
+  future bookings stop. The last remaining technician cannot be deactivated.
+- A technician's own historical job stays editable after they leave — the form
+  still offers their name (marked “নিষ্ক্রিয়”) so saving cannot silently
+  reassign the job to somebody else.
 - Statuses: `Pending → In-Progress → Completed → Delivered` (badge click order).
 - **Cost privacy is local-only.** The APIs return `shopExpense`/`expenseAmount`
   because the app runs on the shop's own PC behind `127.0.0.1`. The guarantee
@@ -272,6 +300,18 @@ One table, `Service`, 16 columns (grouped below by role):
 There is deliberately **no `cashReceived` column and no payment-history table** —
 `advance` is the single payment figure the shop records.
 
+A second, tiny table holds the roster (v1.1):
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | Int | primary key, auto-increment |
+| `name` | String | unique, stored trimmed + UPPERCASE |
+| `isActive` | Boolean | `false` = left the shop (soft-delete) |
+| `createdAt` | DateTime | when they were added |
+
+`Service.technician` intentionally stays TEXT rather than a foreign key to this
+table, so restore's column validation is unaffected.
+
 ---
 
 ## 6. Offline & data-safety notes
@@ -296,7 +336,7 @@ There is deliberately **no `cashReceived` column and no payment-history table** 
 
 ## 7. Test status
 
-`npm test` runs the full regression (6 suites, 92 checks) entirely on
+`npm test` runs the full regression (7 suites, 129 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
@@ -310,8 +350,12 @@ There is deliberately **no `cashReceived` column and no payment-history table** 
   restore rows in the live shop database.
 - **Focused runs:** `MAHER_TEST_SUITES=scripts/laneBC.js npm test` (or a
   comma-separated list) runs a subset, each on its own fresh database.
-- Latest full run: **6/6 suites, 92/92 checks** — core E2E 9 · P0 E2E 13 ·
-  Lane A 22 · Lane B+C 15 · API 27 · responsive 6 · 0 FAIL, 0 JS errors.
+- **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
+  so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
+  schema change would build against a stale client.
+- Latest full run: **7/7 suites, 129/129 checks** — core E2E 9 · P0 E2E 13 ·
+  Lane A 22 · Lane B+C 15 · API 43 · roster E2E 21 · responsive 6 · 0 FAIL,
+  0 JS errors.
 - Desktop + 360px mobile + print-emulation verified; the shop DB stayed
   byte-identical (hash-checked).
 
@@ -363,3 +407,40 @@ There is deliberately **no `cashReceived` column and no payment-history table** 
   suite for the wrong reason.
 - **Crashed suites clean up after themselves.** `browser.close()` runs from the
   crash handler too, so a failing suite leaves no orphaned Chrome processes.
+
+---
+
+## 9. v1.1 changelog — dynamic technicians & clickable cards
+
+**Added**
+- `Technician` table + migration that seeds the four previous hardcoded names,
+  so existing installs and every test database start ready.
+- `GET/POST /api/technicians`, `PUT/DELETE/POST /api/technicians/[id]`.
+- **⚙️ টেকনিশিয়ান** dialog in the header: add, rename, deactivate, reactivate.
+- Technician cards are clickable and filter the daily table; the notice, status
+  chip counts and empty states all follow the filter, and the date change
+  resets it.
+- `scripts/technician-mgmt.js` (21 checks) and 16 roster checks in
+  `api-check.js`.
+
+**Rules worth knowing**
+- Names are normalized (trim + UPPERCASE) and duplicates are rejected
+  case-insensitively — SQLite's UNIQUE index is case-sensitive, so this check is
+  the only thing stopping “nurul” and “NURUL” coexisting.
+- A rename that would rewrite history returns `409` with the affected row count
+  and writes nothing until the UI confirms; the roster row and the service rows
+  then move in a single transaction.
+- Deleting is deactivating. The last active technician is protected, and a
+  deactivated technician's own old job stays editable (their name is still
+  offered, marked “নিষ্ক্রিয়”).
+- Cards are *active ∪ worked-today*, matched case-insensitively, so
+  `sum(card counts) === আজকের মোট কাজ` always holds — asserted by `TC11`.
+
+**Deliberately untouched**
+- `Service` keeps all 16 columns and `app/api/backup/*` is byte-for-byte
+  unchanged, so the restore column validation still rejects a bad snapshot.
+  Restore only swaps `Service` rows, which means **the roster survives a
+  restore** — and restoring an old v1.0 snapshot (which has no `Technician`
+  table) cannot wipe the current one.
+- The CSV export still contains services only; the `.db` snapshot is what
+  captures the roster.

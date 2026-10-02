@@ -1,5 +1,10 @@
 import { dhakaDateKey, isDateKey, serviceDateFromKey } from "./dhaka";
-import { STATUSES, TECHNICIANS, computeDue, parseBnNumber } from "./utils";
+import {
+  STATUSES,
+  FALLBACK_TECHNICIANS,
+  computeDue,
+  parseBnNumber,
+} from "./utils";
 
 /** Matches every user-facing validation error thrown by this module. */
 export const SERVICE_VALIDATION_PATTERN =
@@ -26,6 +31,19 @@ export interface ServiceFormValues {
   status: string;
   shopExpense: string;
   serviceDate?: string;
+}
+
+/**
+ * Validation context.
+ *
+ * `allowedTechnicians` is injected rather than imported so this module stays a
+ * pure, synchronous function: API routes pass the database-backed active list,
+ * the client form passes what it fetched, and both share one rule set. When it
+ * is omitted the pre-v1.1 hardcoded list is used as a fallback so the form
+ * still works if the technician request fails.
+ */
+export interface ValidationContext {
+  allowedTechnicians?: readonly string[];
 }
 
 export interface ValidatedServicePayload {
@@ -57,9 +75,16 @@ function readBody(body: unknown): Record<string, unknown> {
   return body as Record<string, unknown>;
 }
 
-function validateTechnician(value: unknown): string {
+function validateTechnician(
+  value: unknown,
+  ctx?: ValidationContext
+): string {
   const technician = String(value ?? "").trim();
-  if (!(TECHNICIANS as readonly string[]).includes(technician)) {
+  const allowed =
+    ctx?.allowedTechnicians && ctx.allowedTechnicians.length > 0
+      ? ctx.allowedTechnicians
+      : FALLBACK_TECHNICIANS;
+  if (!(allowed as readonly string[]).includes(technician)) {
     throw new Error("সঠিক টেকনিশিয়ান বাছুন");
   }
   return technician;
@@ -93,12 +118,13 @@ export function parseServiceAmount(value: unknown, field: string): number {
  * and the UI can never drift into different validation rules.
  */
 export function validateServicePayload(
-  values: ServiceFormValues
+  values: ServiceFormValues,
+  ctx?: ValidationContext
 ): ValidatedServicePayload {
   const customerName = requiredText(values.customerName, "কাস্টমারের নাম দিন");
   const phone = requiredText(values.phone, "মোবাইল নম্বর দিন");
   const model = requiredText(values.model, "মোবাইলের মডেল দিন");
-  const technician = validateTechnician(values.technician);
+  const technician = validateTechnician(values.technician, ctx);
   const problem = requiredText(values.problem, "সমস্যা লিখুন");
   const status = validateStatus(values.status);
   const totalBill = parseServiceAmount(values.totalBill, "মোট বিল");
@@ -138,24 +164,32 @@ export function validateServicePayload(
 }
 
 /** Normalize an API create body through the same validation as the UI form. */
-export function validateServiceCreate(body: unknown): ValidatedServicePayload {
+export function validateServiceCreate(
+  body: unknown,
+  ctx?: ValidationContext
+): ValidatedServicePayload {
   const raw = readBody(body);
-  return validateServicePayload({
-    customerName: String(raw.customerName ?? ""),
-    phone: String(raw.phone ?? ""),
-    model: String(raw.model ?? ""),
-    technician: String(raw.technician ?? ""),
-    problem: String(raw.problem ?? ""),
-    totalBill: String(raw.totalBill ?? ""),
-    advance: String(raw.advance ?? ""),
-    status:
-      raw.status == null || raw.status === "" ? "Pending" : String(raw.status),
-    shopExpense: String(raw.shopExpense ?? ""),
-    serviceDate:
-      raw.serviceDate == null || raw.serviceDate === ""
-        ? undefined
-        : String(raw.serviceDate),
-  });
+  return validateServicePayload(
+    {
+      customerName: String(raw.customerName ?? ""),
+      phone: String(raw.phone ?? ""),
+      model: String(raw.model ?? ""),
+      technician: String(raw.technician ?? ""),
+      problem: String(raw.problem ?? ""),
+      totalBill: String(raw.totalBill ?? ""),
+      advance: String(raw.advance ?? ""),
+      status:
+        raw.status == null || raw.status === ""
+          ? "Pending"
+          : String(raw.status),
+      shopExpense: String(raw.shopExpense ?? ""),
+      serviceDate:
+        raw.serviceDate == null || raw.serviceDate === ""
+          ? undefined
+          : String(raw.serviceDate),
+    },
+    ctx
+  );
 }
 
 export interface ValidatedServiceUpdate {
@@ -176,7 +210,8 @@ export interface ValidatedServiceUpdate {
 /** Partial-update validation for PUT /api/services/[id]. */
 export function validateServiceUpdate(
   body: unknown,
-  existing: { totalBill: number; advance: number }
+  existing: { totalBill: number; advance: number },
+  ctx?: ValidationContext
 ): ValidatedServiceUpdate {
   const raw = readBody(body);
   const data: ValidatedServiceUpdate = {
@@ -198,7 +233,7 @@ export function validateServiceUpdate(
     data.model = requiredText(raw.model, "মোবাইলের মডেল আবশ্যক");
   }
   if (raw.technician !== undefined) {
-    data.technician = validateTechnician(raw.technician);
+    data.technician = validateTechnician(raw.technician, ctx);
   }
   if (raw.problem !== undefined) {
     data.problem = requiredText(raw.problem, "সমস্যা লিখুন");

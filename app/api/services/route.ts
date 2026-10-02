@@ -9,6 +9,7 @@ import {
   isServiceValidationError,
   validateServiceCreate,
 } from "@/lib/service-validation";
+import { activeTechnicianNames } from "@/lib/technicians";
 
 // Next 14 caches GET route handlers by default — stats must stay fresh.
 export const dynamic = "force-dynamic";
@@ -49,7 +50,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const validated = validateServiceCreate(body);
+    // v1.1: the accepted technician names come from the database, so a
+    // left-the-shop technician can no longer be booked.
+    const allowedTechnicians = await activeTechnicianNames();
+    if (allowedTechnicians.length === 0) {
+      return NextResponse.json(
+        { error: "প্রথমে একজন টেকনিশিয়ান যোগ করুন।" },
+        { status: 400 }
+      );
+    }
+    const validated = validateServiceCreate(body, { allowedTechnicians });
     const { serviceDateKey: _serviceDateKey, ...serviceData } = validated;
     void _serviceDateKey;
     const created = await prisma.service.create({ data: serviceData });
