@@ -21,7 +21,7 @@ http://localhost:3000   →   dashboard (one page, everything here)
 | Components | **shadcn/ui** on **Radix UI** primitives (dialog, alert-dialog, select, label, tabs, scroll-area, slot) + `class-variance-authority`, `clsx`, `tailwind-merge` | — |
 | Icons | **lucide-react** | 1.49.0 |
 | Toasts | **sonner** | 2.0.8 |
-| Font | **Noto Sans Bengali**, self-hosted via `next/font` (offline-safe) | — |
+| Font | **Noto Sans Bengali**, self-hosted as plain `@font-face` + `.woff2` in `app/fonts/` (SIL OFL, no CDN, no `next/font`) | — |
 | ORM | **Prisma** | 7.10.0 |
 | Database | **SQLite** via `better-sqlite3` + `@prisma/adapter-better-sqlite3` | 12.11.1 |
 | Testing | **puppeteer-core** (headless Chrome E2E) | 24.43.1 |
@@ -33,8 +33,12 @@ http://localhost:3000   →   dashboard (one page, everything here)
 Everything runs on the shop PC; after `next build`, even the font and CSS
 are local files.
 
-**Node version:** works on Node 20 (one harmless Prisma engine warning),
-Node 22+ recommended (warning-free).
+`better-sqlite3` is a native module, so `next.config.mjs` keeps it out of the
+webpack bundle (`serverComponentsExternalPackages`) — this is required for the
+build to succeed, not an optimisation.
+
+**Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
+(build, lint, typecheck and the full 92-check suite all pass on it).
 
 ---
 
@@ -93,21 +97,32 @@ editing, and the CLI can no longer drift away from the running app.
 ## 3. Project structure
 
 ```
+prisma7.config.ts           → Prisma CLI config; imports lib/db-path so the CLI
+                              always migrates the same file the app reads
+start-maher.bat             → Windows one-click launcher (builds once, then start)
+next.config.mjs             → keeps native better-sqlite3 out of the webpack bundle
+tailwind.config.ts          → Tailwind theme + content globs
+postcss.config.mjs          → PostCSS (Tailwind + Autoprefixer)
+tsconfig.json / .eslintrc.json
+.env                        → DATABASE_URL only (git-ignored, never commit)
+.env.example                → committed template
 app/
   page.tsx                 → whole dashboard (state, data wiring, footer)
-  layout.tsx               → Bengali metadata, Noto Sans Bengali, Toaster
+  layout.tsx               → Bengali metadata, font CSS, Toaster
   globals.css              → Tailwind + theme + overflow-x:clip (sticky-safe)
   icon.svg                 → favicon (local file, offline)
+  fonts/                   → self-hosted Noto Sans Bengali: *.woff2 + @font-face
+                              CSS + OFL.txt licence (bundled, zero network)
   api/
     health/route.ts        → GET = readiness probe (reports which DB file is live)
     services/route.ts      → GET ?date= / ?archived=true, POST create
     services/[id]/route.ts → PUT update (incl. serviceDate), DELETE = archive
     services/[id]/restore/route.ts → POST un-archive
-    services/dues/route.ts → GET = all-dates বাকি list + total due
+    services/dues/route.ts → GET = all-dates বাকি list + SQL-aggregate total
     services/search/route.ts → GET ?q= all-dates search (minimum 2 characters)
     stats/route.ts         → GET ?date= daily + per-technician totals
     stats/monthly/route.ts → GET ?date= (rolling 30d) or ?from=&to= range
-    backup/route.ts        → GET = CSV download, POST = DB snapshot
+    backup/route.ts        → GET = CSV download, POST = DB snapshot + prune
     backup/list/route.ts   → GET = snapshot list
     backup/restore/route.ts→ POST = restore snapshot (atomic + column-validated)
 components/
@@ -115,7 +130,7 @@ components/
   TechnicianStats.tsx      → 4 technician cards (NURUL/RONI/ASRAFUL/NAYEM)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ)
   MonthlySummary.tsx       → range report: presets + custom থেকে–পর্যন্ত
-  ServiceForm.tsx          → entry form (30%), live due calc, edit reuse
+  ServiceForm.tsx          → entry form (30%), live due + change calc, edit reuse
   ServiceTable.tsx         → service list (70%): search, chips, eye, 1-click status
   OutstandingDues.tsx      → all-dates বাকি list with call/WhatsApp buttons
   GlobalServiceSearch.tsx  → all-dates search across every date
@@ -135,22 +150,25 @@ lib/
   shop.ts                  → shop name/address/phone (receipt + footer source)
   generated/               → Prisma client output (generated, do not edit)
 prisma/
-  schema.prisma            → Service model (+ archived flag)
+  schema.prisma            → Service model (16 columns, incl. archived soft-delete)
   dev.db                   → THE database (all shop records — back this up!)
   migrations/              → init + add_archived
-backups/                   → timestamped dev.db snapshots (auto-pruned to 30)
+backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
-  laneA.js                 → Lane A audit (19 checks)
+  laneA.js                 → Lane A audit (22 checks)
   laneBC.js                → Lanes B+C audit (15 checks)
-  api-check.js             → API contract + validation + restore-guard checks (18)
+  api-check.js             → API contract + validation + restore-guard checks (27)
   responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
 ```
+
+> There is no `public/` folder — every asset (icon, font, CSS) lives under
+> `app/`, which is why the app has no external file dependencies at runtime.
 
 ---
 
@@ -179,26 +197,31 @@ scripts/
   The headline **মোট বাকি** is a SQL aggregate over *all* matching rows, so it
   stays 100% accurate even when the rendered list is capped.
 - **🌍 সব তারিখে খুঁজুন** — global search by name / phone / model / problem /
-  bill no, minimum 2 characters.
-- Service table — search (name/ID/phone/model), status chips with counts,
-  eye-toggle for the খরচ column (hidden by default = customer privacy),
-  **1-click status advance** (badge click → next stage), edit/delete(→archive)
-  + per-row **bill print** button.
+  bill no, minimum 2 characters. Runs on the server across every date.
+- Service table — client-side filter within the selected day (name / ID /
+  phone / model / problem), status chips with counts, eye-toggle for the খরচ
+  column (hidden by default = customer privacy), **1-click status advance**
+  (badge click → next stage), edit/delete(→archive) + per-row **bill print**
+  button.
 
 **Safety:**
 - Delete = archive (soft). Archive view (all dates) + 1-click restore.
-- Backup button = server snapshot (`backups/maher-*.db`, keeps 30) + full
-  CSV download (Excel-safe Bengali) + “সর্বশেষ ব্যাকআপ” label.
+- Backup button = server snapshot (`backups/maher-*.db`, newest **30** kept) +
+  full CSV download (Excel-safe Bengali) + “সর্বশেষ ব্যাকআপ” label.
 - Auto snapshot on first load of the day (staff can forget safely).
-- Restore dialog = snapshot list + 2-step confirm + pre-restore safety copy
-  (the restore itself is atomic and snapshot-column-validated — a bad snapshot
-  is rejected *before* anything is touched).
+- Restore dialog = snapshot list + 2-step confirm. A restore first writes
+  `backups/safety-*.db` (newest **5** kept) holding your *current* data, so a
+  wrong restore is itself restorable. The swap is atomic and
+  snapshot-column-validated — a bad snapshot is rejected *before* anything is
+  touched.
 - Print guard blocks blank prints; paper gets receipt-only or clean dashboard.
 
 **Customer bill (print):**
 - Preview dialog → print. Shop header (name/address/phone from `lib/shop.ts`),
-  bill no/date/status, customer+job+technician, bill/জমা/**বাকি**,
-  signature lines. **Shop cost never appears on the customer copy.**
+  `বিল নং` (= row id), date, status, customer + job + technician,
+  বিল / জমা / **বাকি**, a customer signature line and “ধন্যবাদ, আবার আসবেন”.
+  **Shop cost never appears on the customer copy** — enforced in
+  `Receipt.tsx` and covered by a test.
 
 ---
 
@@ -228,18 +251,48 @@ scripts/
   that matters is the paper: the customer receipt never prints cost, and the
   খরচ column stays hidden until the eye-toggle is used.
 
+### Data model (`prisma/schema.prisma`)
+
+One table, `Service`, 16 columns (grouped below by role):
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | Int | primary key, **auto-increment** — printed as `বিল নং` |
+| `customerName`, `phone` | String | customer; `phone` drives the call/WhatsApp buttons |
+| `model`, `problem` | String | handset + reported fault |
+| `technician` | String | one of the four fixed names |
+| `totalBill`, `advance`, `due` | Int | the money triple (`due` is derived) |
+| `status` | String | `Pending`/`In-Progress`/`Completed`/`Delivered` |
+| `shopExpense` | String? | part code (`*M#`) **or** a number, free text |
+| `expenseAmount` | Int | numeric cost for profit (0 when `shopExpense` is a code) |
+| `serviceDate` | DateTime | stored ~midday +06:00 so day bucketing is unambiguous |
+| `archived` | Boolean | soft-delete flag; hides the row from every list and stat |
+| `createdAt`, `updatedAt` | DateTime | audit trail (used by the CSV export) |
+
+There is deliberately **no `cashReceived` column and no payment-history table** —
+`advance` is the single payment figure the shop records.
+
 ---
 
 ## 6. Offline & data-safety notes
 
-- App needs **zero internet** (font/CSS/JS/DB all local after build).
+- App needs **zero internet** (font/CSS/JS/DB all local after build). The only
+  outward links are the per-row **কল** (`tel:`) and **WhatsApp** buttons, which
+  the user taps deliberately — nothing phones home on its own.
 - SQLite is crash-safe: committed (Saved) rows survive power cuts; only an
   unsaved open form is lost.
+- A restore never leaves you without a way back: it writes a `safety-*.db` copy
+  of your current data first, then swaps atomically, and a snapshot that does
+  not match the expected schema is refused before any row is touched.
 - Same-disk backup does NOT protect against disk death/theft — copy the CSV
   (or `backups/`) to a pen drive periodically. Browser code cannot write to
   pen drives automatically (security rule) — this one step stays manual.
 - Daily rule for staff: morning auto-backup happens alone; **press Backup
   once before closing shop.**
+- Shop data never enters git: `.env`, `prisma/dev.db`, `backups/`, `node_modules`,
+  `.next` and agent tool folders are all ignored. Only `.env.example` is
+  committed. `npm test` additionally hash-guards `prisma/dev.db` and fails the
+  run if a single byte of it changed.
 
 ## 7. Test status
 
