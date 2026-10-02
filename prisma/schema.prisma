@@ -1,0 +1,35 @@
+// Maher Mobile Care — local SQLite database (Prisma ORM).
+// The .db file is auto-created on first migrate. 100% offline.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Service {
+  id            Int      @id @default(autoincrement())
+  customerName  String
+  phone         String
+  model         String
+  technician    String   // NURUL, RONI, ASRAFUL, NAYEM
+  problem       String
+  totalBill     Int      @default(0)
+  advance       Int      @default(0) // জমা
+  due           Int      @default(0) // বাকি (auto: totalBill - advance)
+  status        String   @default("Pending") // Pending, In-Progress, Completed, Delivered
+  shopExpense   String?  // দোকান খরচ (part code like *M# or a number)
+  expenseAmount Int      @default(0) // numeric expense for profit calc (0 when shopExpense is a code)
+  serviceDate   DateTime @default(now())
+  archived      Boolean  @default(false) // soft-delete: hidden from lists/stats, restorable
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([serviceDate])
+  @@index([technician])
+  @@index([status])
+  @@index([archived])
+}

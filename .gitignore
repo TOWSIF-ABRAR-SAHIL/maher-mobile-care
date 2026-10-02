@@ -1,0 +1,39 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files (DATABASE_URL lives here)
+.env
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# local SQLite database (created automatically on first run)
+/data/
+*.db
+*.db-journal
+
+/lib/generated/prisma
+
+# agent tooling (skills installed locally per editor; the set is pinned
+# in skills-lock.json, the installed copies stay out of git)
+/.agents/
+/.claude/
+/.windsurf/
+/.freebuff/
