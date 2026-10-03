@@ -38,7 +38,15 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 92-check suite all pass on it).
+(build, lint, typecheck and the full 132-check suite all pass on it).
+
+**Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
+`runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
+That is not a preference: `better-sqlite3` only publishes ready-made Windows
+binaries for the Node 22 and Node 24 ABIs, so on Node 20 the client PC would have
+to compile it, which means a multi-GB toolchain and a failed install. The
+bundled `better_sqlite3.node` is built for **ABI 127** (Node 22), so the runtime
+and the database engine have to match.
 
 ---
 
@@ -60,6 +68,11 @@ npm start                     # → http://localhost:3000
 On the shop PC you can also just double-click **`start-maher.bat`** — it builds
 once if needed, then starts the server.
 
+> For a **client PC** you do not run any of the above. Build the portable package
+> (`npm run build:portable`) and hand over the folder or zip: it contains its own
+> Node, creates its own database on first run, and needs no install and no
+> internet. See [§2.1 Windows client delivery](#21-windows-client-delivery).
+
 Other scripts:
 
 | Command | Kaj |
@@ -67,6 +80,8 @@ Other scripts:
 | `npm run dev` | development server (`:3000`, hot reload) |
 | `npm run build` | production build |
 | `npm start` | production server (after build) |
+| `npm run build:portable` | build the Windows package into `out/MAHER/` |
+| `npm run test:first-run` | create/upgrade the database without the Prisma CLI |
 | `npm test` | full regression on throwaway DBs — never touches shop data |
 | `npm run cleanup:test-data` | list leftover test rows (dry-run; `-- --confirm` removes) |
 | `npm run lint` | eslint check |
@@ -92,6 +107,74 @@ editing, and the CLI can no longer drift away from the running app.
 > The server binds to `127.0.0.1` only. Do not change it to `0.0.0.0`: the app
 > has no login, so anything that can reach the port can edit or wipe shop data.
 
+### 2.1 Windows client delivery
+
+```bash
+npm run build:portable     # → out/MAHER/  (and out/MAHER-Windows-Test.zip if you zip it)
+```
+
+The client copies that folder to `C:\MAHER` and double-clicks
+**`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
+internet. The shop window opens in Chrome/Edge app mode — no address bar, so it
+behaves like normal desktop software.
+
+```
+MAHER\
+├── MAHER MOBILE CARE.bat   ← double-click this
+├── start-maher.bat         ← server-only fallback, for troubleshooting
+├── runtime\node.exe        ← bundled Node 22, nothing to install
+├── app\                    ← standalone server + assets + migrations
+├── data\                   ← shop.db + backups\  (THE SHOP'S RECORDS)
+└── logs\maher.log          ← written here, safe to send to support
+```
+
+**`data\` is the whole point.** Shop records live in `data\shop.db`, outside the
+app folder, so an upgrade can replace `app\` and `runtime\` wholesale without ever
+touching the records. That was verified, not assumed: the `app\` folder was
+deleted and rebuilt, and the existing record, roster and backups all survived.
+
+**A fresh PC needs nothing typed into it.** `scripts/first-run.mjs` applies the
+committed migrations on first launch. It uses `better-sqlite3` rather than
+`prisma migrate deploy` because the Prisma CLI needs a platform-specific
+`schema-engine`, and Prisma 7 needs no engine at runtime only because it queries
+through a driver adapter. It records each migration in `_prisma_migrations` with
+Prisma's exact `sha256` checksum, so running the real CLI against the same file
+later reports "up to date" instead of re-running anything.
+
+**The build refuses to ship shop data.** Next 14 has no
+`outputFileTracingExcludes`, so the standalone trace follows `./backups` and
+copies `.env` into the output. Left alone, a client's package would have contained
+the developer's backups. `scripts/build-portable.mjs` deletes both and then
+**fails the build** if any `.db` or `.env` is still present, or if any Linux `.node`
+binary survived the swap. Do not relax either check.
+
+**Why `output: "standalone"` is opt-in** (`MAHER_STANDALONE=1`, set by the
+packaging script): in standalone mode Next 14 says `next start` is not the
+supported entry point, so keeping it off by default leaves `npm start` and the
+test harness working normally. The package launches `server.js` directly.
+
+Three defects were found while building this, none of which a Linux test would
+have caught:
+
+- **The shop window could open an unrelated program.** Readiness was checked by
+  "is port 3000 answering", so if anything else owned the port the launcher opened
+  *that* — on a shop PC, plausibly the banking software. `scripts/launch.mjs` now
+  confirms the response really is `maher-mobile-care` and refuses otherwise.
+- **Starting could hang for minutes.** The port check used
+  `Test-NetConnection`, which takes seconds per call, up to 60 times. It now
+  polls from Node and typically reaches ready in about 1.3 s.
+- **A PC without Chrome would show a crash.** `spawn` reports failure through an
+  async `'error'` event, so the surrounding `try/catch` never caught it. Every
+  browser launch is now error-handled, and the last resort is `rundll32` rather
+  than `cmd /c start`.
+
+`/api/health` intentionally does not touch the database (the test harness relies
+on that), so it reports ready even without tables. The launcher therefore also
+reads `/api/technicians` before opening anything, and shows a clear error if the
+shop tables are unreadable.
+
+See **[`PREPARE-WINDOWS.md`](PREPARE-WINDOWS.md)** for the step-by-step handout.
+
 ---
 
 ## 3. Project structure
@@ -99,8 +182,13 @@ editing, and the CLI can no longer drift away from the running app.
 ```
 prisma7.config.ts           → Prisma CLI config; imports lib/db-path so the CLI
                               always migrates the same file the app reads
-start-maher.bat             → Windows one-click launcher (builds once, then start)
-next.config.mjs             → keeps native better-sqlite3 out of the webpack bundle
+start-maher.bat             → dev-machine launcher (builds once, then start)
+packaging/                  → launchers copied verbatim into the Windows package
+  MAHER MOBILE CARE.bat     → client double-click: first-run + start + open window
+  start-maher.bat           → server-only fallback for troubleshooting
+PREPARE-WINDOWS.md          → step-by-step Windows handover guide (Bangla)
+next.config.mjs             → keeps native better-sqlite3 out of the webpack bundle;
+                              MAHER_STANDALONE=1 opts into the standalone build
 tailwind.config.ts          → Tailwind theme + content globs
 postcss.config.mjs          → PostCSS (Tailwind + Autoprefixer)
 tsconfig.json / .eslintrc.json
@@ -165,16 +253,21 @@ prisma/
 backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
+  build-portable.mjs       → npm run build:portable: bundle Node 22, swap in the
+                             Windows better-sqlite3, strip leaks, assert no .db/.env
+  first-run.mjs            → create/upgrade the shop DB without the Prisma CLI
+  launch.mjs               → start the server, wait for real readiness, open the window
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
   laneA.js                 → Lane A audit (22 checks)
   laneBC.js                → Lanes B+C audit (15 checks)
   api-check.js             → API contract + validation + restore-guard + roster (43)
-  technician-mgmt.js       → v1.1 roster dialog + card filtering (21 checks)
+  technician-mgmt.js       → v1.1 roster dialog + card filtering (24 checks)
   responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
+out/                        → build output: MAHER/ package + zip (git-ignored)
 ```
 
 > There is no `public/` folder — every asset (icon, font, CSS) lives under
@@ -332,9 +425,14 @@ table, so restore's column validation is unaffected.
 - Daily rule for staff: morning auto-backup happens alone; **press Backup
   once before closing shop.**
 - Shop data never enters git: `.env`, `prisma/dev.db`, `backups/`, `node_modules`,
-  `.next` and agent tool folders are all ignored. Only `.env.example` is
+  `.next`, `out/` and agent tool folders are all ignored. Only `.env.example` is
   committed. `npm test` additionally hash-guards `prisma/dev.db` and fails the
   run if a single byte of it changed.
+- **The built package is guarded the same way.** `out/` is git-ignored, and the
+  packaging step fails outright if a `.db` or `.env` reaches the output, so a
+  client's zip cannot carry another shop's records.
+- **Moving the shop to a new PC:** copy the whole `MAHER` folder. Copying only
+  `app\` loses nothing but also brings nothing — the records are in `data\`.
 
 ## 7. Test status
 
@@ -343,7 +441,7 @@ table, so restore's column validation is unaffected.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (108 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (110 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -391,8 +489,11 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **Test-data cleanup.** `npm run cleanup:test-data` lists known leftover test
   rows (dry-run); adding `-- --confirm` snapshots first, then deletes only
   pattern-matched rows.
-- **Version control.** The repo is initialized; `.env`, `prisma/dev.db`,
-  `backups/`, `node_modules`, `.next` and agent tool folders are ignored.
+- **Version control.** The repo is initialized and pushed to a **private** GitHub
+  remote. `.env`, `prisma/dev.db`, `backups/`, `node_modules`, `.next`, `out/`
+  and agent tool folders are ignored. Private because the code carries the shop's
+  business logic and brand name; it stays a template, not something a client can
+  fork and resell.
 - **Overpay rejected, change calculated.** `lib/service-validation.ts` refuses
   `advance > totalBill` on create *and* partial update (400, nothing written),
   and the form gained a Cash Received calculator that is UI-only.
@@ -430,7 +531,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - Technician cards are clickable and filter the daily table; the notice, status
   chip counts and empty states all follow the filter, and the date change
   resets it.
-- `scripts/technician-mgmt.js` (21 checks) and 16 roster checks in
+- `scripts/technician-mgmt.js` (24 checks) and 16 roster checks in
   `api-check.js`.
 
 **Rules worth knowing**
@@ -485,3 +586,45 @@ technician.
   table) cannot wipe the current one.
 - The CSV export still contains services only; the `.db` snapshot is what
   captures the roster.
+
+---
+
+## 10. Windows delivery changelog
+
+The app was developed on Linux, so nothing here could be assumed to work on a
+client's PC — every Windows-specific claim was verified against the real
+Windows binaries instead.
+
+**Added**
+- `npm run build:portable` → `out/MAHER/`: a self-contained folder with a bundled
+  Node 22 runtime and a Windows `better-sqlite3` (ABI 127). About **118 MB**
+  unpacked, ~**43 MB** zipped, versus ~1 GB for `node_modules` + `.next`.
+- `scripts/first-run.mjs` — creates the shop database on a fresh PC with no
+  install and no typing, without the Prisma CLI.
+- `scripts/launch.mjs` — waits for genuine readiness, then opens the shop in a
+  Chrome/Edge app window.
+- `scripts/build-portable.mjs` — bundles the runtime, swaps the native binary,
+  strips developer data, and fails the build on any leak.
+- `packaging/` launchers (CRLF, no BOM) and `PREPARE-WINDOWS.md`.
+
+**Verified, not assumed**
+- `node.exe` and `better_sqlite3.node` in the finished package are both
+  `PE32+ executable for MS Windows`, and the zip's copy starts with `MZ`.
+- The packaged server boots (45 ms), serves the Bengali UI, returns HTTP 200 for
+  its CSS and JS bundles, rejects overpayment with 400, and writes backups to
+  `data\backups` — all against a fresh empty database, on the packaged build.
+- `prisma migrate status` reports the database "up to date" against a database
+  created by `first-run.mjs`, proving the hand-written ledger is byte-compatible
+  with the real CLI.
+- Deleting `app\` and rebuilding it left `data\` intact, record and roster and
+  backups included.
+- The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
+  hash does not appear anywhere in it.
+- All **132** automated checks pass, and the live database is byte-identical.
+
+**Not yet verified on real hardware.** The package is built for
+`windows-x64` and inspected as Windows binaries, but it has never been
+*executed* on Windows — no Windows machine or CI runner was available here. The
+launcher's shell behaviour (`cd /d`, `errorlevel`, CRLF, Chrome `--app` mode) is
+therefore the part that still needs one real Windows run to confirm. Until then,
+treat `PREPARE-WINDOWS.md` as the first-run checklist.

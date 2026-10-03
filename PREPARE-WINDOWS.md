@@ -13,6 +13,26 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaoge.
 
 ---
 
+## Sotti Boli (porer shathe pori jani)
+
+Package-ta banano hoyeche Linux-e, kintu Windows-e **ekhono chalanay ni** - karon
+amar kache Windows machine ba CI nai. Ami ja korechi:
+
+| Ki kora | Kemon verify |
+|---|---|
+| Node ar database binary | Windows binary kina - `PE32+ ... MS Windows` |
+| App kaj kore | Bangla UI, CSS/JS, money rule, backup - shob test kora |
+| Data upgrade-e thake | `app` folder delete kore rebuild - data bachi |
+| Client er data leak hoy na | zip-e kono `.db` / `.env` nai |
+
+Jeta verify **kora hoy ni**: Windows-e `.bat` file chalanor command gulo. Tai eta
+amar shobcheye boro test. Tumi Windows chalanor prothombar-i jeno bujhte paren.
+
+Kichu galat hole ghabaron kichu nai - `logs\maher.log` file-e sob likha thake,
+niyegi amake dein.
+
+---
+
 ## Step 1: Zip-ta Windows-e niye ashun
 
 Ei zip-ta tumi amar laptop-er NTFS partition-e rakha achhe (`New Volume`).
@@ -61,12 +81,18 @@ ektathe move korben na. Poora MAHER folder copy korte hobe.
 Ki hobe:
 
 1. Ekta black window khabe. Oita bondho korben na
-2. 5-15 second lagbe
-3. `App is ready. Opening now ...` likha ashbe
-4. Ekta window khule jabe — oi window-ta browser, kintu address bar
+2. 2-3 second lagbe
+3. `ready. Opening the shop ...` likha ashbe
+4. Ekta window khule jabe - oi window-ta browser, kintu address bar
    thakbe na, software er moto lagbe
 
 Bajkhon ekta backup database banay (prothom bar), tarpor app chalu hoy.
+Notun PC te apnake kichu type korte hobe na - database, technician list
+shob nij theke banabe.
+
+Eta MAHER-i na kono onno program age-i port 3000 niye rakhe, tahole app
+bolbe "Another program is already using port 3000" - oi onno program band
+kore abar chalan.
 
 ---
 
@@ -141,3 +167,8 @@ Future-e update dile:
 4. `MAHER MOBILE CARE.bat` abar chalan
 
 `data` folder chara KUCHU delete korben na. Oita-i shoptaner record.
+
+Eita ami test korechi: `app` folder delete kore notun file diye chalale o
+`data` folder-r record, technician ar backup sob bachi thake.
+
+---
