@@ -38,7 +38,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 132-check suite all pass on it).
+(build, lint, typecheck and the full 146-check suite all pass on it).
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -168,10 +168,26 @@ have caught:
   browser launch is now error-handled, and the last resort is `rundll32` rather
   than `cmd /c start`.
 
-`/api/health` intentionally does not touch the database (the test harness relies
-on that), so it reports ready even without tables. The launcher therefore also
-reads `/api/technicians` before opening anything, and shows a clear error if the
-shop tables are unreadable.
+`/api/health` never *fails* because the database is unhappy — the server is still
+listening and support needs to see that — but it does report the absolute
+database path and whether the shop tables exist, so it is a real diagnostic
+rather than a bare "yes I'm listening".
+
+That detail exists because of a Windows failure that no Linux test could have
+caught. The shop window opened with no data at all, on every start, and the log
+showed a perfect database being created followed by no server output whatsoever.
+Servers are started detached, so one outlived both the launcher and its window; a
+run whose folder was later deleted left a server holding port 3000 and pointing
+at a database that no longer existed. The launcher had treated "a MAHER server
+is answering" as "the right MAHER server is running", so it opened a window onto
+that leftover and could only be recovered from Task Manager.
+
+The launcher now establishes identity instead of assuming it: it compares the
+running server's database path with the copy it is meant to serve and requires
+the tables to actually read. A mismatch means a leftover server, so it is stopped
+and the correct one started. Reuse is allowed only for the same installation with
+readable data, and an unrelated program on the port is still refused and never
+touched. `MAHER STOP.bat` stops the shop by port owner.
 
 See **[`PREPARE-WINDOWS.md`](PREPARE-WINDOWS.md)** for the step-by-step handout.
 
@@ -257,6 +273,8 @@ scripts/
                              Windows better-sqlite3, strip leaks, assert no .db/.env
   first-run.mjs            → create/upgrade the shop DB without the Prisma CLI
   launch.mjs               → start the server, wait for real readiness, open the window
+                               (--stop ends it by port owner)
+    launch-decide.mjs         → reuse / takeover / refuse rules, unit tested
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
@@ -436,7 +454,7 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (7 suites, 132 checks) entirely on
+`npm test` runs the full regression (8 suites, 146 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
@@ -457,9 +475,9 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Latest full run: **7/7 suites, 132/132 checks** — core E2E 9 · P0 E2E 13 ·
-  Lane A 22 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · 0 FAIL,
-  0 JS errors.
+- Latest full run: **8/8 suites, 146/146 checks** — core E2E 9 · P0 E2E 13 ·
+Lane A 22 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · launcher
+    decisions 14 · 0 FAIL, 0 JS errors.
 - **The by-hand checklist is executed too.** All 110 steps of
   `MANUAL-TEST.md` were run end-to-end against a throwaway database — including
   printing a real PDF and reading it back — and every one passes. That pass is
@@ -620,7 +638,7 @@ Windows binaries instead.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **132** automated checks pass, and the live database is byte-identical.
+- All **146** automated checks pass, and the live database is byte-identical.
 
 **Not yet verified on real hardware.** The package is built for
 `windows-x64` and inspected as Windows binaries, but it has never been
