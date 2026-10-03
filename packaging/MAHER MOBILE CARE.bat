@@ -39,7 +39,13 @@ if not exist "%APP_HOME%logs" mkdir "%APP_HOME%logs%"
 rem Keep every record in the data folder, never inside the app folder.
 set "MAHER_DB_PATH=%DATA_DIR%\shop.db"
 set "MAHER_BACKUP_DIR=%BACKUP_DIR%"
-set "DATABASE_URL=file:%MAHER_DB_PATH%"
+rem Prisma reads DATABASE_URL as a *file URL*, not a path, so a raw Windows path
+rem such as D:\MAHER\data\shop.db is not a valid file URL. Convert the
+rem backslashes and use the file:/// form that Node's fileURLToPath accepts.
+rem (The data-load failure on the shop PC was a different, baked-path problem in
+rem the server bundle, fixed in scripts/build-portable.mjs.)
+set "MAHER_DB_URL=%MAHER_DB_PATH:\=/%"
+set "DATABASE_URL=file:///%MAHER_DB_URL%"
 set "NODE_ENV=production"
 set "PORT=%PORT%"
 set "HOSTNAME=127.0.0.1"

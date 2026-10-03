@@ -258,8 +258,173 @@ fs.mkdirSync(outDir, { recursive: true });
 log(`package directory: ${outDir}`);
 
 // 1. The app server.
+/**
+ * Rewrites the build machine's absolute paths out of the server bundle.
+ *
+ * Next bakes `import.meta.url` into the emitted JavaScript instead of leaving it
+ * to run, so the generated Prisma Client ends up executing this on a client PC:
+ *
+ *     globalThis.__dirname = path.dirname(fileURLToPath("file:///home/me/app/..."))
+ *
+ * On the build machine that string is a real location, so nothing looks wrong.
+ * Copied to Windows it points at a Linux folder that does not exist, and Node
+ * throws "File URL path must be absolute" the moment the module is imported.
+ * Since every API route imports the Prisma Client, the page rendered while
+ * every single API call failed, which is exactly what was seen on the shop PC.
+ *
+ * The build-machine prefix is swapped for a small runtime expression that reads
+ * __MAHER_APP__, which server.js sets to this copy's own location. The remainder
+ * of the path is left untouched, so the Prisma Client still resolves to the
+ * generated client inside app\lib\generated\prisma exactly as it does in the
+ * source tree.
+ *
+ * Only this repository's own paths are rewritten. Bundled dependencies contain
+ * file:/// URLs in documentation and test fixtures ("file:///c:/tmp/test.txt"),
+ * and rewriting those would corrupt them for no benefit. Paths inside .next/static
+ * are already relative and browser code is left untouched.
+ */
+function makeServerPathsPortable(dir) {
+  let rewrittenFiles = 0;
+
+  // Next URL-encodes the baked path, so spaces appear as %20. Both forms are
+  // handled so the rewrite does not depend on which one webpack emitted.
+  // The whole quoted literal is matched, not just its prefix, so the remainder
+  // of the path can be re-emitted inside quotes: leaving it bare would leave
+  // "/lib/..." dangling after the concatenation.
+  const repoPrefixes = [
+    repoRoot.replace(/\\/g, "/"),
+    repoRoot.replace(/\\/g, "/").replace(/ /g, "%20"),
+  ].map((value) => new RegExp(`"file://${escapeRegExp(value)}([^"]*)"`, "g"));
+
+  // $1 is the part of the path after the repository root, which still holds the
+  // real in-package location (lib/generated/prisma/client.ts). The leading
+  // slashes are stripped so Windows gets file:///C:/... rather than four slashes.
+  const runtimePrefix =
+    '("file:///"+(process.env.__MAHER_APP__||"").replace(/\\\\/g,"/").replace(/^\\/+/,"")+"$1")';
+
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(?:js|mjs|cjs)$/i.test(entry.name)) continue;
+
+      const buffer = fs.readFileSync(full);
+      // A stray NUL means this is not the text bundle we are looking for.
+      if (buffer.includes(0)) continue;
+
+      let text = buffer.toString("utf8");
+      const before = text;
+      for (const pattern of repoPrefixes) {
+        text = text.replace(pattern, runtimePrefix);
+      }
+      if (text === before) continue;
+
+      // Parse the result before saving it. This rewrite edits already-minified
+      // code, so a mistake produces a file that still looks plausible and only
+      // fails at runtime on a client PC. Checking here turns that into a failed
+      // build.
+      try {
+        new Function(text);
+      } catch (error) {
+        fail(
+          `rewriting baked paths produced invalid JavaScript in ` +
+            `${path.relative(outDir, full)}:\n  ${error?.message ?? error}`
+        );
+      }
+
+      fs.writeFileSync(full, text);
+      rewrittenFiles += 1;
+    }
+  };
+
+  walk(dir);
+
+  if (rewrittenFiles === 0) {
+    fail(
+      "no baked build-machine path was found in the server bundle. Next may " +
+        "have stopped inlining import.meta.url, which would be fine, but this " +
+        "check must be updated deliberately rather than silently passing."
+    );
+  }
+
+  // The rewrite only helps if nothing real is left behind, so assert that rather
+  // than trusting it.
+  const leftover = findBakedPaths(dir);
+  if (leftover.length > 0) {
+    fail(`build-machine paths are still baked into the package:\n  ${leftover.join("\n  ")}`);
+  }
+
+  log(`rewrote baked build-machine paths in ${rewrittenFiles} file(s)`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Returns human-readable hits for any build-machine path left in the bundle.
+ *
+ * Scoped to this repository's own paths. Next also writes URL-encoded build
+ * paths into source-map and dev-overlay metadata (an ?filePath= query on the
+ * icon route), but those are never resolved with fileURLToPath and cannot throw,
+ * so flagging them would only teach this check to be ignored.
+ */
+function findBakedPaths(dir) {
+  const hits = [];
+  const markers = [
+    repoRoot.replace(/\\/g, "/"),
+    repoRoot.replace(/\\/g, "/").replace(/ /g, "%20"),
+  ];
+
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(?:js|mjs|cjs)$/i.test(entry.name)) continue;
+      const buffer = fs.readFileSync(full);
+      if (buffer.includes(0)) continue;
+
+      const text = buffer.toString("utf8");
+      for (const marker of markers) {
+        // Only a file: URL matters; the same string in a comment is harmless.
+        const found = text.match(new RegExp(`file:\\/\\/[^\\s"'\`]*${escapeRegExp(marker)}`));
+        if (found) {
+          hits.push(`${path.relative(outDir, full)} → ${found[0].slice(0, 90)}`);
+          break;
+        }
+      }
+    }
+  };
+
+  walk(dir);
+  return hits;
+}
+
 const appDir = path.join(outDir, "app");
 copyDir(standalone, appDir);
+makeServerPathsPortable(appDir);
+
+// Must run before anything else in the bundle: the Prisma Client resolves the
+// rewritten path the first time it is imported, which happens while a route
+// module loads, so this has to be set at the very top of the entry point.
+const entryPoint = path.join(appDir, "server.js");
+fs.writeFileSync(
+  entryPoint,
+  `// Added by scripts/build-portable.mjs.
+ // Next bakes this build machine's absolute path into the server bundle, and the
+ // generated Prisma Client resolves it with fileURLToPath() on first import, so
+ // every API route failed on any other computer. Those paths now read this
+ // variable instead; __dirname is where this copy of the app actually lives.
+ process.env.__MAHER_APP__ = __dirname;
+` + fs.readFileSync(entryPoint, "utf8")
+);
+log("server.js now resolves packaged paths at startup");
 
 // Next emits static assets as siblings of standalone; without these the page
 // loads but every stylesheet and script 404s.
