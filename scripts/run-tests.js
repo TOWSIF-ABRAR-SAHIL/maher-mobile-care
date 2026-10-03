@@ -17,6 +17,7 @@ const NPX = IS_WINDOWS ? "npx.cmd" : "npx";
 const NEXT_BIN = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
 
 const DEFAULT_SUITES = [
+  "scripts/launcher-decide.test.js",
   "scripts/e2e-maher.js",
   "scripts/e2e-p0.js",
   "scripts/laneA.js",

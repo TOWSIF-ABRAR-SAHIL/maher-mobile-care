@@ -122,6 +122,9 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
       .filter((name) => !applied.has(name));
 
     if (pending.length === 0) {
+      // Verified before returning: an up-to-date ledger is the normal case, and
+      // also the one where a table can be missing without it looking wrong.
+      verifySchema(db, path.basename(dbFile));
       log(`database already up to date (${applied.size} migration(s) applied)`);
       return [];
     }
@@ -158,9 +161,47 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
       done.push(name);
     }
 
+    verifySchema(db, path.basename(dbFile));
+
     return done;
   } finally {
     db.close();
+  }
+}
+
+/**
+ * Confirms the tables the app needs actually exist.
+ *
+ * The migration ledger is a record of what was run, not proof of what is there.
+ * A database copied incompletely, interrupted while being written, or restored
+ * from a partial file can list a migration as finished while the table it was
+ * meant to create is absent. Trusting the ledger then reports "ready" and the
+ * app opens to an empty shop, every list failing with an error the shopkeeper
+ * cannot read.
+ *
+ * Failing loudly here turns that into one clear instruction. The database is
+ * never repaired automatically: the migrations use plain CREATE TABLE, so
+ * replaying them over a damaged file is not safe, and silently rebuilding a
+ * shop's records is exactly the wrong thing to do without asking.
+ */
+function verifySchema(db, label) {
+  const required = ["Service", "Technician"];
+  const present = new Set(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all()
+      .map((row) => row.name)
+  );
+  const missing = required.filter((table) => !present.has(table));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `${label} is damaged: the table(s) ${missing.join(", ")} are missing even though ` +
+        `the migration history says they were created.\n` +
+        `  Nothing has been changed, and your backups in data\\backups are untouched.\n` +
+        `  To start clean: close MAHER, delete ${label} from the data folder, and open MAHER again.\n` +
+        `  To keep an older copy instead: rename ${label} to ${label}.old and open MAHER again.`
+    );
   }
 }
 

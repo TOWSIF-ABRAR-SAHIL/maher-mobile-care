@@ -15,8 +15,8 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaoge.
 
 ## Sotti Boli (porer shathe pori jani)
 
-Package-ta banano hoyeche Linux-e, kintu Windows-e **ekhono chalanay ni** - karon
-amar kache Windows machine ba CI nai. Ami ja korechi:
+Package-ta banano hoyeche Linux-e. Windows-e tumi chalao, ar ekta asol problem
+pawa gelo - ektai Windows-e chilo, baki shob jinis Linux-e thik.
 
 | Ki kora | Kemon verify |
 |---|---|
@@ -24,9 +24,39 @@ amar kache Windows machine ba CI nai. Ami ja korechi:
 | App kaj kore | Bangla UI, CSS/JS, money rule, backup - shob test kora |
 | Data upgrade-e thake | `app` folder delete kore rebuild - data bachi |
 | Client er data leak hoy na | zip-e kono `.db` / `.env` nai |
+| Package repo-r baire chole | temp folder e copy kore server chaliye API check |
 
-Jeta verify **kora hoy ni**: Windows-e `.bat` file chalanor command gulo. Tai eta
-amar shobcheye boro test. Tumi Windows chalanor prothombar-i jeno bujhte paren.
+### Windows-e ki pawa gelo (prothombar)
+
+App window khulchilo, kintu **kono data-i load hoyni**. Karon: purano run er
+server, jeta `detached` hoye background e chole gechilo ar **morteo pare ni**,
+port 3000 e atke thakto. Notun `MAHER MOBILE CARE.bat` chalanor shomoy
+launcher dekhlo "MAHER already running" bolo, **notun server chalan-i kore ni**,
+ar purono server er (already delete kora) folder er database khulise.
+
+Ei karone protita bar double-click e **puro e purono** server-i cholo.
+
+Ekhon thik kora hoyeche, Windows-e chalanor age er moto:
+
+| Ki chilo | Ekhon ki |
+|---|---|
+| `/api/health` shudhu `shop.db` naam dito | Ekhon **absolute path** (`dbPath`) ar `tables` report kore |
+| "MAHER cholche" mane "thik MAHER cholche" | Apnar copy r DB path + table check kore, na milele **purono server bondho** kore notun ta chalu kore |
+| Tables check shudhu notun start e chilo | Reuse korar shomoy-o chole |
+| Server bondho korar niyam nai | Notun **`MAHER STOP.bat`** |
+
+Ekta jinis mone rakhben: jodi apni *kono karan e* onno program port 3000 niye
+rakhe, MAHER seta chay **na** - bondho kore apnar dey. Eta amader niom karon
+port o jani amader.
+
+### Ekhon-o verify kora hoy ni
+
+Windows-e `.bat` file chalanor command gulo - karon amar kache Windows machine
+ba CI nai. Linux-e sob test chole, ar Windows-e chalanor age porer shathe pori jani.
+
+Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
+server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
+jay (agge ekta bhul chilo: log server band howar por shudhu likhto).
 
 Kichu galat hole ghabaron kichu nai - `logs\maher.log` file-e sob likha thake,
 niyegi amake dein.
@@ -63,6 +93,7 @@ Vitey thaka uchit:
 ```
 MAHER\
 ├── MAHER MOBILE CARE.bat
+├── MAHER STOP.bat
 ├── start-maher.bat
 ├── runtime\
 ├── app\

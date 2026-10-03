@@ -15,18 +15,21 @@
  *   and refuses clearly if something else owns the port.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { decideAction } from "./launch-decide.mjs";
 
 // This file lives at <app>/scripts/launch.mjs, so the package root (the folder
-// holding runtime\ and data\) is two levels up.
+// holding runtime\, data\ and app\) is two levels up.
 const appHome = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const nodeExe = process.execPath;
 const serverJs = path.join(appHome, "app", "server.js");
 const logFile = path.join(appHome, "logs", "maher.log");
+const shopDb = path.join(appHome, "data", "shop.db");
 
 const port = process.env.PORT || "3000";
 const host = "127.0.0.1";
@@ -53,11 +56,12 @@ async function readHealth(timeoutMs = 1500) {
 /**
  * Confirms the server can actually read the shop tables.
  *
- * /api/health deliberately does not touch the database, so it reports ready even
- * if the schema is missing. The technician list does read a table, so a success
- * here proves the app is genuinely usable rather than merely listening.
+ * /api/health deliberately does not fail when the database is unhappy, so a
+ * plain health response is not enough on its own: a server can answer happily
+ * with an empty database. The technician list does read a table, so a success
+ * here proves the shop is genuinely usable rather than merely listening.
  */
-async function tablesWork(timeoutMs = 3000) {
+async function tablesWork(timeoutMs = 5000) {
   try {
     const response = await fetch(`${baseUrl}/api/technicians`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) return false;
@@ -66,6 +70,73 @@ async function tablesWork(timeoutMs = 3000) {
   } catch {
     return false;
   }
+}
+
+/** True once nothing is listening on the port any more. */
+async function portIsFree(timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const free = await new Promise((resolve) => {
+      const socket = net.connect({ host, port: Number(port) });
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.once("error", () => resolve(true));
+      socket.setTimeout(1000, () => {
+        socket.destroy();
+        resolve(true);
+      });
+    });
+    if (free) return true;
+    await sleep(250);
+  }
+  return false;
+}
+
+/**
+ * Finds whatever is listening on the port and stops it.
+ *
+ * These servers are started with `detached: true`, so they outlive the launcher
+ * and the black window. Without this a single crashed run keeps a server alive
+ * that points at an old or deleted database folder, and every later start
+ * silently reuses it. That is the failure this whole function exists for.
+ *
+ * Only reached for a process that already answered as MAHER, so an unrelated
+ * program is never killed; that case is refused before we get here.
+ */
+function stopServerOnPort() {
+  if (process.platform !== "win32") {
+    log("note: automatic cleanup of an old server is only implemented for Windows.");
+    return false;
+  }
+
+  let pids = new Set();
+  try {
+    const output = execFileSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8" });
+    for (const line of output.split(/\r?\n/)) {
+      if (!/LISTENING/i.test(line)) continue;
+      const columns = line.trim().split(/\s+/);
+      if (columns.length < 5) continue;
+      const local = columns[1] || "";
+      if (!local.endsWith(`:${port}`)) continue;
+      const pid = Number(columns[columns.length - 1]);
+      if (Number.isInteger(pid) && pid > 0) pids.add(pid);
+    }
+  } catch (err) {
+    console.error(`  Could not look up the old server: ${err?.message ?? err}`);
+    return false;
+  }
+
+  for (const pid of pids) {
+    try {
+      execFileSync("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore" });
+      log(`stopped an old server that was still running (pid ${pid})`);
+    } catch {
+      /* already gone */
+    }
+  }
+  return pids.size > 0;
 }
 
 function logTail(lines = 15) {
@@ -116,28 +187,70 @@ function openWindow() {
   fireAndForget("rundll32", ["url.dll,FileProtocolHandler", baseUrl]);
 }
 
+/** Stops whatever this launcher owns on the port, for MAHER STOP.bat. */
+async function stopOnly() {
+  if (await portIsFree(2000)) {
+    log("MAHER is not running.");
+    return 0;
+  }
+  stopServerOnPort();
+  const freed = await portIsFree(8000);
+  log(freed ? "MAHER has been stopped." : "Could not stop MAHER. Close it from Task Manager.");
+  return freed ? 0 : 1;
+}
+
 async function main() {
+  if (process.argv.includes("--stop")) {
+    process.exit(await stopOnly());
+  }
+
   if (!fs.existsSync(serverJs)) {
     console.error(`\nERROR: app\\server.js was not found in:\n  ${appHome}\n`);
     console.error("Please copy the whole MAHER folder, not single files.\n");
     process.exit(1);
   }
 
-  // Already running? Then just focus the window.
-  const existing = await readHealth();
-  if (existing?.service === "maher-mobile-care") {
-    log("app is already running, opening it ...");
-    openWindow();
-    return;
-  }
-
+  const health = await readHealth();
   // Something else answering on this port must not be mistaken for the shop.
-  const stranger = await fetch(baseUrl, { signal: AbortSignal.timeout(1500) }).catch(() => null);
-  if (stranger) {
+  const stranger = health
+    ? health.service !== "maher-mobile-care"
+    : await fetch(baseUrl, { signal: AbortSignal.timeout(1500) })
+        .then(() => true)
+        .catch(() => false);
+
+  const action = decideAction({
+    health,
+    stranger,
+    expectedDbPath: shopDb,
+    tablesOk: await tablesWork(),
+  });
+
+  if (action === "refuse") {
     console.error(`\nERROR: Another program is already using port ${port}.`);
     console.error("MAHER cannot start until that program is closed.\n");
     console.error("Please close the other program and double-click MAHER again.\n");
     process.exit(1);
+  }
+
+  if (action === "reuse") {
+    log("MAHER is already running from this folder. Opening it ...");
+    openWindow();
+    return;
+  }
+
+  if (action === "takeover") {
+    console.log("  An older copy of MAHER is still running ...");
+    if (health?.dbPath) {
+      console.log(`  It is using this database:\n    ${health.dbPath}\n`);
+      console.log(`  This copy uses:\n    ${shopDb}\n`);
+    }
+    log("closing it so this copy can open the right shop ...");
+    stopServerOnPort();
+    if (!(await portIsFree(10_000))) {
+      console.error("\nERROR: An old MAHER server is still using this port.\n");
+      console.error("Please run MAHER STOP.bat, or end node.exe in Task Manager, and try again.\n");
+      process.exit(1);
+    }
   }
 
   console.log("  Starting MAHER MOBILE CARE ...");
@@ -168,8 +281,8 @@ async function main() {
   let serverResponded = false;
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
-    const health = await readHealth();
-    if (health?.service === "maher-mobile-care") {
+    const started = await readHealth();
+    if (started?.service === "maher-mobile-care") {
       serverResponded = true;
       // Listening is not enough; the shop tables must be readable too.
       if (await tablesWork()) {

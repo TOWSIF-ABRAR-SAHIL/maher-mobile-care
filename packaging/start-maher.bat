@@ -54,12 +54,15 @@ echo Keep this window open while using the app.
 echo To close the app, close this window.
 echo.
 
-rem No `tee` in cmd, so write to the log and then show what was written.
-"%NODE_EXE%" "%SERVER_JS%" >"%LOG_FILE%.run" 2>&1
-type "%LOG_FILE%.run"
-type "%LOG_FILE%.run" >>"%LOG_FILE%"
-del /q "%LOG_FILE%.run" >nul 2>&1
+rem Writes straight to the log while running. The previous version wrote to a
+rem temporary file and only copied it afterwards, so nothing could be read while
+rem the shop was failing - which is exactly when the log is needed.
+echo Errors are saved to logs\maher.log
+echo.
+"%NODE_EXE%" "%SERVER_JS%" >>"%LOG_FILE%" 2>&1
 
 echo.
-echo The app has stopped.
+echo The app has stopped. Last lines of the log:
+powershell -NoProfile -Command "Get-Content -Tail 12 '%LOG_FILE%'" 2>nul
+echo.
 pause

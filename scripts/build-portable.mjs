@@ -283,10 +283,12 @@ copyDir(migrationsSrc, path.join(appDir, "prisma", "migrations"));
 log("copied prisma/migrations");
 
 fs.mkdirSync(path.join(appDir, "scripts"), { recursive: true });
-for (const helper of ["first-run.mjs", "launch.mjs"]) {
-  fs.copyFileSync(path.join(scriptDir, helper), path.join(appDir, "scripts", helper));
-  log(`copied scripts/${helper}`);
-}
+  // launch-decide.mjs is imported by launch.mjs, so it has to travel with it or
+  // the launcher cannot start at all.
+  for (const helper of ["first-run.mjs", "launch.mjs", "launch-decide.mjs"]) {
+    fs.copyFileSync(path.join(scriptDir, helper), path.join(appDir, "scripts", helper));
+    log(`copied scripts/${helper}`);
+  }
 
 // 3. Runtime dependencies the file tracer leaves out of .next/standalone.
     //
@@ -378,6 +380,7 @@ log(`installed Windows better-sqlite3 ${BETTER_SQLITE3_VERSION} (Node ${NODE_VER
 
 // 7. Launchers.
 fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER MOBILE CARE.bat"), path.join(outDir, "MAHER MOBILE CARE.bat"));
+fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER STOP.bat"), path.join(outDir, "MAHER STOP.bat"));
 fs.copyFileSync(path.join(repoRoot, "packaging", "start-maher.bat"), path.join(outDir, "start-maher.bat"));
 log("copied launchers");
 
