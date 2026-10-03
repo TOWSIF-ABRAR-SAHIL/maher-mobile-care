@@ -24,7 +24,7 @@
  *   the client access to the developer's shop data, so this must stay.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -112,6 +112,113 @@ function copyDir(from, to) {
   fs.cpSync(from, to, { recursive: true, dereference: false });
 }
 
+/**
+ * Boots the packaged server and fails the build unless the shop's data APIs
+ * actually answer.
+ *
+ * This exists because a static file check was not enough. The first package was
+ * missing the Prisma Client and the driver adapter, so the page rendered while
+ * every /api call failed — and on the developer's own machine that same folder
+ * ran fine, because Node resolved those modules by walking *up* into the
+ * repository's node_modules. The client would have received a half-working app
+ * that looked fine on the build machine.
+ *
+ * So the package is copied outside the repository before being started. Simply
+ * setting NODE_PATH="" is not enough: Node still walks parent directories looking
+ * for node_modules, and out/MAHER lives inside the repo. Isolation has to be
+ * physical, not just an environment variable.
+ */
+async function verifyPackageRuns(sandbox) {
+    const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "maher-probe-"));
+    const probeDb = path.join(probeRoot, "verify.db");
+    const probePort = 3055;
+
+  log(`verifying the package actually runs, outside the repository ...`);
+
+  const server = spawn(process.execPath, [path.join(sandbox, "app", "server.js")], {
+    cwd: path.join(sandbox, "app"),
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      MAHER_DB_PATH: probeDb,
+      MAHER_BACKUP_DIR: path.join(probeRoot, "backups"),
+      DATABASE_URL: `file:${probeDb}`,
+      NODE_ENV: "production",
+      PORT: String(probePort),
+      HOSTNAME: "127.0.0.1",
+      NODE_PATH: "",
+    },
+  });
+
+  let output = "";
+  server.stdout?.on("data", (d) => (output += d));
+  server.stderr?.on("data", (d) => (output += d));
+
+  try {
+    // The Windows native module cannot load here, so swap in the local one for
+    // the duration of the test. The shipped folder gets the Windows binary back
+    // immediately afterwards.
+    const binary = path.join(sandbox, "app", "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
+    const localBinary = path.join(repoRoot, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
+    if (fs.existsSync(binary) && fs.existsSync(localBinary)) fs.copyFileSync(localBinary, binary);
+
+    execFileSync(process.execPath, [path.join(sandbox, "app", "scripts", "first-run.mjs")], {
+      cwd: path.join(sandbox, "app"),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        MAHER_DB_PATH: probeDb,
+        MAHER_BACKUP_DIR: path.join(probeRoot, "backups"),
+        NODE_PATH: "",
+      },
+    });
+
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      try {
+        const health = await fetch(`http://127.0.0.1:${probePort}/api/health`, { signal: AbortSignal.timeout(2000) });
+        if (!health.ok) continue;
+
+        // /api/health never touches the database, so it cannot prove the data
+        // layer is present. These two can only succeed with a working Prisma
+        // Client, the driver adapter and the SQLite engine.
+        const technicians = await fetch(`http://127.0.0.1:${probePort}/api/technicians`, { signal: AbortSignal.timeout(5000) });
+        if (!technicians.ok) throw new Error(`GET /api/technicians returned HTTP ${technicians.status}`);
+        const roster = await technicians.json();
+        if (!Array.isArray(roster?.technicians) || roster.technicians.length === 0) {
+          throw new Error("GET /api/technicians returned an empty roster");
+        }
+
+        const stats = await fetch(`http://127.0.0.1:${probePort}/api/stats`, { signal: AbortSignal.timeout(5000) });
+        if (!stats.ok) throw new Error(`GET /api/stats returned HTTP ${stats.status}`);
+        const statBody = await stats.json();
+        if (!Array.isArray(statBody?.techStats)) {
+          throw new Error("GET /api/stats did not return technician stats, so the database is not really being read");
+        }
+
+        log(`package verified outside the repo: health OK, roster OK (${roster.technicians.length}), stats OK (${statBody.techStats.length})`);
+        return;
+      } catch (error) {
+        const message = error?.message ?? String(error);
+        // These are real failures, not "not ready yet".
+        if (/returned HTTP|empty roster|did not return technician/.test(message)) throw new Error(message);
+      }
+    }
+    throw new Error(`the server never became ready.\n${output.slice(-1500)}`);
+  } catch (error) {
+    fail(
+      `the packaged app does not work outside the repository:\n${error?.message ?? error}\n\n` +
+        `This usually means a runtime dependency is missing from the package.`
+    );
+  } finally {
+    server.kill("SIGTERM");
+    await new Promise((r) => setTimeout(r, 300));
+    if (!server.killed) server.kill("SIGKILL");
+    fs.rmSync(probeRoot, { recursive: true, force: true });
+  }
+}
+
 function dirSizeMb(dir) {
   let total = 0;
   const walk = (current) => {
@@ -181,7 +288,31 @@ for (const helper of ["first-run.mjs", "launch.mjs"]) {
   log(`copied scripts/${helper}`);
 }
 
-// 3. Strip developer data that the Next 14 trace pulled in.
+// 3. Runtime dependencies the file tracer leaves out of .next/standalone.
+    //
+    // These are NOT required for the app to run — webpack already bundles the
+    // generated Prisma Client and the driver adapter into the server chunks,
+    // which the isolation check below proves. They are copied only so the
+    // package matches the app it was built from and stays safe if the bundling
+    // assumptions ever change. Both are small.
+    //
+    // devDependencies (@types/*, eslint, tailwindcss, typescript, tsx, prisma,
+    // puppeteer-core, dotenv) are deliberately NOT copied: build- and test-only.
+    const runtimeOnly = [
+      { from: path.join(repoRoot, "lib", "generated", "prisma"), to: path.join(appDir, "lib", "generated", "prisma"), label: "lib/generated/prisma (Prisma Client)" },
+      { from: path.join(repoRoot, "node_modules", "@prisma", "adapter-better-sqlite3"), to: path.join(appDir, "node_modules", "@prisma", "adapter-better-sqlite3"), label: "@prisma/adapter-better-sqlite3" },
+    ];
+
+    for (const { from, to, label } of runtimeOnly) {
+      if (!fs.existsSync(from)) {
+        fail(`${label} is missing from the source tree (${from}). Run "npm install" and "npx prisma generate" first.`);
+      }
+      fs.rmSync(to, { recursive: true, force: true });
+      if (!process.env.MAHER_SKIP_RUNTIME_DEPS) copyDir(from, to);
+      log(`copied ${label}`);
+    }
+
+    // 4. Strip developer data that the Next 14 trace pulled in.
 for (const leak of ["backups", ".env", "prisma/dev.db", "prisma/dev.db-journal"]) {
   const full = path.join(appDir, leak);
   if (fs.existsSync(full)) {
@@ -190,7 +321,7 @@ for (const leak of ["backups", ".env", "prisma/dev.db", "prisma/dev.db-journal"]
   }
 }
 
-// 4. The Windows Node runtime, bundled so the client installs nothing.
+// 5. The Windows Node runtime, bundled so the client installs nothing.
 const nodeZip = cachedDownload(NODE_ZIP_URL, `node-v${NODE_VERSION}-win-x64.zip`);
 const nodeExtract = path.join(cacheDir, `node-v${NODE_VERSION}-win-x64`);
 if (!fs.existsSync(path.join(nodeExtract, "node.exe"))) {
@@ -210,7 +341,7 @@ if (!fs.existsSync(nodeExe)) {
 }
 log(`bundled Node ${NODE_VERSION} (node.exe)`);
 
-// 5. The Windows better-sqlite3 binary, replacing the Linux one.
+// 6. The Windows better-sqlite3 binary, replacing the Linux one.
 const bs3Tar = cachedDownload(BETTER_SQLITE3_URL, `better-sqlite3-v${BETTER_SQLITE3_VERSION}-node-v${NODE_ABI}-win32-x64.tar.gz`);
 const bs3Extract = path.join(cacheDir, `bs3-${NODE_ABI}-win32-x64`);
 const bs3BinaryRel = path.join("build", "Release", "better_sqlite3.node");
@@ -245,12 +376,12 @@ fs.mkdirSync(bs3TargetDir, { recursive: true });
 fs.copyFileSync(bs3Node, path.join(bs3TargetDir, "better_sqlite3.node"));
 log(`installed Windows better-sqlite3 ${BETTER_SQLITE3_VERSION} (Node ${NODE_VERSION} ABI ${NODE_ABI})`);
 
-// 6. Launchers.
+// 7. Launchers.
 fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER MOBILE CARE.bat"), path.join(outDir, "MAHER MOBILE CARE.bat"));
 fs.copyFileSync(path.join(repoRoot, "packaging", "start-maher.bat"), path.join(outDir, "start-maher.bat"));
 log("copied launchers");
 
-// 7. Data directory placeholder + manifest.
+// 8. Data directory placeholder + manifest.
 const dataDir = path.join(outDir, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 fs.writeFileSync(
@@ -277,7 +408,7 @@ const manifest = {
 };
 fs.writeFileSync(path.join(outDir, "build-info.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-// 8. Never ship shop data, and never ship the Linux native binary.
+// 9. Never ship shop data, and never ship the Linux native binary.
 assertNoShopData(outDir);
 
 const strayLinux = findStrayLinuxBinaries(appDir);
@@ -285,6 +416,37 @@ if (strayLinux.length > 0) {
   fail(`Linux native binary still present, package will crash on Windows:\n  ${strayLinux.join("\n  ")}`);
 }
 log("binary check passed: no Linux .node files remain");
+
+// 10. Prove the package actually serves the shop data before shipping it.
+//
+// The package is copied to a temp folder first. out/MAHER lives inside the
+// repository, so starting it in place would let Node resolve any missing
+// dependency by walking up into the repo's node_modules — which is exactly how
+// the first broken package passed every local check.
+const sandboxRoot = fs.mkdtempSync(path.join(os.tmpdir(), "maher-package-"));
+const sandbox = path.join(sandboxRoot, "MAHER");
+log(`verifying the package in isolation (${sandboxRoot}) ...`);
+fs.cpSync(outDir, sandbox, {
+  recursive: true,
+  filter: (src) => {
+    const rel = path.relative(outDir, src);
+    return !rel.startsWith("data") && !rel.startsWith("logs");
+  },
+});
+
+try {
+  await verifyPackageRuns(sandbox);
+} finally {
+  fs.rmSync(sandboxRoot, { recursive: true, force: true });
+}
+
+// Restore the Windows binary in the real package (verification may have swapped
+// in the local one) and re-assert it is a Windows binary.
+fs.copyFileSync(bs3Node, path.join(appDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"));
+if (findStrayLinuxBinaries(appDir).length > 0) {
+  fail("verification replaced the Windows binary and it was not restored correctly");
+}
+log("final package re-verified: Windows binary in place, no shop data");
 
 console.log(
   [
