@@ -7,6 +7,8 @@
     "start": "next start -H 127.0.0.1",
     "lint": "next lint",
     "test": "node scripts/run-tests.js",
+    "test:first-run": "node scripts/first-run.mjs",
+    "build:portable": "node scripts/build-portable.mjs",
     "seed": "tsx scripts/seed-maher.ts",
     "cleanup:test-data": "tsx scripts/cleanup-test-data.ts",
     "postinstall": "prisma generate"
