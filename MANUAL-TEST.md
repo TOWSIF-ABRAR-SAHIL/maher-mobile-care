@@ -1,0 +1,224 @@
+# Manual A-to-Z Test Checklist — MAHER MOBILE CARE v1.1
+
+A human walkthrough of the whole shop app, for when you want to confirm by hand
+that nothing is broken before a busy day.
+
+- **Automated coverage:** `npm test` → 7 suites, 129 checks (see README §7).
+- **This file:** the things a script cannot judge — paper printouts, real
+  WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
+
+**How to use:** tick each box. Where a step says *ঝুঁকি* (risk) it is marked —
+`নেই` (safe), `মাঝারি` or `সবচেয়ে বেশি`.
+
+**Rule for test data:** start customer names with **`ZTEST`** (e.g. `ZTEST01`) so
+you can find and archive them later. Your real record (`#1 Sahil`) must come out
+of this checklist **byte-identical** — see step L3.
+
+---
+
+## 🛑 Pre-test — do not skip
+
+- [ ] **0.1** Press **ব্যাকআপ**. Expect: toast "ব্যাকআপ হয়েছে", a CSV downloads, header shows "সর্বশেষ ব্যাকআপ" — *risk: নেই*
+- [ ] **0.2** Open the `backups/` folder. Expect: a new `maher-*.db` file — *risk: নেই*
+- [ ] **0.3** Count the files in `backups/`. Expect: 36 → 37 — *risk: নেই*
+- [ ] **0.4** Open `http://127.0.0.1:3000`. Expect: dashboard loads and "টেকনিশিয়ান অনুযায়ী" is visible — *risk: নেই*
+
+---
+
+## A. Dashboard & date navigation — *risk: নেই*
+
+- [ ] **A1** Press `←` then `→` (no mouse). Expect: the day changes both ways — *risk: নেই*
+- [ ] **A2** While typing in any text box, press `←`. Expect: **the day does NOT change** (typing guard works) — *risk: নেই*
+- [ ] **A3** **◄ আগের দিন** then **পরের দিন ►**. Expect: returns to the same day — *risk: নেই*
+- [ ] **A4** Use the date picker to jump 3–4 days back. Expect: the table title shows that date, and the daily cards switch to the **"নির্বাচিত দিনের"** prefix — *risk: নেই*
+- [ ] **A5** Press **আজ**. Expect: back to today, prefix returns to **"আজকের"** — *risk: নেই*
+
+> ⚠️ After A4 remember to come back to today's date — the rest of the list is date-dependent.
+
+---
+
+## B. New service entry & money maths — *risk: মাঝারি (adds rows)*
+
+- [ ] **B1** Fill: customer `ZTEST01`, phone `01700000001`, model `Redmi Note 10`, problem `ডিসপ্লে`, technician **NURUL**, shop cost code `*M#` — *risk: নেই*
+- [ ] **B2** Type total bill `১৬০০` (Bengali digits). Expect: বাকি = `1,600` — *risk: নেই*
+- [ ] **B3** Type advance `৫০০`. Expect: বাকি = `1,100` — *risk: নেই*
+- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `২০০০`. Expect: **ফেরত দিন = ৫০০** — *risk: নেই*
+- [ ] **B5** Change it to `১০০০`. Expect: **আরও দরকার = ৬০০** — *risk: নেই*
+- [ ] **B6** Clear the field. Expect: the box shows `0` and the label reads "ফেরত দেওয়ার টাকা (হিসাবের জন্য)" — *risk: নেই*
+- [ ] **B7** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears — *risk: মাঝারি*
+- [ ] **B8** Read the daily cards. Expect: কাজ ১ · বিল ১,৬০০ · বাকি ১,১০০ · খরচ **৳০** (a code counts as 0) plus a **"+1টি কোড"** hint — *risk: নেই*
+- [ ] **B9** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: খরচ card = `৳১,২০০` and the "+কোড" hint disappears — *risk: মাঝারি*
+- [ ] **B10** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*
+- [ ] **B11** Set bill `1000`, advance `1000`, save. Expect: saved, বাকি = **0** — *risk: মাঝারি*
+- [ ] **B12** Press save on an empty form. Expect: toast "কাস্টমারের নাম দিন" — *risk: নেই*
+- [ ] **B13** Type `abc` in the bill box and save. Expect: toast "মোট বিলে সঠিক সংখ্যা দিন" — *risk: নেই*
+- [ ] **B14** Use phone `০১৭১১২২৩৪৪৫` and bill `1,600`. Expect: accepted (Bengali digits + comma) — *risk: মাঝারি*
+
+---
+
+## C. Technician management (v1.1) — *risk: মাঝারি*
+
+- [ ] **C1** Click **⚙️ টেকনিশিয়ান** in the header. Expect: the "টেকনিশিয়ান ব্যবস্থাপনা" dialog opens — *risk: নেই*
+- [ ] **C2** Type `ztest tech` → **➕ যোগ করুন**. Expect: added, and the list shows **`ZTEST TECH`** (upper-cased) — *risk: মাঝারি*
+- [ ] **C3** Try adding `ZTEST TECH` again. Expect: toast "এই নামে ইতিমধ্যে একজন টেকনিশিয়ান আছে।" — *risk: নেই*
+- [ ] **C4** Open the technician dropdown in the entry form. Expect: `ZTEST TECH` is there — *risk: নেই*
+- [ ] **C5** Look at the dashboard cards. Expect: **5 cards** (4 + the new one) — *risk: নেই*
+- [ ] **C6** ✏️ edit → type `ZTEST RENAMED` → **সেভ**. Expect: a confirm dialog — *risk: নেই*
+- [ ] **C7** Click **বাতিল**. Expect: nothing changes, the old name stays — *risk: নেই*
+- [ ] **C8** ✏️ → **সেভ** → **হ্যাঁ, বদলান**. Expect: toast "(1টি পুরনো রেকর্ড সহ)", and the new name is in both the dropdown and the card — *risk: মাঝারি*
+- [ ] **C9** ✏️ edit the old `ZTEST01` row. Expect: technician shows **`ZTEST RENAMED`** (history was rewritten) — *risk: নেই*
+- [ ] **C10** 🗑️ ডিলিট → **বাতিল**. Expect: nothing happens — *risk: নেই*
+- [ ] **C11** 🗑️ ডিলিট → **ডিলিট**. Expect: toast "নিষ্ক্রিয় করা হয়েছে", and it moves into "নিষ্ক্রিয় (1)" — *risk: মাঝারি*
+- [ ] **C12** Open the dropdown again. Expect: `ZTEST RENAMED` is **gone** — *risk: নেই*
+- [ ] **C13** Look at the cards. Expect: a greyed card with a **"নিষ্ক্রিয়"** tag that is still clickable — *risk: নেই*
+- [ ] **C14** Check 🗑️ on the last active technician (NURUL). Expect: the button is **disabled** — *risk: নেই*
+- [ ] **C15** Click **ফিরিয়ে আনুন** under "নিষ্ক্রিয়". Expect: active again and back in the dropdown — *risk: মাঝারি*
+- [ ] **C16** Deactivate down to the last one. Expect: toast "কমপক্ষে ১ জন টেকনিশিয়ান থাকতে হবে।" — *risk: নেই*
+
+---
+
+## D. Clickable cards & filtering (v1.1) — *risk: নেই*
+
+- [ ] **D1** Click the NURUL card. Expect: a ring on the card, "✓ নির্বাচিত", and the notice "🔍 শুধু **NURUL** এর কাজ দেখানো হচ্ছে" — *risk: নেই*
+- [ ] **D2** Read the status chips. Expect: the counts describe **only NURUL's** work — *risk: নেই*
+- [ ] **D3** Type in the search box. Expect: it searches **within** the filtered rows — *risk: নেই*
+- [ ] **D4** Click the NURUL card again. Expect: filter clears, every row is back — *risk: নেই*
+- [ ] **D5** Click the RONI card. Expect: the filter switches to RONI — *risk: নেই*
+- [ ] **D6** Click **✕ ফিল্টার সরান** in the notice. Expect: filter clears — *risk: নেই*
+- [ ] **D7** Turn the filter on, then change the date. Expect: the filter **resets by itself** — *risk: নেই*
+- [ ] **D8** Click a card with no work today (e.g. ASRAFUL). Expect: **"আজ ASRAFUL এর কোনো কাজ নেই।"** — *risk: নেই*
+- [ ] **D9** Open **আর্কাইভ দেখুন** while a filter is on. Expect: the filter stays; with nothing archived it says **"[NAME] এর কোনো আর্কাইভ করা কাজ নেই।"** — *risk: নেই*
+- [ ] **D10** Click a greyed "নিষ্ক্রিয়" card. Expect: it filters and shows that person's old work — *risk: নেই*
+
+> **Acceptance rule:** the sum of every card's "কাজ করেছে" must equal আজকের মোট কাজ. Check this again at L1.
+
+---
+
+## E. Service table — *risk: মাঝারি*
+
+- [ ] **E1** Click **খরচ**. Expect: the খরচ column toggles (hidden by default = customer privacy) — *risk: নেই*
+- [ ] **E2** Click a status badge 3 times. Expect: পেন্ডিং → চলছে → সম্পন্ন → ডেলিভারি — *risk: মাঝারি*
+- [ ] **E3** Click once more on ডেলিভারি. Expect: toast "এটা ডেলিভারি হয়ে গেছে" — *risk: নেই*
+- [ ] **E4** Search by name / ID / phone / model / problem. Expect: each filters — *risk: নেই*
+- [ ] **E5** Search for something impossible. Expect: "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।" — *risk: নেই*
+- [ ] **E6** On a Delivered row with বাকি > 0. Expect: **"⚠️ টাকা বাকি"** — *risk: নেই*
+- [ ] **E7** 🗑️ ডিলিট → **বাতিল**. Expect: nothing happens — *risk: নেই*
+- [ ] **E8** 🗑️ ডিলিট → **আর্কাইভ**. Expect: the dialog says "আর্কাইভ করবেন?" and "তালিকা ও হিসাব থেকে বাদ যাবে"; the row disappears from the list, the daily cards and বাকি/লাভ — *risk: মাঝারি*
+- [ ] **E9** Click **আর্কাইভ দেখুন**. Expect: the archived row with a **তারিখ** column — *risk: নেই*
+- [ ] **E10** Click **ফিরিয়ে আনুন**. Expect: it comes back everywhere — *risk: মাঝারি*
+- [ ] **E11** Click **তালিকায় ফিরুন**. Expect: archive view closes, the day's list returns — *risk: নেই*
+- [ ] **E12** ✏️ edit a row and change **তারিখ**, save. Expect: the row moves to that day; navigate there to confirm — *risk: মাঝারি*
+
+---
+
+## F. Reports & totals — *risk: নেই*
+
+- [ ] **F1** Click **বিগত ৩০ দিন** / **এই মাস** / **গত মাস**. Expect: cards কাজ / বিল / খরচ / **বাকি** / **লাভ (Profit)** and the date-range label changes — *risk: নেই*
+- [ ] **F2** Set a custom range with the two date inputs. Expect: the label follows — *risk: নেই*
+- [ ] **F3** Set শুরু later than শেষ. Expect: toast "শুরুর তারিখ শেষের তারিখের পরে" and the range is unchanged — *risk: নেই*
+- [ ] **F4** Change the navbar date while a preset is active. Expect: the preset follows that date — *risk: নেই*
+- [ ] **F5** Check **লাভ** by hand. Expect: `লাভ = বিল − খরচ` — *risk: নেই*
+- [ ] **F6** On a day containing a part code (`*M#`). Expect: খরচ does **not** count it (৳০), only the hint shows — *risk: নেই*
+
+---
+
+## G. বাকি তালিকা & all-dates search — *risk: নেই*
+
+- [ ] **G1** On a day with an unpaid job. Expect: the row plus **কল** and **WhatsApp** buttons — *risk: নেই*
+- [ ] **G2** Click **কল**. Expect: the dialer opens (number normalised to +880…) — *risk: নেই*
+- [ ] **G3** Click **WhatsApp**. Expect: WhatsApp opens with bill no, model and the due amount in the text — *risk: নেই*
+- [ ] **G4** Fully pay an entry. Expect: it **leaves** বাকি তালিকা — *risk: মাঝারি*
+- [ ] **G5** Mark a job সম্পন্ন while বাকি > 0. Expect: it **stays** in বাকি তালিকা — this is correct: work finished ≠ money received — *risk: মাঝারি*
+- [ ] **G6** Type a single character in সব তারিখে খুঁজুন. Expect: "কমপক্ষে ২ অক্ষর লিখুন।" — *risk: নেই*
+- [ ] **G7** Search an old customer from a past date. Expect: found without changing the date — *risk: নেই*
+- [ ] **G8** Search for something that cannot match. Expect: "…দিয়ে কিছু পাওয়া যায়নি।" — *risk: নেই*
+
+---
+
+## H. Printing — *risk: নেই (but check the paper)*
+
+- [ ] **H1** Press **প্রিন্ট** without changing day. Expect: a clean black-and-white dashboard print — *risk: নেই*
+- [ ] **H2** Try to print before the page finishes loading. Expect: toast "পুরো পেজ লোড হওয়ার পর প্রিন্ট করুন" — *risk: নেই*
+- [ ] **H3** Click 🧾 **বিল প্রিন্ট** on a row. Expect: the "বিল প্রিভিউ (কাস্টমার কপি)" dialog — *risk: নেই*
+- [ ] **H4** Print from that dialog. Expect: **only the receipt** on paper, never the dashboard — *risk: নেই*
+- [ ] **H5** Read the paper. Expect: বিল নং, তারিখ, অবস্থা, গ্রাহক / মোবাইল / মডেল / সমস্যা / **টেকনিশিয়ান**, মোট বিল / জমা / **বাকি**, two signature lines, "ধন্যবাদ, আবার আসবেন", and the shop address + phone — *risk: নেই*
+- [ ] **H6** 🔴 Search the paper for "খরচ" or a part code. Expect: **it must not appear at all** — *risk: নেই*
+- [ ] **H7** Check that Bengali renders correctly in print (no boxes/tofu) — *risk: নেই*
+
+---
+
+## I. Backup & restore — *risk: সবচেয়ে বেশি (careful)*
+
+> Run this only after 0.1–0.3 succeeded. You are about to replace live data.
+
+- [ ] **I1** Press **ব্যাকআপ**. Expect: server snapshot + CSV download + toast — *risk: মাঝারি*
+- [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present, and no cell starting with `=1+1` executes as a formula — *risk: নেই*
+- [ ] **I3** Click **Restore**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
+- [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
+- [ ] **I5** Click **বাতিল**. Expect: nothing happens — *risk: নেই*
+- [ ] **I6** Add a fresh `ZTEST99` entry, then Restore an older snapshot. Expect: `ZTEST99` **disappears** and the earlier data returns — *risk: সবচেয়ে বেশি*
+- [ ] **I7** Read the toast. Expect: "ফিরিয়ে আনা হয়েছে" and that a safety copy was kept — *risk: নেই*
+- [ ] **I8** Open **⚙️ টেকনিশিয়ান** after the restore. Expect: the **roster is intact** — restore only swaps `Service` rows — *risk: নেই*
+- [ ] **I9** Create a new entry after restoring. Expect: its **বিল নং is larger** than before (IDs are never reused) — *risk: মাঝারি*
+- [ ] **I10** Confirm `backups/` now holds roughly 37 files — *risk: নেই*
+
+---
+
+## J. Tabs, speed, long text, offline — *risk: নেই*
+
+- [ ] **J1** Open two tabs, add an entry in one, press **Sync** in the other. Expect: the new row appears — *risk: মাঝারি*
+- [ ] **J2** Click **সেভ করুন** three times very fast. Expect: **one** row is created (not three) and the button disables — *risk: মাঝারি*
+- [ ] **J3** Enter a 50+ character customer name and a long problem. Expect: the table does not break and the page does not scroll sideways — *risk: মাঝারি*
+- [ ] **J4** Use shop cost `*M#` and `২৪০০` on different rows. Expect: each is costed correctly — *risk: মাঝারি*
+- [ ] **J5** Turn off the internet and refresh the page. Expect: everything still works (fully offline) — *risk: নেই*
+
+---
+
+## K. Mobile — *risk: নেই*
+
+- [ ] **K1** Open at 360px width (or a real phone). Expect: nothing is cut off left or right — *risk: নেই*
+- [ ] **K2** Look at the header buttons. Expect: they wrap into a tidy 2-column grid and every one is tappable — *risk: নেই*
+- [ ] **K3** Open the technician dialog. Expect: a long list scrolls and nothing is clipped — *risk: নেই*
+- [ ] **K4** Fill the entry form by touch. Expect: no zoom or mis-tap problems — *risk: মাঝারি*
+- [ ] **K5** Tap **✕ ফিল্টার সরান**. Expect: it responds on touch — *risk: নেই*
+
+---
+
+## L. Final reconciliation — *risk: নেই*
+
+- [ ] **L1** Add up every card's "কাজ করেছে". Expect: it **equals** আজকের মোট কাজ — *risk: নেই*
+- [ ] **L2** For each row check `বিল − জমা`. Expect: it **equals** বাকি (and বাকি is 0 when জমা ≥ বিল) — *risk: নেই*
+- [ ] **L3** Open entry **#1 Sahil**. Expect: **ডেলিভারি · বিল ৳১,৭০০ · জমা ৳১,৭০০ · বাকি ৳০ — unchanged** — *risk: নেই*
+- [ ] **L4** Compare বাকি for the selected day against বাকি তালিকা. Expect: both count only genuinely unpaid money — *risk: নেই*
+- [ ] **L5** Look for any red error on the page, and open the browser console (F12). Expect: no errors — *risk: নেই*
+- [ ] **L6** Archive any `ZTEST…` rows you no longer want. Expect: your real records untouched — *risk: মাঝারি*
+
+---
+
+## 🛑 Stop conditions
+
+If you see **any** of these, stop immediately, take a backup and report it —
+do not keep clicking:
+
+1. Money does not add up (L1 or L2) — বাকি/লাভ wrong
+2. Entry **#1 Sahil** changed (L3)
+3. The technician roster disappeared after a restore (I8)
+4. A new entry fails after restoring, or its বিল নং was reused (I9)
+5. **খরচ** appears on the customer receipt (H6)
+6. An overpayment saved successfully (B10 added a row)
+7. A dialog will not close
+8. Text is clipped on mobile (K1)
+
+---
+
+## Baseline before you start
+
+| What | Value |
+|---|---|
+| Service rows | 1 — `#1 Sahil · ডেলিভারি · বিল ৳১,৭০০ · জমা ৳১,৭০০ · বাকি ৳০` |
+| Technicians | 4 — NURUL, RONI, ASRAFUL, NAYEM (all active) |
+| `backups/` | 36 files |
+| `ZTEST…` rows | none — clean start |
+
+> If `ZTEST…` rows already exist when you begin, archive them first so L1/L2
+> start from a known state.

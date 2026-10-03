@@ -341,6 +341,10 @@ table, so restore's column validation is unaffected.
 `npm test` runs the full regression (7 suites, 129 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
+For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
+dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (108 steps, each marked safe or risky).
+
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
   crashed or interrupted suite can never leak rows or snapshots into the next.
