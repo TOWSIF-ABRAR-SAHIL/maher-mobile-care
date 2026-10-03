@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ClipboardList,
@@ -126,8 +126,13 @@ export function ServiceTable({
     );
   }, [techFiltered, search, statusFilter]);
 
+  /** Rapid taps must not fire overlapping PUTs — the state update alone
+   *  arrives a tick too late, so a ref guards the window synchronously. */
+  const advancingRef = useRef(false);
+
   /** One tap on the badge moves the job to the next stage. */
   const advanceStatus = async (s: ServiceDTO) => {
+    if (advancingRef.current) return;
     const order = [...STATUSES];
     const i = order.indexOf(s.status as ServiceStatus);
     if (i === -1 || i === order.length - 1) {
@@ -135,6 +140,7 @@ export function ServiceTable({
       return;
     }
     const next = order[i + 1] as ServiceStatus;
+    advancingRef.current = true;
     try {
       const res = await fetch(`/api/services/${s.id}`, {
         method: "PUT",
@@ -146,6 +152,8 @@ export function ServiceTable({
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "অবস্থা বদলানো যায়নি");
+    } finally {
+      advancingRef.current = false;
     }
   };
 

@@ -42,11 +42,11 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **B1** Fill: customer `ZTEST01`, phone `01700000001`, model `Redmi Note 10`, problem `ডিসপ্লে`, technician **NURUL**, shop cost code `*M#` — *risk: নেই*
 - [ ] **B2** Type total bill `১৬০০` (Bengali digits). Expect: বাকি = `1,600` — *risk: নেই*
 - [ ] **B3** Type advance `৫০০`. Expect: বাকি = `1,100` — *risk: নেই*
-- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `২০০০`. Expect: **ফেরত দিন = ৫০০** — *risk: নেই*
+- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `২০০০`. Expect: **ফেরত দিন = ৪০০** (bill 1600) — *risk: নেই*
 - [ ] **B5** Change it to `১০০০`. Expect: **আরও দরকার = ৬০০** — *risk: নেই*
 - [ ] **B6** Clear the field. Expect: the box shows `0` and the label reads "ফেরত দেওয়ার টাকা (হিসাবের জন্য)" — *risk: নেই*
 - [ ] **B7** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears — *risk: মাঝারি*
-- [ ] **B8** Read the daily cards. Expect: কাজ ১ · বিল ১,৬০০ · বাকি ১,১০০ · খরচ **৳০** (a code counts as 0) plus a **"+1টি কোড"** hint — *risk: নেই*
+- [ ] **B8** Read the daily cards. Expect: কাজ ১ · বিল 1,600 · বাকি 1,100 · খরচ **৳0** (a code counts as 0) (digits are always shown Western, even though Bengali input is accepted) plus a **"+1টি কোড"** hint — *risk: নেই*
 - [ ] **B9** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: খরচ card = `৳১,২০০` and the "+কোড" hint disappears — *risk: মাঝারি*
 - [ ] **B10** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*
 - [ ] **B11** Set bill `1000`, advance `1000`, save. Expect: saved, বাকি = **0** — *risk: মাঝারি*
@@ -63,7 +63,8 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **C3** Try adding `ZTEST TECH` again. Expect: toast "এই নামে ইতিমধ্যে একজন টেকনিশিয়ান আছে।" — *risk: নেই*
 - [ ] **C4** Open the technician dropdown in the entry form. Expect: `ZTEST TECH` is there — *risk: নেই*
 - [ ] **C5** Look at the dashboard cards. Expect: **5 cards** (4 + the new one) — *risk: নেই*
-- [ ] **C6** ✏️ edit → type `ZTEST RENAMED` → **সেভ**. Expect: a confirm dialog — *risk: নেই*
+- [ ] **C5b** Create one entry assigned to **ZTEST TECH** first. Expect: it saves — *risk: মাঝারি*
+- [ ] **C6** ✏️ edit → type `ZTEST RENAMED` → **সেভ**. Expect: a confirm dialog naming the row count (only appears because that technician owns a job) — *risk: নেই*
 - [ ] **C7** Click **বাতিল**. Expect: nothing changes, the old name stays — *risk: নেই*
 - [ ] **C8** ✏️ → **সেভ** → **হ্যাঁ, বদলান**. Expect: toast "(1টি পুরনো রেকর্ড সহ)", and the new name is in both the dropdown and the card — *risk: মাঝারি*
 - [ ] **C9** ✏️ edit the old `ZTEST01` row. Expect: technician shows **`ZTEST RENAMED`** (history was rewritten) — *risk: নেই*
@@ -99,7 +100,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **E1** Click **খরচ**. Expect: the খরচ column toggles (hidden by default = customer privacy) — *risk: নেই*
 - [ ] **E2** Click a status badge 3 times. Expect: পেন্ডিং → চলছে → সম্পন্ন → ডেলিভারি — *risk: মাঝারি*
 - [ ] **E3** Click once more on ডেলিভারি. Expect: toast "এটা ডেলিভারি হয়ে গেছে" — *risk: নেই*
-- [ ] **E4** Search by name / ID / phone / model / problem. Expect: each filters — *risk: নেই*
+- [ ] **E4** Search by name / phone / model. Expect: each filters to one row. Note: the box is a **substring** match, so a bare ID like `1` also matches `10`, `11`, `12` — use a longer, unambiguous term — *risk: নেই*
 - [ ] **E5** Search for something impossible. Expect: "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।" — *risk: নেই*
 - [ ] **E6** On a Delivered row with বাকি > 0. Expect: **"⚠️ টাকা বাকি"** — *risk: নেই*
 - [ ] **E7** 🗑️ ডিলিট → **বাতিল**. Expect: nothing happens — *risk: নেই*
@@ -155,7 +156,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present, and no cell starting with `=1+1` executes as a formula — *risk: নেই*
 - [ ] **I3** Click **Restore**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
 - [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
-- [ ] **I5** Click **বাতিল**. Expect: nothing happens — *risk: নেই*
+- [ ] **I5** Close the dialog instead of clicking **নিশ্চিত?** again (there is no cancel button — the second click is what executes). Expect: nothing changes — *risk: নেই*
 - [ ] **I6** Add a fresh `ZTEST99` entry, then Restore an older snapshot. Expect: `ZTEST99` **disappears** and the earlier data returns — *risk: সবচেয়ে বেশি*
 - [ ] **I7** Read the toast. Expect: "ফিরিয়ে আনা হয়েছে" and that a safety copy was kept — *risk: নেই*
 - [ ] **I8** Open **⚙️ টেকনিশিয়ান** after the restore. Expect: the **roster is intact** — restore only swaps `Service` rows — *risk: নেই*
@@ -168,6 +169,7 @@ of this checklist **byte-identical** — see step L3.
 
 - [ ] **J1** Open two tabs, add an entry in one, press **Sync** in the other. Expect: the new row appears — *risk: মাঝারি*
 - [ ] **J2** Click **সেভ করুন** three times very fast. Expect: **one** row is created (not three) and the button disables — *risk: মাঝারি*
+- [ ] **J2b** Save one entry, then immediately start another **without touching the technician dropdown**. Expect: the dropdown is still pre-filled and the second save succeeds — *risk: মাঝারি*
 - [ ] **J3** Enter a 50+ character customer name and a long problem. Expect: the table does not break and the page does not scroll sideways — *risk: মাঝারি*
 - [ ] **J4** Use shop cost `*M#` and `২৪০০` on different rows. Expect: each is costed correctly — *risk: মাঝারি*
 - [ ] **J5** Turn off the internet and refresh the page. Expect: everything still works (fully offline) — *risk: নেই*

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,10 @@ export function ServiceForm({
 }) {
   const [f, setF] = useState(() => (initial ? toForm(initial) : empty));
   const [saving, setSaving] = useState(false);
+  // A ref, not the `saving` state: three clicks inside one tick all see
+  // saving===false because React has not re-rendered yet, which created three
+  // duplicate entries. The ref flips synchronously.
+  const savingRef = useRef(false);
   const editing = initial !== null;
 
   /**
@@ -141,7 +145,7 @@ export function ServiceForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (savingRef.current) return;
 
     let payload;
     try {
@@ -168,6 +172,7 @@ export function ServiceForm({
       );
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       const body = {
@@ -193,11 +198,15 @@ export function ServiceForm({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "সেভ করা যায়নি");
       toast.success(editing ? "আপডেট হয়েছে" : "সেভ হয়েছে");
-      if (!editing) setF(empty);
+      // Reset with a valid technician: the roster-change effect below only runs
+      // when `techOptions` changes, so a plain `setF(empty)` left the select
+      // blank and the NEXT save failed with "সঠিক টেকনিশিয়ান বাছুন".
+      if (!editing) setF({ ...empty, technician: techOptions[0] ?? "" });
       onSaved();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "সেভ করা যায়নি");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

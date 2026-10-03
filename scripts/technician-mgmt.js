@@ -6,6 +6,7 @@
  */
 const {
   api,
+  clickDailyRowButton,
   closeBrowser,
   dailyRows,
   dhakaToday,
@@ -460,6 +461,87 @@ let browser = null;
   }
 
   const realErrors = errors();
+  // ---- T17: after saving, the next entry must NOT find a blank technician ----
+  // Regression: the form used to reset with technician:"" while the roster-sync
+  // effect only ran on mount, so every save after the first failed with
+  // "সঠিক টেকনিশিয়ান বাছুন" until a manual reload.
+  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await waitDailyRow(page, OWNER, true).catch(() => null);
+  const fillAndSave = async (name) => {
+    await typeInto(page, "svc-name", name);
+    await typeInto(page, "svc-phone", "01700000021");
+    await typeInto(page, "svc-model", "M");
+    await typeInto(page, "svc-problem", "P");
+    await typeInto(page, "svc-bill", "500");
+    await submitButton(page, "সেভ করুন");
+    await page.waitForFunction(
+      (n) => document.body.textContent.includes(n),
+      { polling: 300, timeout: 15000 },
+      name
+    );
+  };
+  const first = uniqueName("SeqA");
+  const second = uniqueName("SeqB");
+  await fillAndSave(first);
+  const afterFirst = await page.$eval("#svc-tech", (el) => el.textContent.trim());
+  await fillAndSave(second);
+  const secondRow = (await api(page, `/api/services?date=${TODAY}`)).body.services.find(
+    (r) => r.customerName === second
+  );
+  check(
+    "T17",
+    "two entries in a row save without re-picking the technician",
+    !!secondRow && !!secondRow.technician && afterFirst.length > 0,
+    `after first save dropdown="${afterFirst}", second row technician=${secondRow && secondRow.technician}`
+  );
+
+  // ---- T18: rapid triple-click on save creates exactly one row ----
+  // Regression: `if (saving) return` reads React state, which has not updated
+  // yet within one tick, so three clicks fired three POSTs.
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await waitDailyRow(page, first, true);
+  const rapid = uniqueName("Rapid");
+  await typeInto(page, "svc-name", rapid);
+  await typeInto(page, "svc-phone", "01700000022");
+  await typeInto(page, "svc-model", "M");
+  await typeInto(page, "svc-problem", "P");
+  await typeInto(page, "svc-bill", "450");
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll("form button[type='submit']")].find((x) =>
+      x.textContent.includes("সেভ")
+    );
+    b.click();
+    b.click();
+    b.click();
+  });
+  await new Promise((r) => setTimeout(r, 2500));
+  const rapidRows = (await api(page, `/api/services?date=${TODAY}`)).body.services.filter(
+    (r) => r.customerName === rapid
+  );
+  check("T18", "triple-clicking save creates exactly one row", rapidRows.length === 1, `created ${rapidRows.length}`);
+
+  // ---- T19: the printed receipt never carries the app footer ----
+  // Regression: <footer> sat outside <main>, so the dark banner (shop name,
+  // "১০০% অফলাইন") printed underneath the customer's bill.
+  await clickDailyRowButton(page, rapid, "বিল প্রিন্ট");
+  await page.waitForFunction(() => document.body.textContent.includes("বিল প্রিভিউ"), {
+    polling: 300,
+    timeout: 10000,
+  });
+  await page.emulateMediaType("print");
+  await new Promise((r) => setTimeout(r, 500));
+  const footerHidden = await page.evaluate(
+    () => getComputedStyle(document.querySelector("footer")).display === "none"
+  );
+  await page.emulateMediaType("screen");
+  await page.keyboard.press("Escape");
+  check(
+    "T19",
+    "app footer is hidden in print (never on a customer bill)",
+    footerHidden,
+    `footer display=${footerHidden ? "none" : "visible"}`
+  );
+
   check("T16", "zero JS errors", realErrors.length === 0, realErrors.slice(0, 3).join(" | "));
   console.log(results.join("\n"));
   await closeBrowser(browser);

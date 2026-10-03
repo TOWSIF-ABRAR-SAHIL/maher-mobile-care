@@ -76,6 +76,7 @@ export function GlobalServiceSearch({
         <div className="relative sm:w-80">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
+            id="global-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="নাম, ফোন, মডেল, সমস্যা বা বিল নং…"

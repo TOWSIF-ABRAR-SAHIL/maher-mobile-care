@@ -338,7 +338,7 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (7 suites, 129 checks) entirely on
+`npm test` runs the full regression (7 suites, 132 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
@@ -359,9 +359,13 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Latest full run: **7/7 suites, 129/129 checks** — core E2E 9 · P0 E2E 13 ·
-  Lane A 22 · Lane B+C 15 · API 43 · roster E2E 21 · responsive 6 · 0 FAIL,
+- Latest full run: **7/7 suites, 132/132 checks** — core E2E 9 · P0 E2E 13 ·
+  Lane A 22 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · 0 FAIL,
   0 JS errors.
+- **The by-hand checklist is executed too.** All 110 steps of
+  `MANUAL-TEST.md` were run end-to-end against a throwaway database — including
+  printing a real PDF and reading it back — and every one passes. That pass is
+  what found the three bugs listed in §9.
 - Desktop + 360px mobile + print-emulation verified; the shop DB stayed
   byte-identical (hash-checked).
 
@@ -441,6 +445,37 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   offered, marked “নিষ্ক্রিয়”).
 - Cards are *active ∪ worked-today*, matched case-insensitively, so
   `sum(card counts) === আজকের মোট কাজ` always holds — asserted by `TC11`.
+
+**v1.1.1 — three defects the by-hand checklist caught**
+
+None of these were visible to the browser suite; all three came from executing
+`MANUAL-TEST.md` the way a shop staff member would.
+
+- **The app footer printed on the customer's bill.** `<footer>` sat outside
+  `<main>`, so the dark banner (shop name, "১০০% অফলাইন", "ডেটা আপনার পিসিতেই
+  থাকে") appeared under every receipt. It is now hidden while a receipt is open,
+  the same rule `<main>` already used — a dashboard printout still carries the
+  shop name. Regression test `T19`.
+- **The second entry in a row could not be saved.** Resetting the form used
+  `technician: ""`, but the roster-sync effect only runs when the option list
+  changes, so after saving once the dropdown was blank and the next save failed
+  with "সঠিক টেকনিশিয়ান বাছুন" until a manual reload. The reset now carries a
+  valid technician. Regression test `T17`.
+- **Triple-clicking save created three duplicate rows.** `if (saving) return`
+  reads React state, which has not re-rendered yet inside a single tick, so all
+  three clicks passed the guard. A ref now flips synchronously; the status badge
+  got the same guard. Regression test `T18`.
+
+Also: returning to a backgrounded tab now refetches the roster, so a change made
+in another tab can no longer leave the entry form holding an unselectable
+technician.
+
+**Known behaviour, not a bug**
+
+- The daily search box is a substring match across name/id/phone/model/problem,
+  so searching `1` also matches ids `10`, `11`, `12`. Use a longer term.
+- Card values always render **Western** digits, even though Bengali digits are
+  accepted on input (`১৬০০` → `1,600`).
 
 **Deliberately untouched**
 - `Service` keeps all 16 columns and `app/api/backup/*` is byte-for-byte

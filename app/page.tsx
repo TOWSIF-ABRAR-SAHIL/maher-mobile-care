@@ -271,11 +271,16 @@ export default function Home() {
       if (document.visibilityState === "visible") {
         void load(dateRef.current, false);
         void fetchMonthly(rangeRef.current);
+        // The roster can change in another tab (or via the manager while this
+        // tab was in the background). Without this the entry form keeps a
+        // technician that is no longer selectable and every save is rejected
+        // with "সঠিক টেকনিশিয়ান বাছুন" until a manual reload.
+        void loadTechnicians();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [load, fetchMonthly]);
+  }, [load, fetchMonthly, loadTechnicians]);
 
   // Dine prothom khulle auto snapshot (staff vulleo backup thakbe).
   // Ref guard: StrictMode double-invokes effects in dev — one snapshot only.
@@ -407,7 +412,14 @@ export default function Home() {
           </div>
         </div>
       </main>
-      <footer className="mx-auto max-w-7xl px-3 pb-6">
+      {/* The banner is app chrome. It belongs on a dashboard printout (it
+          carries the shop name) but must never end up on a customer's bill,
+          so it is hidden only while a receipt is open — same rule as <main>. */}
+      <footer
+        className={`mx-auto max-w-7xl px-3 pb-6 ${
+          receipt ? "print:hidden" : ""
+        }`}
+      >
         <div className="overflow-hidden rounded-lg bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow print:bg-white print:text-black">
           <div className="px-4 py-4 text-center">
             <p className="text-base font-extrabold tracking-wide sm:text-lg">
