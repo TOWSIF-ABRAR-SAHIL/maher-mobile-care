@@ -203,3 +203,29 @@ Eita ami test korechi: `app` folder delete kore notun file diye chalale o
 `data` folder-r record, technician ar backup sob bachi thake.
 
 ---
+
+## Client-ke dewar age checklist (tumi korbe)
+
+Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
+
+1. **Zip-ta test-data mukto ki na dekho:**
+   ```cmd
+   unzip -l out/MAHER-Windows-Client.zip | grep -iE '\.db($|-)|\.env($|-)'
+   ```
+   Kichu ashbe na (khaali). `data\` folder-e shudhu `KEEP-THIS-FOLDER.txt`
+   thakbe — kono `shop.db` ba `backups\` thakbe na.
+
+2. **Build thik commit theke ki na dekho:**
+   ```cmd
+   unzip -p out/MAHER-Windows-Client.zip MAHER/build-info.json
+   ```
+   `sourceCommit` latest commit-er sathe milbe, `target` hobe `windows-x64`.
+
+3. **Client package-ta notun (test zip na):** test-er jonno
+   `MAHER-Windows-Test.zip`, client-er jonno **shudhu**
+   `MAHER-Windows-Client.zip` pathabe.
+
+4. Client-er PC-te prothom run-e 4 default technician ashbe
+   (ASRAFUL, NAYEM, NURUL, RONI) — test-er kono record thakbe na.
+
+---
