@@ -110,10 +110,12 @@ editing, and the CLI can no longer drift away from the running app.
 ### 2.1 Windows client delivery
 
 ```bash
-npm run build:portable     # → out/MAHER/  (and out/MAHER-Windows-Test.zip if you zip it)
+npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client copies that folder to `C:\MAHER` and double-clicks
+The client zip ships separately on GitHub as release `v1.0.0-windows`
+(`MAHER-Windows-Client.zip`, test-data free). The client copies that folder
+to `C:\MAHER` and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
 internet. The shop window opens in Chrome/Edge app mode — no address bar, so it
 behaves like normal desktop software.
@@ -121,7 +123,9 @@ behaves like normal desktop software.
 ```
 MAHER\
 ├── MAHER MOBILE CARE.bat   ← double-click this
+├── MAHER STOP.bat          ← stops the server by port owner
 ├── start-maher.bat         ← server-only fallback, for troubleshooting
+├── README.txt              ← Bangla instructions for the shopkeeper
 ├── runtime\node.exe        ← bundled Node 22, nothing to install
 ├── app\                    ← standalone server + assets + migrations
 ├── data\                   ← shop.db + backups\  (THE SHOP'S RECORDS)
@@ -167,6 +171,15 @@ have caught:
   async `'error'` event, so the surrounding `try/catch` never caught it. Every
   browser launch is now error-handled, and the last resort is `rundll32` rather
   than `cmd /c start`.
+- **The build machine's path was baked into the bundle.** Next inlines
+  `import.meta.url`, so the generated Prisma Client shipped
+  `fileURLToPath("file:///home/me/app/...")`. That path exists on the build
+  machine, so every Linux test passed — on Windows it names a folder that does
+  not exist, and since every API route imports the client, the page rendered
+  while no API call could succeed (`ERR_INVALID_FILE_URL_PATH`).
+  `scripts/build-portable.mjs` now rewrites that prefix to a runtime expression
+  reading `__MAHER_APP__` (set to `__dirname` at the top of `server.js`), and
+  the build fails if anything baked survives or a rewritten file stops parsing.
 
 `/api/health` never *fails* because the database is unhappy — the server is still
 listening and support needs to see that — but it does report the absolute
@@ -201,7 +214,9 @@ prisma7.config.ts           → Prisma CLI config; imports lib/db-path so the CL
 start-maher.bat             → dev-machine launcher (builds once, then start)
 packaging/                  → launchers copied verbatim into the Windows package
   MAHER MOBILE CARE.bat     → client double-click: first-run + start + open window
+  MAHER STOP.bat            → stops the shop by port owner
   start-maher.bat           → server-only fallback for troubleshooting
+  README.txt                → Bangla instructions shipped inside the package
 PREPARE-WINDOWS.md          → step-by-step Windows handover guide (Bangla)
 next.config.mjs             → keeps native better-sqlite3 out of the webpack bundle;
                               MAHER_STANDALONE=1 opts into the standalone build

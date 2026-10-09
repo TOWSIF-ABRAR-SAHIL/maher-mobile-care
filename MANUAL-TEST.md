@@ -3,7 +3,7 @@
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 7 suites, 129 checks (see README §7).
+- **Automated coverage:** `npm test` → 8 suites, 146 checks (see README §7).
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 

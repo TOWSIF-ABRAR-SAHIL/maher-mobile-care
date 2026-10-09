@@ -7,9 +7,11 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 
 ## Tumi Ja Pabe
 
-Ekta zip file: `MAHER-Windows-Test.zip` (43 MB)
+Ekta zip file: `MAHER-Windows-Client.zip` (44 MB) — GitHub release
+`v1.0.0-windows`-teo ache.
 
-Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaoge.
+Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
+(Purono `MAHER-Windows-Test.zip` test-er jonno chilo — client-ke dibe na.)
 
 ---
 
@@ -49,10 +51,11 @@ Ekta jinis mone rakhben: jodi apni *kono karan e* onno program port 3000 niye
 rakhe, MAHER seta chay **na** - bondho kore apnar dey. Eta amader niom karon
 port o jani amader.
 
-### Ekhon-o verify kora hoy ni
+### Windows-e verify hoye geche
 
-Windows-e `.bat` file chalanor command gulo - karon amar kache Windows machine
-ba CI nai. Linux-e sob test chole, ar Windows-e chalanor age porer shathe pori jani.
+Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
+kintu fix-er por **data thik load hocche** — 4 technician, stats, services
+sob. Tumi nije Windows-e chaliye dekhecho.
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -72,7 +75,7 @@ EXT4 na, tai direct kaj korbe na.
 Simplest upay: zip-ta pen-drive-e copy kore Windows-e niye ashun.
 
 Jodi zip-ta amar shared storage-e thaki, tai oi storage Windows-e
-Windows Explorer diye khule `MAHER-Windows-Test.zip` ta pen-drive-e
+Windows Explorer diye khule `MAHER-Windows-Client.zip` ta pen-drive-e
 copy kore nij laptop-e niye ashun.
 
 ---
@@ -95,10 +98,14 @@ MAHER\
 ├── MAHER MOBILE CARE.bat
 ├── MAHER STOP.bat
 ├── start-maher.bat
+├── README.txt
 ├── runtime\
 ├── app\
 └── data\
 ```
+
+`README.txt` khulle Bangla chalano niyom pabe — client-ke oita-i
+prothome porte bolo.
 
 Ekta jinis khub important: `runtime`, `app`, `data` — ei tinta folder
 ektathe move korben na. Poora MAHER folder copy korte hobe.
