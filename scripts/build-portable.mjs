@@ -543,10 +543,11 @@ fs.mkdirSync(bs3TargetDir, { recursive: true });
 fs.copyFileSync(bs3Node, path.join(bs3TargetDir, "better_sqlite3.node"));
 log(`installed Windows better-sqlite3 ${BETTER_SQLITE3_VERSION} (Node ${NODE_VERSION} ABI ${NODE_ABI})`);
 
-// 7. Launchers.
+// 7. Launchers + the client readme the shopkeeper actually reads.
 fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER MOBILE CARE.bat"), path.join(outDir, "MAHER MOBILE CARE.bat"));
 fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER STOP.bat"), path.join(outDir, "MAHER STOP.bat"));
 fs.copyFileSync(path.join(repoRoot, "packaging", "start-maher.bat"), path.join(outDir, "start-maher.bat"));
+fs.copyFileSync(path.join(repoRoot, "packaging", "README.txt"), path.join(outDir, "README.txt"));
 log("copied launchers");
 
 // 8. Data directory placeholder + manifest.
