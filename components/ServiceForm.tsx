@@ -34,7 +34,6 @@ const empty = {
   problem: "",
   totalBill: "",
   advance: "",
-  cashReceived: "",
   status: "In-Progress",
   shopExpense: "",
   serviceDate: "",
@@ -45,9 +44,6 @@ const empty = {
  * the parent remounts this form per editing id (key), so values are correct
  * from the very first render. Setting Select values in an effect instead
  * makes Radix fire onValueChange("") and silently wipe technician/status.
- *
- * `cashReceived` is deliberately not restored: it is a till calculator for
- * the current payment, never part of the saved record.
  */
 function toForm(s: ServiceDTO) {
   return {
@@ -58,7 +54,6 @@ function toForm(s: ServiceDTO) {
     problem: s.problem,
     totalBill: String(s.totalBill),
     advance: String(s.advance),
-    cashReceived: "",
     status: s.status,
     shopExpense: s.shopExpense ?? "",
     serviceDate: s.serviceDate.slice(0, 10),
@@ -129,22 +124,6 @@ export function ServiceForm({
   const billNum = parseBnNumber(f.totalBill) ?? 0;
   const advNum = parseBnNumber(f.advance) ?? 0;
   const due = computeDue(billNum, advNum);
-
-  // Till calculator only — the amount kept from the cash handed over is the
-  // জমা (advance); anything above that is change to return. Comparing against
-  // the bill instead was wrong: bill 1500 / advance 500 / cash 1000 must say
-  // "return 500", not "need 500 more".
-  const cashNum = parseBnNumber(f.cashReceived) ?? 0;
-  const changeDiff = cashNum - advNum;
-  const changeGap = cashNum > 0 ? Math.abs(changeDiff) : 0;
-  const changeLabel =
-    cashNum <= 0
-      ? "ফেরত দেওয়ার টাকা (হিসাবের জন্য)"
-      : changeDiff > 0
-        ? "ফেরত দিন (বাকি টাকা)"
-        : changeDiff === 0
-          ? "ঠিক আছে"
-          : "আরও দরকার";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,29 +278,6 @@ export function ServiceForm({
               inputMode="numeric"
             />
           </div>
-        </div>
-        <div>
-          <Label htmlFor="svc-cash">কাস্টমারের কাছ থেকে পাওয়া টাকা (৳)</Label>
-          <Input
-            id="svc-cash"
-            value={f.cashReceived}
-            onChange={set("cashReceived")}
-            placeholder="0"
-            inputMode="numeric"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            শুধু হিসাবের জন্য — সেভ হয় না। জমার বেশি টাকা হলে ফেরত দেওয়ার টাকা
-            নিচে দেখা যাবে।
-          </p>
-        </div>
-        <div>
-          <Label htmlFor="svc-change">{changeLabel} (৳)</Label>
-          <Input
-            id="svc-change"
-            value={formatTaka(changeGap).replace("৳", "").trim()}
-            readOnly
-            className="bg-gray-50 font-semibold"
-          />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>

@@ -10,8 +10,8 @@ import {
 export const SERVICE_VALIDATION_PATTERN =
   /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|সঠিক তারিখ|ভুল ডেটা|must be|Invalid date/;
 
-/** Advance (জমা) may never exceed the bill — cash above the bill is change,
- *  which belongs in the form's calculator and never in the ledger. */
+/** Advance (জমা) may never exceed the bill — anything above the bill is
+ *  overpay, not a valid ledger value. */
 export const OVERPAY_MESSAGE = "জমা মোট বিলের বেশি হতে পারে না";
 
 export function isServiceValidationError(err: unknown): boolean {

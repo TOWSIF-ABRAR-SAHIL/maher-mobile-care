@@ -42,17 +42,15 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **B1** Fill: customer `ZTEST01`, phone `01700000001`, model `Redmi Note 10`, problem `ডিসপ্লে`, technician **NURUL**, shop cost code `*M#` — *risk: নেই*
 - [ ] **B2** Type total bill `১৬০০` (Bengali digits). Expect: বাকি = `1,600` — *risk: নেই*
 - [ ] **B3** Type advance `৫০০`. Expect: বাকি = `1,100` — *risk: নেই*
-- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `১০০০`. Expect: **ফেরত দিন = ৫০০** (bill 1600, জমা 500 — change is calculated against জমা) — *risk: নেই*
-- [ ] **B5** Change it to `৩০০`. Expect: **আরও দরকার = ২০০** — *risk: নেই*
-- [ ] **B6** Clear the field. Expect: the box shows `0` and the label reads "ফেরত দেওয়ার টাকা (হিসাবের জন্য)" — *risk: নেই*
-- [ ] **B7** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears, and কাজের অবস্থা resets to **চলমান** (the new-entry default) — *risk: মাঝারি*
-- [ ] **B8** Read the daily cards. Expect: কাজ ১ · বিল 1,600 · বাকি 1,100 · খরচ **৳0** (a code counts as 0) (digits are always shown Western, even though Bengali input is accepted) plus a **"+1টি কোড"** hint — *risk: নেই*
-- [ ] **B9** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: খরচ card = `৳১,২০০` and the "+কোড" hint disappears — *risk: মাঝারি*
-- [ ] **B10** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*
-- [ ] **B11** Set bill `1000`, advance `1000`, save. Expect: saved, বাকি = **0** — *risk: মাঝারি*
-- [ ] **B12** Press save on an empty form. Expect: toast "কাস্টমারের নাম দিন" — *risk: নেই*
-- [ ] **B13** Type `abc` in the bill box and save. Expect: toast "মোট বিলে সঠিক সংখ্যা দিন" — *risk: নেই*
-- [ ] **B14** Use phone `০১৭১১২২৩৪৪৫` and bill `1,600`. Expect: accepted (Bengali digits + comma) — *risk: মাঝারি*
+- [ ] **B4** Confirm the form has **no** “কাস্টমারের কাছ থেকে পাওয়া টাকা” or “ফেরত দেওয়ার টাকা” field — the cash/change calculator was removed at the client's request — *risk: নেই*
+- [ ] **B5** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears, and কাজের অবস্থা resets to **চলমান** (the new-entry default) — *risk: মাঝারি*
+- [ ] **B6** Read the daily cards. Expect: কাজ ১ · বিল 1,600 · বাকি 1,100 · খরচ **৳0** (a code counts as 0) (digits are always shown Western, even though Bengali input is accepted) plus a **"+1টি কোড"** hint — *risk: নেই*
+- [ ] **B7** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: খরচ card = `৳১,২০০` and the "+কোড" hint disappears — *risk: মাঝারি*
+- [ ] **B8** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*
+- [ ] **B9** Set bill `1000`, advance `1000`, save. Expect: saved, বাকি = **0** — *risk: মাঝারি*
+- [ ] **B10** Press save on an empty form. Expect: toast "কাস্টমারের নাম দিন" — *risk: নেই*
+- [ ] **B11** Type `abc` in the bill box and save. Expect: toast "মোট বিলে সঠিক সংখ্যা দিন" — *risk: নেই*
+- [ ] **B12** Use phone `০১৭১১২২৩৪৪৫` and bill `1,600`. Expect: accepted (Bengali digits + comma) — *risk: মাঝারি*
 
 ---
 

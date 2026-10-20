@@ -260,7 +260,7 @@ components/
   TechnicianStats.tsx      → 4 technician cards (NURUL/RONI/ASRAFUL/NAYEM)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ)
   MonthlySummary.tsx       → range report: presets + custom থেকে–পর্যন্ত
-  ServiceForm.tsx          → entry form (30%), live due + change calc, edit reuse
+  ServiceForm.tsx          → entry form (30%), live due calc, edit reuse
   ServiceTable.tsx         → service list (70%): search, chips, eye, 1-click status
   OutstandingDues.tsx      → all-dates বাকি list with call/WhatsApp buttons
   GlobalServiceSearch.tsx  → all-dates search across every date
@@ -333,14 +333,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - Entry form — all fields, **বাকি auto-calculates live**, Bengali digits
   accepted (`১৬০০` → 1600). Edit reuses the same form (incl. date correction —
   no delete+recreate).
-- **কাস্টমারের কাছ থেকে পাওয়া টাকা (Cash Received)** — a till calculator only.
-  Type what the customer handed over and the box below shows the change to
-  return, calculated against **জমা (the amount kept)** — not the bill. Example:
-  bill 1500, জমা 500, cash 1000 → “ফেরত দিন ৳500”; cash 300 → shortfall 200.
-  **It is never saved and never sent to the server.**
 - **Overpay is rejected.** জমা can never exceed মোট বিল — the save is blocked
-  with “জমা মোট বিলের বেশি হতে পারে না”. Cash above the জমা belongs in the
-  calculator above, not in the ledger.
+  with “জমা মোট বিলের বেশি হতে পারে না”.
 - **💰 বাকি তালিকা (সব তারিখ)** — every active record with money outstanding,
   independent of the selected day, with call + WhatsApp buttons per row.
   The headline **মোট বাকি** is a SQL aggregate over *all* matching rows, so it
@@ -384,9 +378,6 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   in the shared validator, so both the form and `POST`/`PUT /api/services`
   reject it with 400. A bill paid in full (`advance = totalBill`) is fine and
   simply leaves `due = 0`, which is what removes it from বাকি তালিকা.
-- **Cash Received / change is never stored.** It exists only to help the cashier
-  return change; there is no `cashReceived` column and no payment is recorded
-  beyond the single `advance` figure.
 - Repair status and payment are **independent**: setting `Completed` or
   `Delivered` does not clear বাকি. A row leaves বাকি তালিকা only when its money
   is actually collected.
@@ -436,8 +427,8 @@ One table, `Service`, 16 columns (grouped below by role):
 | `archived` | Boolean | soft-delete flag; hides the row from every list and stat |
 | `createdAt`, `updatedAt` | DateTime | audit trail (used by the CSV export) |
 
-There is deliberately **no `cashReceived` column and no payment-history table** —
-`advance` is the single payment figure the shop records.
+There is deliberately **no payment-history table** — `advance` is the single
+payment figure the shop records.
 
 A second, tiny table holds the roster (v1.1):
 
@@ -538,9 +529,9 @@ Lane A 23 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · launcher
   and agent tool folders are ignored. Private because the code carries the shop's
   business logic and brand name; it stays a template, not something a client can
   fork and resell.
-- **Overpay rejected, change calculated.** `lib/service-validation.ts` refuses
-  `advance > totalBill` on create *and* partial update (400, nothing written),
-  and the form gained a Cash Received calculator that is UI-only.
+- **Overpay rejected.** `lib/service-validation.ts` refuses `advance > totalBill`
+  on create *and* partial update (400, nothing written). The Cash Received
+  calculator added in v1.0.1 was removed again in v1.0.2 at the client's request.
 - **বাকি total can no longer be truncated.** `GET /api/services/dues` computes
   `count` and `totalDue` with a SQL aggregate over every matching row while the
   rendered list stays capped at 500; the response carries `hasMore`/`listed`

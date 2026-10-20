@@ -26,11 +26,12 @@ Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
 suite pass koreche — **8 suites, 147 checks**, live data er hash-o same ache.
 
-Prothom asol shop-test e duita bug pawa gelo, duitai 1.0.1-e fix:
+Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
+fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
 
-| Bug | Ekhon ki |
+| Bug / change | Ekhon ki |
 |---|---|
-| Bill 1500, জমা 500, cash 1000 dile "আরও দরকার 500" dekhato | Ekhon **"ফেরত দিন 500"** — হিসাব হয় **জমা**র সাথে, bill er sathe na |
+| Bill 1500, জমা 500, cash 1000 calculator | **Bad** — form e cash/change field nei; shudhu বিল/জমা/বাকি |
 | Notun entry default "Pending" hoye jeto | Ekhon default **চলমান (In-Progress)** |
 
 Ei duita chara Windows-er jonne aro kichu fix ache (backup path, path-er space
@@ -261,7 +262,7 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    ```powershell
    tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `version` hobe `1.0.1`, `sourceCommit` latest commit-er sathe milbe,
+   `version` hobe `1.0.2`, `sourceCommit` latest commit-er sathe milbe,
    `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno

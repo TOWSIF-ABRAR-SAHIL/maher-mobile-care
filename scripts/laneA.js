@@ -158,27 +158,29 @@ let browser = null;
   );
   await new Promise((r) => setTimeout(r, 1000));
 
-  // ---- A3: cash change compares cash with the amount kept (জমা) ----
+  // ---- A3: due calc, cash/change calculator removed, overpay guard ----
   await typeInto(page,"svc-bill", "2000");
   await typeInto(page,"svc-adv", "500");
-  await typeInto(page,"svc-cash", "2500");
   await new Promise((r) => setTimeout(r, 300));
   check("A3a", "due stays bill - advance (1500)", (await page.$eval("#svc-due", (el) => el.value)) === "1,500");
   check(
     "A3b",
-    "cash above advance shows change 2000",
-    (await page.$eval("#svc-change", (el) => el.value)) === "2,000"
+    "cash-received field and hint removed",
+    (await page.$("#svc-cash")) === null &&
+      !(await page.evaluate(() =>
+        document.body.textContent.includes("কাস্টমারের কাছ থেকে পাওয়া টাকা")
+      ))
   );
-  await typeInto(page,"svc-cash", "300");
-  await new Promise((r) => setTimeout(r, 300));
   check(
     "A3c",
-    "short cash shows shortfall 200",
-    (await page.$eval("#svc-change", (el) => el.value)) === "200"
+    "change-return field removed",
+    (await page.$("#svc-change")) === null &&
+      !(await page.evaluate(() =>
+        document.body.textContent.includes("ফেরত দেওয়ার টাকা")
+      ))
   );
   // Overpay validation is independent: advance above the bill is rejected.
   await typeInto(page,"svc-adv", "2500");
-  await typeInto(page,"svc-cash", "0");
   await new Promise((r) => setTimeout(r, 300));
   check("A3d", "overpay previews due 0", (await page.$eval("#svc-due", (el) => el.value)) === "0");
   const c3 = await rowCount();
