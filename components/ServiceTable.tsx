@@ -6,14 +6,18 @@ import {
   ClipboardList,
   Eye,
   EyeOff,
+  Loader2,
+  MessageCircle,
   Pencil,
   ReceiptText,
   RotateCcw,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/StatusBadge";
+import { whatsAppHref } from "@/lib/contact";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +48,7 @@ export function ServiceTable({
   date,
   onEdit,
   onReceipt,
+  onSharePdf,
   onChanged,
   technicianFilter,
   onClearTechnician,
@@ -53,6 +58,7 @@ export function ServiceTable({
   date: string;
   onEdit: (service: ServiceDTO) => void;
   onReceipt: (service: ServiceDTO) => void;
+  onSharePdf: (service: ServiceDTO) => Promise<void>;
   onChanged: () => void;
   /** v1.1: show only this technician's rows, or null for everyone. */
   technicianFilter?: string | null;
@@ -68,6 +74,8 @@ export function ServiceTable({
   // Privacy: খরচ column starts hidden — eye click reveals it per session.
   const [showExpense, setShowExpense] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
+  const [sharingId, setSharingId] = useState<number | null>(null);
+  const sharingRef = useRef(false);
 
   const loadArchived = async () => {
     setArchLoading(true);
@@ -189,6 +197,22 @@ export function ServiceTable({
       toast.error(err instanceof Error ? err.message : "ফিরিয়ে আনা যায়নি");
     } finally {
       setRestoring(null);
+    }
+  };
+
+  const sharePdf = async (service: ServiceDTO) => {
+    if (sharingRef.current) return;
+    sharingRef.current = true;
+    setSharingId(service.id);
+    try {
+      await onSharePdf(service);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "PDF তৈরি করা যায়নি"
+      );
+    } finally {
+      sharingRef.current = false;
+      setSharingId(null);
     }
   };
 
@@ -394,6 +418,48 @@ export function ServiceTable({
                           onClick={() => onReceipt(s)}
                         >
                           <ReceiptText />
+                        </Button>
+                        {s.phone.trim() ? (
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-green-700"
+                            title="WhatsApp (chat/call)"
+                          >
+                            <a
+                              href={whatsAppHref(s)}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`WhatsApp: ${s.customerName}`}
+                            >
+                              <MessageCircle />
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-green-700"
+                            title="ফোন নম্বর নেই"
+                            disabled
+                          >
+                            <MessageCircle />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-700"
+                          title="PDF শেয়ার"
+                          disabled={!s.phone.trim() || sharingId !== null}
+                          onClick={() => void sharePdf(s)}
+                        >
+                          {sharingId === s.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Share2 />
+                          )}
                         </Button>
                         <Button
                           variant="ghost"

@@ -41,4 +41,4 @@ SOMOSSA HOLE
 1. "MAHER STOP.bat" chaliye abar "MAHER MOBILE CARE.bat" chalan.
 2. Tao na hole "logs" folder-er "maher.log" file-ta support-ke pathan.
 
-Vershon: 1.0.2 (Windows 64-bit, offline)
+Vershon: 1.0.3 (Windows 64-bit, offline)

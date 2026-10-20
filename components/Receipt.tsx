@@ -1,6 +1,7 @@
 "use client";
 
 import { Printer } from "lucide-react";
+import { PaidStamp } from "@/components/PaidStamp";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,8 +23,12 @@ export function Receipt({ service }: { service: ServiceDTO }) {
   const statusBn =
     STATUS_BN[(service.status as ServiceStatus) ?? "Pending"] ??
     service.status;
+  const isPaid = service.totalBill > 0 && service.due === 0;
   return (
-    <div className="mx-auto w-full max-w-xl bg-white p-6 text-sm text-black">
+    <div
+      data-receipt
+      className="mx-auto w-full max-w-xl bg-white p-6 text-sm text-black"
+    >
       {/* Shop header */}
       <div className="text-center">
         <h1 className="text-2xl font-extrabold tracking-wide">{SHOP.name}</h1>
@@ -110,13 +115,27 @@ export function Receipt({ service }: { service: ServiceDTO }) {
         </tbody>
       </table>
 
+      {isPaid ? (
+        <div className="mt-2 flex justify-end pr-2">
+          <PaidStamp className="h-28 w-28 -rotate-6" />
+        </div>
+      ) : null}
+
       <hr className="my-3 border-t-2 border-black" />
 
       {/* Signatures */}
       <div className="mt-6 flex justify-between gap-8">
         <div className="flex-1 text-center">
-          <div className="border-t border-gray-500 pt-1 text-xs text-gray-600">
-            গ্রাহকের স্বাক্ষর
+          <div className="border-t border-gray-500 pt-1">
+            <div
+              data-customer-signature
+              className="break-words text-sm font-semibold text-black"
+            >
+              {service.customerName}
+            </div>
+            <div className="mt-0.5 text-[10px] text-gray-600">
+              গ্রাহকের স্বাক্ষর
+            </div>
           </div>
         </div>
         <div className="flex-1 text-center">

@@ -365,6 +365,34 @@ let browser = null;
   }));
   console.log("reached C3");
   check("C3", "receipt paper: dashboard+dialog hidden", paperOk.dashHidden, JSON.stringify(paperOk));
+  const receiptInfo = await page.evaluate(() => {
+    const receipt = document.querySelector('[role="dialog"] [data-receipt]');
+    const name = receipt?.querySelector("[data-customer-signature]");
+    return {
+      text: receipt?.textContent || "",
+      name: name?.textContent?.trim() || "",
+      paid: !!receipt?.querySelector("[data-paid-stamp]"),
+    };
+  });
+  check(
+    "C3a",
+    "receipt address has no Chandra Rd.",
+    !receiptInfo.text.includes("Chandra Rd.") &&
+      receiptInfo.text.includes("Nabinagar, Ashulia 1344"),
+    JSON.stringify(receiptInfo.text.slice(0, 160))
+  );
+  check(
+    "C3b",
+    "receipt signature shows customer name",
+    receiptInfo.name === REPORT_BASE,
+    JSON.stringify(receiptInfo.name)
+  );
+  check(
+    "C3c",
+    "unpaid receipt has no PAID stamp",
+    receiptInfo.paid === false,
+    JSON.stringify(receiptInfo)
+  );
   await page.emulateMediaType("screen");
   await page.keyboard.press("Escape");
   await page.evaluate(() => {
@@ -376,6 +404,131 @@ let browser = null;
   await page.waitForFunction(
     () => !document.querySelector('[role="dialog"]'),
     { polling: 200, timeout: 8000 }
+  );
+
+  // C3d–C3g: fully-paid state, paid WhatsApp message, PAID stamp, PDF share.
+  const paidUpdate = await api(page, `/api/services/${baseline.body.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ advance: 1700 }),
+  });
+  check(
+    "C3d",
+    "baseline can be marked fully paid",
+    paidUpdate.ok && paidUpdate.body.due === 0,
+    JSON.stringify(paidUpdate.body)
+  );
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForFunction(
+    (name) => document.body.textContent.includes(name),
+    { polling: 500, timeout: 30000 },
+    REPORT_BASE
+  );
+  await new Promise((r) => setTimeout(r, 800));
+
+  const paidWa = await page.evaluate((rowName) => {
+    const section = document.querySelector('[data-testid="daily-services"]');
+    const row = [...section.querySelectorAll("tbody tr")].find((tr) =>
+      tr.textContent.includes(rowName)
+    );
+    const wa = row?.querySelector('a[title="WhatsApp (chat/call)"]');
+    try {
+      return decodeURIComponent(
+        new URL(wa.getAttribute("href")).searchParams.get("text") || ""
+      );
+    } catch {
+      return "";
+    }
+  }, REPORT_BASE);
+  check(
+    "C3e",
+    "paid WhatsApp message says fully paid (no ৳0 due)",
+    paidWa.includes("সম্পূর্ণ টাকা পরিশোধ") && !paidWa.includes("৳0 বাকি"),
+    paidWa
+  );
+
+  await clickDailyRowButton(page, REPORT_BASE, "বিল প্রিন্ট");
+  await page.waitForFunction(
+    () => document.body.textContent.includes("বিল প্রিভিউ"),
+    { polling: 500, timeout: 8000 }
+  );
+  const paidReceipt = await page.evaluate(() => {
+    const receipt = document.querySelector('[role="dialog"] [data-receipt]');
+    return {
+      paid: !!receipt?.querySelector("[data-paid-stamp]"),
+      name: receipt
+        ?.querySelector("[data-customer-signature]")
+        ?.textContent?.trim(),
+    };
+  });
+  check(
+    "C3f",
+    "fully paid receipt shows PAID stamp",
+    paidReceipt.paid && paidReceipt.name === REPORT_BASE,
+    JSON.stringify(paidReceipt)
+  );
+  await page.emulateMediaType("print");
+  await new Promise((r) => setTimeout(r, 300));
+  await page.screenshot({
+    path: shot("laneBC-receipt-paid.png"),
+    fullPage: true,
+  });
+  await page.emulateMediaType("screen");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => !document.querySelector('[role="dialog"]'),
+    { polling: 200, timeout: 8000 }
+  );
+
+  // Stub the OS share sheet so the test can inspect the generated file
+  // without trying to open WhatsApp Desktop on the build machine.
+  await page.evaluate(() => {
+    window.__sharedPdf = null;
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data) => {
+        const file = data.files?.[0];
+        window.__sharedPdf = file
+          ? { name: file.name, type: file.type, size: file.size }
+          : null;
+      },
+    });
+  });
+  await clickDailyRowButton(page, REPORT_BASE, "PDF শেয়ার");
+  await page.waitForFunction(() => window.__sharedPdf !== null, {
+    polling: 500,
+    timeout: 30000,
+  });
+  const pdfInfo = await page.evaluate(() => window.__sharedPdf);
+  check(
+    "C3g",
+    "PDF share produces a non-empty application/pdf",
+    pdfInfo?.type === "application/pdf" &&
+      pdfInfo.size > 1000 &&
+      /^MAHER-Bill-/.test(pdfInfo.name),
+    JSON.stringify(pdfInfo)
+  );
+
+  const restored = await api(page, `/api/services/${baseline.body.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ advance: 500 }),
+  });
+  check(
+    "C3h",
+    "baseline advance restored after paid checks",
+    restored.ok && restored.body.due === 1200,
+    JSON.stringify(restored.body)
+  );
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForFunction(
+    (name) => document.body.textContent.includes(name),
+    { polling: 500, timeout: 30000 },
+    REPORT_BASE
   );
 
   // ---------- C4: dashboard paper ----------

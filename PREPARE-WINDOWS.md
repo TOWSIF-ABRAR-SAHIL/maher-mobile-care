@@ -8,9 +8,11 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 ## Tumi Ja Pabe
 
 Ekta zip file: `MAHER-Windows-Client.zip` — local build
-`out\MAHER-Windows-Client.zip` (v1.0.2). Eta GitHub release `v1.0.2-windows`-e
+`out\MAHER-Windows-Client.zip` (v1.0.3). Eta GitHub release `v1.0.3-windows`-e
 publish korte hobe. Ei version e cash/change calculator ta client-er request e
-bad dewa hoyeche.
+bad dewa hoyeche; sathe receipt-er address theke "Chandra Rd." bad, customer-er
+naam signature area-te, fully-paid bill-e **PAID** stamp, ar daily list-e
+WhatsApp + **PDF শেয়ার** action add kora hoyeche.
 
 > **Repo ta PRIVATE.** Tai GitHub-er link client-ke dile o kaj korbe
 > na (login chara download hobe na)। Client-ke file ta **nije** pathate
@@ -25,7 +27,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **8 suites, 147 checks**, live data er hash-o same ache.
+suite pass koreche — **8 suites, 157 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -76,7 +78,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **147/147 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **157/157 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -263,7 +265,7 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    ```powershell
    tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `version` hobe `1.0.2`, `sourceCommit` latest commit-er sathe milbe,
+   `version` hobe `1.0.3`, `sourceCommit` latest commit-er sathe milbe,
    `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno

@@ -1,9 +1,9 @@
-# Manual A-to-Z Test Checklist — MAHER MOBILE CARE v1.1
+# Manual A-to-Z Test Checklist — MAHER MOBILE CARE v1.0.3
 
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 8 suites, 147 checks (see README §7).
+- **Automated coverage:** `npm test` → 8 suites, 157 checks (see README §7).
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -130,7 +130,9 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **G5** Mark a job সম্পন্ন while বাকি > 0. Expect: it **stays** in বাকি তালিকা — this is correct: work finished ≠ money received — *risk: মাঝারি*
 - [ ] **G6** Type a single character in সব তারিখে খুঁজুন. Expect: "কমপক্ষে ২ অক্ষর লিখুন।" — *risk: নেই*
 - [ ] **G7** Search an old customer from a past date. Expect: found without changing the date — *risk: নেই*
-- [ ] **G8** Search for something that cannot match. Expect: "…দিয়ে কিছু পাওয়া যায়নি।" — *risk: নেই*
+- [ ] **G9** Click the green **WhatsApp** icon in a daily service row. Expect: that customer's WhatsApp chat opens; inside WhatsApp the **Start call** action is available — *risk: নেই*
+- [ ] **G10** Click the **PDF শেয়ার** icon in a daily service row. Expect: a PDF is generated; the Windows share sheet opens with the PDF attached. Choose WhatsApp → select the customer → confirm the PDF is attached → press **Send** — *risk: মাঝারি*
+- [ ] **G11** If the share sheet/file sharing is unavailable, click **PDF শেয়ার** again. Expect: the PDF downloads and that customer's specific `wa.me` chat opens; attach the downloaded PDF and send manually — *risk: মাঝারি*
 
 ---
 
@@ -140,9 +142,11 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **H2** Try to print before the page finishes loading. Expect: toast "পুরো পেজ লোড হওয়ার পর প্রিন্ট করুন" — *risk: নেই*
 - [ ] **H3** Click 🧾 **বিল প্রিন্ট** on a row. Expect: the "বিল প্রিভিউ (কাস্টমার কপি)" dialog — *risk: নেই*
 - [ ] **H4** Print from that dialog. Expect: **only the receipt** on paper, never the dashboard — *risk: নেই*
-- [ ] **H5** Read the paper. Expect: বিল নং, তারিখ, অবস্থা, গ্রাহক / মোবাইল / মডেল / সমস্যা / **টেকনিশিয়ান**, মোট বিল / জমা / **বাকি**, two signature lines, "ধন্যবাদ, আবার আসবেন", and the shop address + phone — *risk: নেই*
+- [ ] **H5** Read the paper. Expect: বিল নং, তারিখ, অবস্থা, গ্রাহক / মোবাইল / মডেল / সমস্যা / **টেকনিশিয়ান**, মোট বিল / জমা / **বাকি**, the **customer's name in the signature area**, two signature lines, "ধন্যবাদ, আবার আসবেন", and the shop address + phone. The address must read `D107 (Level 3), Sena Shopping Complex, Nabinagar, Ashulia 1344` — **no "Chandra Rd."** — *risk: নেই*
+- [ ] **H5b** Print/PDF a **fully paid** row (বাকি ৳০). Expect: the navy **PAID** stamp appears. Print an unpaid or partly paid row: expect **no** PAID stamp — *risk: নেই*
 - [ ] **H6** 🔴 Search the paper for "খরচ" or a part code. Expect: **it must not appear at all** — *risk: নেই*
 - [ ] **H7** Check that Bengali renders correctly in print (no boxes/tofu) — *risk: নেই*
+- [ ] **H8** Press **PDF শেয়ার** on a row and save/inspect the PDF. Expect: the same updated address, customer name and correct PAID-stamp state as the paper receipt — *risk: মাঝারি*
 
 ---
 

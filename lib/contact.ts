@@ -20,9 +20,13 @@ export function whatsAppHref(service: {
   model: string;
   due: number;
 }): string {
+  const paymentLine =
+    service.due > 0
+      ? `${formatTaka(service.due)} বাকি আছে।`
+      : "সম্পূর্ণ টাকা পরিশোধ হয়েছে। ধন্যবাদ।";
   const message =
     `আসসালামু আলাইকুম, MAHER MOBILE CARE থেকে বলছি। ` +
-    `বিল নং ${service.id} (${service.model})-এর ${formatTaka(service.due)} বাকি আছে।`;
+    `বিল নং ${service.id} (${service.model})-এর ${paymentLine}`;
   return `https://wa.me/${normalizeBdPhone(service.phone)}?text=${encodeURIComponent(
     message
   )}`;

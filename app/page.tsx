@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { MapPin, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
@@ -12,6 +14,10 @@ import { Receipt, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
 import { SHOP } from "@/lib/shop";
+import {
+  createReceiptPdf,
+  shareReceiptPdf as sharePdfBlob,
+} from "@/lib/receipt-pdf";
 import { ServiceTable } from "@/components/ServiceTable";
 import { TechnicianStats } from "@/components/TechnicianStats";
 import { TodayStats } from "@/components/TodayStats";
@@ -216,6 +222,60 @@ export default function Home() {
     window.print();
   };
 
+  /**
+   * Render the same Receipt off-screen, capture it with html2canvas, and hand
+   * the resulting PDF to the OS share sheet. The document is never uploaded;
+   * every byte stays on the shop PC. The fallback downloads the PDF and opens
+   * the customer's own WhatsApp chat (wa.me cannot attach files itself).
+   */
+  const shareReceiptPdf = async (service: ServiceDTO) => {
+    const host = document.createElement("div");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:720px;background:#fff;pointer-events:none;z-index:-1;";
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      flushSync(() => {
+        root.render(<Receipt service={service} />);
+      });
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+
+      const receiptNode = host.querySelector<HTMLElement>("[data-receipt]");
+      if (!receiptNode) throw new Error("রিসিট তৈরি করা যায়নি");
+
+      const blob = await createReceiptPdf(receiptNode);
+      const result = await sharePdfBlob(service, blob);
+      if (result === "shared") {
+        toast.success("PDF শেয়ার হয়েছে");
+      } else if (result === "downloaded") {
+        toast.info(
+          "PDF download হয়েছে; WhatsApp chat খুলেছে — PDF attach করে Send করুন"
+        );
+      } else if (result === "downloaded-no-chat") {
+        toast.info(
+          "PDF download হয়েছে; WhatsApp খোলা যায়নি — WhatsApp বাটন থেকে চ্যাট খুলে পাঠান"
+        );
+      }
+    } catch (error) {
+      console.error("PDF share failed", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "PDF তৈরি করা যায়নি"
+      );
+    } finally {
+      root.unmount();
+      host.remove();
+    }
+  };
+
   const stampBackup = () => {
     const stamp = new Date().toLocaleString("en-GB", {
       day: "numeric",
@@ -400,6 +460,7 @@ export default function Home() {
               date={date}
               onEdit={edit}
               onReceipt={setReceipt}
+              onSharePdf={shareReceiptPdf}
               technicianFilter={techFilter}
               onClearTechnician={() => setTechFilter(null)}
               onChanged={() => {

@@ -38,7 +38,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 147-check suite all pass on it).
+(build, lint, typecheck and the full 157-check suite all pass on it).
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -113,8 +113,8 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip is built as `out/MAHER-Windows-Client.zip` (v1.0.2, test-data
-free) and should be published as release `v1.0.2-windows` — the repo is
+The client zip is built as `out/MAHER-Windows-Client.zip` (v1.0.3, test-data
+free) and should be published as release `v1.0.3-windows` — the repo is
 **private**, so the release URL needs a GitHub login and the file itself is what
 goes to the client (pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
@@ -301,8 +301,8 @@ scripts/
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
-  laneA.js                 → Lane A audit (23 checks)
-  laneBC.js                → Lanes B+C audit (15 checks)
+  laneA.js                 → Lane A audit (25 checks)
+  laneBC.js                → Lanes B+C audit (23 checks)
   api-check.js             → API contract + validation + restore-guard + roster (43)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (24 checks)
   responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
@@ -347,8 +347,11 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - Service table — client-side filter within the selected day (name / ID /
   phone / model / problem), status chips with counts, eye-toggle for the খরচ
   column (hidden by default = customer privacy), **1-click status advance**
-  (badge click → next stage), edit/delete(→archive) + per-row **bill print**
-  button.
+  (badge click → next stage), edit/delete(→archive), plus per-row **bill print**,
+  **WhatsApp chat/call**, and **PDF Export & Share** buttons. WhatsApp opens the
+  customer's chat; inside WhatsApp the normal **Start call** action is available.
+  PDF Export & Share renders the same receipt locally and hands a real PDF to the
+  Windows share sheet, with a download + customer-specific `wa.me` fallback.
 
 **Safety:**
 - Delete = archive (soft). Archive view (all dates) + 1-click restore.
@@ -362,11 +365,24 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   touched.
 - Print guard blocks blank prints; paper gets receipt-only or clean dashboard.
 
-**Customer bill (print):**
+**Customer bill (print/PDF):**
 - Preview dialog → print. Shop header (name/address/phone from `lib/shop.ts`),
   `বিল নং` (= row id), date, status, customer + job + technician,
-  বিল / জমা / **বাকি**, a customer signature line and “ধন্যবাদ, আবার আসবেন”.
-  **Shop cost never appears on the customer copy** — enforced in
+  বিল / জমা / **বাকি**, the customer's name in the signature area, and
+  “ধন্যবাদ, আবার আসবেন”. The address is
+  `D107 (Level 3), Sena Shopping Complex, Nabinagar, Ashulia 1344` — the old
+  “Chandra Rd.” text was removed in v1.0.3.
+- A navy **PAID** seal is printed only when `due = 0` and `totalBill > 0`
+  (fully paid). Unpaid and partial bills never show it.
+- The daily-row **PDF শেয়ার** button captures this same receipt into an A4 PDF
+  (`jspdf` + `html2canvas`, both lazy-loaded) and opens the OS share sheet.
+  WhatsApp is a share target; the user picks the customer and presses **Send**.
+  Where file sharing is unavailable, the PDF downloads and the customer's
+  `wa.me` chat opens for a manual attachment. A `wa.me` link cannot attach a
+  file itself, and the Windows share sheet cannot be forced to preselect one
+  contact; true zero-click auto-send would require the online WhatsApp
+  Business Cloud API, which is intentionally not part of this offline app.
+- **Shop cost never appears on the customer copy** — enforced in
   `Receipt.tsx` and covered by a test.
 
 ---
@@ -471,12 +487,12 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (8 suites, 147 checks) entirely on
+`npm test` runs the full regression (8 suites, 157 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (110 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (115 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -492,10 +508,10 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Latest full run: **8/8 suites, 147/147 checks** — core E2E 9 · P0 E2E 13 ·
-Lane A 23 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · launcher
+- Latest full run: **8/8 suites, 157/157 checks** — core E2E 9 · P0 E2E 13 ·
+Lane A 25 · Lane B+C 23 · API 43 · roster E2E 24 · responsive 6 · launcher
     decisions 14 · 0 FAIL, 0 JS errors.
-- **The by-hand checklist is executed too.** All 110 steps of
+- **The by-hand checklist is executed too.** All 115 steps of
   `MANUAL-TEST.md` were run end-to-end against a throwaway database — including
   printing a real PDF and reading it back — and every one passes. That pass is
   what found the three bugs listed in §9.
@@ -656,7 +672,7 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **147** automated checks pass, and the live database is byte-identical.
+- All **157** automated checks pass, and the live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
@@ -677,7 +693,7 @@ natively: `npm.cmd`/`npx.cmd` need `shell: true` on Node 20+ (`Spawn EINVAL`),
 screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. With those
-in place: **8/8 suites, 147/147 checks, 0 JS errors on Windows**, the live
+in place: **8/8 suites, 157/157 checks, 0 JS errors on Windows**, the live
 `prisma/dev.db` stayed byte-identical, and the packaged window was driven by
 hand for the shop test above. `PREPARE-WINDOWS.md` remains the first-run
 checklist for the client PC.

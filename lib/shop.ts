@@ -5,6 +5,6 @@
 export const SHOP = {
   name: "MAHER MOBILE CARE",
   tagline: "মোবাইল সার্ভিস ও মেরামত",
-  address: "D107 (Level 3), Sena Shopping Complex, Nabinagar - Chandra Rd, Ashulia 1344",
+  address: "D107 (Level 3), Sena Shopping Complex, Nabinagar, Ashulia 1344",
   phone: "01717777755",
 };

@@ -465,6 +465,43 @@ let browser = null;
     TITLE_TODAY
   );
   await new Promise((r) => setTimeout(r, 1000));
+  const rowActions = await page.evaluate((rowName) => {
+    const section = document.querySelector('[data-testid="daily-services"]');
+    const row = [...section.querySelectorAll("tbody tr")].find((tr) =>
+      tr.textContent.includes(rowName)
+    );
+    const wa = row?.querySelector('a[title="WhatsApp (chat/call)"]');
+    const pdf = row?.querySelector('button[title="PDF শেয়ার"]');
+    let message = "";
+    try {
+      message = decodeURIComponent(
+        new URL(wa.getAttribute("href")).searchParams.get("text") || ""
+      );
+    } catch {
+      /* leave blank */
+    }
+    return {
+      waHref: wa?.getAttribute("href") || "",
+      waTarget: wa?.getAttribute("target") || "",
+      waMessage: message,
+      pdf: !!pdf,
+      pdfDisabled: pdf ? pdf.disabled : null,
+    };
+  }, REF);
+  check(
+    "A10a",
+    "daily WhatsApp action opens customer chat with due message",
+    rowActions.waHref.startsWith("https://wa.me/8801700000009") &&
+      rowActions.waTarget === "_blank" &&
+      rowActions.waMessage.includes("বাকি আছে"),
+    JSON.stringify(rowActions)
+  );
+  check(
+    "A10b",
+    "daily PDF share action is available",
+    rowActions.pdf && rowActions.pdfDisabled === false,
+    JSON.stringify(rowActions)
+  );
   await clickDailyRowButton(page, REF, "বিল প্রিন্ট");
   await page.waitForFunction(
     () => document.body.textContent.includes("বিল প্রিভিউ"),
