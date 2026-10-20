@@ -35,6 +35,7 @@ set "MAHER_BACKUP_DIR=%BACKUP_DIR%"
 rem See MAHER MOBILE CARE.bat: DATABASE_URL must be a real file URL on Windows,
 rem so backslashes are converted and the file:/// prefix is added.
 set "MAHER_DB_URL=%MAHER_DB_PATH:\=/%"
+set "MAHER_DB_URL=%MAHER_DB_URL: =%20%"
 set "DATABASE_URL=file:///%MAHER_DB_URL%"
 set "NODE_ENV=production"
 set "PORT=%PORT%"

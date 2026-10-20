@@ -100,16 +100,16 @@ export async function POST(req: NextRequest) {
     // 2) Safety copy of CURRENT data before touching anything.
     const safety = `safety-${stamp()}.db`;
     const safetyAbs = join(BACKUP_DIR, safety);
-    await prisma.$executeRawUnsafe(
-      `VACUUM INTO '${safetyAbs.replace(/'/g, "''")}'`
-    );
+    // Windows paths (C:\..., spaces) are normalized to forward slashes —
+    // SQLite accepts them, backslashes do not survive quoting reliably.
+    const q = (s: string) => s.replace(/\\/g, "/").replace(/'/g, "''");
+    await prisma.$executeRawUnsafe(`VACUUM INTO '${q(safetyAbs)}'`);
 
     // 3) Swap live table contents with the snapshot's — atomically.
     //    ATTACH must run outside a transaction (SQLite rule). From there,
     //    BEGIN IMMEDIATE … COMMIT means any failure (or a power cut) rolls
     //    back the DELETE too: live data can never be left empty by a
     //    half-finished restore.
-    const q = (s: string) => s.replace(/'/g, "''");
     await prisma.$executeRawUnsafe(`ATTACH DATABASE '${q(abs)}' AS snap`);
     attached = true;
     await prisma.$executeRawUnsafe("BEGIN IMMEDIATE");

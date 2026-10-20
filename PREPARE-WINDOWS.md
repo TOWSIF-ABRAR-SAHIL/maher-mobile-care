@@ -7,8 +7,9 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 
 ## Tumi Ja Pabe
 
-Ekta zip file: `MAHER-Windows-Client.zip` (44 MB) — GitHub release
-`v1.0.0-windows`-teo ache.
+Ekta zip file: `MAHER-Windows-Client.zip` — GitHub release
+`v1.0.1-windows`-e ache. Ei version e tomar prothom Windows test e pawa
+duita bug fix kora hoyeche.
 
 Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 (Purono `MAHER-Windows-Test.zip` test-er jonno chilo — client-ke dibe na.)
@@ -17,8 +18,21 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 ## Sotti Boli (porer shathe pori jani)
 
-Package-ta banano hoyeche Linux-e. Windows-e tumi chalao, ar ekta asol problem
-pawa gelo - ektai Windows-e chilo, baki shob jinis Linux-e thik.
+Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
+build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
+suite pass koreche — **8 suites, 147 checks**, live data er hash-o same ache.
+
+Prothom asol shop-test e duita bug pawa gelo, duitai 1.0.1-e fix:
+
+| Bug | Ekhon ki |
+|---|---|
+| Bill 1500, জমা 500, cash 1000 dile "আরও দরকার 500" dekhato | Ekhon **"ফেরত দিন 500"** — হিসাব হয় **জমা**র সাথে, bill er sathe na |
+| Notun entry default "Pending" hoye jeto | Ekhon default **চলমান (In-Progress)** |
+
+Ei duita chara Windows-er jonne aro kichu fix ache (backup path, path-er space
+`%20`, build script, test runner) — sob README §10 e lekha ache.
+
+Windows-e onno jinis gulo agei thik chilo:
 
 | Ki kora | Kemon verify |
 |---|---|
@@ -55,7 +69,8 @@ port o jani amader.
 
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
-sob. Tumi nije Windows-e chaliye dekhecho.
+sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
+Windows-e chaliye **147/147 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -66,17 +81,11 @@ niyegi amake dein.
 
 ---
 
-## Step 1: Zip-ta Windows-e niye ashun
+## Step 1: Zip-ta oi PC-te niye ashun
 
-Ei zip-ta tumi amar laptop-er NTFS partition-e rakha achhe (`New Volume`).
-Windows on same partition dekhte pare kintu Windows e oi folder ta
-EXT4 na, tai direct kaj korbe na.
-
-Simplest upay: zip-ta pen-drive-e copy kore Windows-e niye ashun.
-
-Jodi zip-ta amar shared storage-e thaki, tai oi storage Windows-e
-Windows Explorer diye khule `MAHER-Windows-Client.zip` ta pen-drive-e
-copy kore nij laptop-e niye ashun.
+`out\MAHER-Windows-Client.zip` ta pen-drive, network ba OneDrive — jekono
+upay diye je PC-te boshaben (client PC ba tomar test PC) sekhane niye ashun.
+Zip-er bhitore puro app: runtime, app ar khaali `data\` folder.
 
 ---
 
@@ -215,18 +224,19 @@ Eita ami test korechi: `app` folder delete kore notun file diye chalale o
 
 Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
 
-1. **Zip-ta test-data mukto ki na dekho:**
-   ```cmd
-   unzip -l out/MAHER-Windows-Client.zip | grep -iE '\.db($|-)|\.env($|-)'
+1. **Zip-ta test-data mukto ki na dekho (PowerShell):**
+   ```powershell
+   tar -tf out\MAHER-Windows-Client.zip | Select-String -Pattern '\.db$|\.env$'
    ```
    Kichu ashbe na (khaali). `data\` folder-e shudhu `KEEP-THIS-FOLDER.txt`
    thakbe — kono `shop.db` ba `backups\` thakbe na.
 
-2. **Build thik commit theke ki na dekho:**
-   ```cmd
-   unzip -p out/MAHER-Windows-Client.zip MAHER/build-info.json
+2. **Build thik commit theke ki na dekho (PowerShell):**
+   ```powershell
+   tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `sourceCommit` latest commit-er sathe milbe, `target` hobe `windows-x64`.
+   `version` hobe `1.0.1`, `sourceCommit` latest commit-er sathe milbe,
+   `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno
    `MAHER-Windows-Test.zip`, client-er jonno **shudhu**

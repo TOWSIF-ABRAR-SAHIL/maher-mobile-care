@@ -45,6 +45,7 @@ rem backslashes and use the file:/// form that Node's fileURLToPath accepts.
 rem (The data-load failure on the shop PC was a different, baked-path problem in
 rem the server bundle, fixed in scripts/build-portable.mjs.)
 set "MAHER_DB_URL=%MAHER_DB_PATH:\=/%"
+set "MAHER_DB_URL=%MAHER_DB_URL: =%20%"
 set "DATABASE_URL=file:///%MAHER_DB_URL%"
 set "NODE_ENV=production"
 set "PORT=%PORT%"

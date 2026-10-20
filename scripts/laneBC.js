@@ -15,6 +15,11 @@ const {
   trackErrors,
   uniqueName,
 } = require("./test-support");
+const os = require("node:os");
+const path = require("node:path");
+
+// OS temp dir, not "/tmp": on Windows the latter means D:\tmp and ENOENTs.
+const shot = (name) => path.join(os.tmpdir(), name);
 
 const BASE = resolveTestBase();
 const TODAY = dhakaToday();
@@ -348,7 +353,7 @@ let browser = null;
   );
   await page.emulateMediaType("print");
   await new Promise((r) => setTimeout(r, 400));
-  await page.screenshot({ path: "/tmp/laneBC-receipt.png", fullPage: true });
+  await page.screenshot({ path: shot("laneBC-receipt.png"), fullPage: true });
   const paperOk = await page.evaluate(() => ({
     dashHidden: [...document.querySelectorAll("main")].every(
       (m) => getComputedStyle(m).display === "none"
@@ -376,7 +381,7 @@ let browser = null;
   // ---------- C4: dashboard paper ----------
   await page.emulateMediaType("print");
   await new Promise((r) => setTimeout(r, 400));
-  await page.screenshot({ path: "/tmp/laneBC-dash.png", fullPage: true });
+  await page.screenshot({ path: shot("laneBC-dash.png"), fullPage: true });
   const dashPaper = await page.evaluate(() => ({
     formGone: !document.querySelector("form") || getComputedStyle(document.querySelector("form")).display === "none" || document.querySelector("form").offsetParent === null,
     titleBlack: getComputedStyle(document.querySelector("header h1")).color === "rgb(0, 0, 0)",

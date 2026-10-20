@@ -16,6 +16,12 @@ const {
   uniqueName,
   waitDailyRow,
 } = require("./test-support");
+const os = require("node:os");
+const path = require("node:path");
+
+// Screenshots live in the OS temp dir — "/tmp/..." would resolve to D:\tmp on
+// Windows and fail with ENOENT before the suite's first real check.
+const shot = (name) => path.join(os.tmpdir(), name);
 
 const BASE = resolveTestBase();
 const TODAY = dhakaToday();
@@ -71,7 +77,7 @@ let browser = null;
     { timeout: 5000 }
   );
   check("due auto-calculates (2000-500=1500)", true);
-  await page.screenshot({ path: "/tmp/maher-form.png" });
+  await page.screenshot({ path: shot("maher-form.png") });
   await submitButton(page, "সেভ করুন");
   await waitDailyRow(page, E2E_NAME, true);
   check("create service via form", true);
@@ -143,7 +149,7 @@ let browser = null;
     prevCount === yesterdayApiCount,
     `${prevCount} daily rows on ${YESTERDAY} (API: ${yesterdayApiCount})`
   );
-  await page.screenshot({ path: "/tmp/maher-prevday.png" });
+  await page.screenshot({ path: shot("maher-prevday.png") });
 
   // back to today, delete the E2E row
   await page.evaluate(() =>

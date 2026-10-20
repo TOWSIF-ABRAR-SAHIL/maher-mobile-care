@@ -180,7 +180,7 @@ export function validateServiceCreate(
       advance: String(raw.advance ?? ""),
       status:
         raw.status == null || raw.status === ""
-          ? "Pending"
+          ? "In-Progress"
           : String(raw.status),
       shopExpense: String(raw.shopExpense ?? ""),
       serviceDate:

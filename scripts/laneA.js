@@ -158,24 +158,29 @@ let browser = null;
   );
   await new Promise((r) => setTimeout(r, 1000));
 
-  // ---- A3: overpay rejected; cash received only computes change ----
+  // ---- A3: cash change compares cash with the amount kept (জমা) ----
   await typeInto(page,"svc-bill", "2000");
-  await typeInto(page,"svc-adv", "2500");
+  await typeInto(page,"svc-adv", "500");
   await typeInto(page,"svc-cash", "2500");
   await new Promise((r) => setTimeout(r, 300));
-  check("A3a", "overpay previews due 0", (await page.$eval("#svc-due", (el) => el.value)) === "0");
+  check("A3a", "due stays bill - advance (1500)", (await page.$eval("#svc-due", (el) => el.value)) === "1,500");
   check(
     "A3b",
-    "cash received shows change 500",
-    (await page.$eval("#svc-change", (el) => el.value)) === "500"
+    "cash above advance shows change 2000",
+    (await page.$eval("#svc-change", (el) => el.value)) === "2,000"
   );
-  await typeInto(page,"svc-cash", "1200");
+  await typeInto(page,"svc-cash", "300");
   await new Promise((r) => setTimeout(r, 300));
   check(
     "A3c",
-    "short cash shows shortfall 800",
-    (await page.$eval("#svc-change", (el) => el.value)) === "800"
+    "short cash shows shortfall 200",
+    (await page.$eval("#svc-change", (el) => el.value)) === "200"
   );
+  // Overpay validation is independent: advance above the bill is rejected.
+  await typeInto(page,"svc-adv", "2500");
+  await typeInto(page,"svc-cash", "0");
+  await new Promise((r) => setTimeout(r, 300));
+  check("A3d", "overpay previews due 0", (await page.$eval("#svc-due", (el) => el.value)) === "0");
   const c3 = await rowCount();
   await typeInto(page,"svc-name", NAME + "op");
   await typeInto(page,"svc-phone", "01700000003");
@@ -185,7 +190,7 @@ let browser = null;
   await waitToast(page, "বেশি").catch(() => null);
   await new Promise((r) => setTimeout(r, 600));
   console.log("reached A3");
-  check("A3d", "overpay save rejected, no row added", (await rowCount()) === c3);
+  check("A3e", "overpay save rejected, no row added", (await rowCount()) === c3);
   await page.reload({ waitUntil: "networkidle0" });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),

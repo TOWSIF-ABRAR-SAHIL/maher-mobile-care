@@ -35,7 +35,7 @@ const empty = {
   totalBill: "",
   advance: "",
   cashReceived: "",
-  status: "Pending",
+  status: "In-Progress",
   shopExpense: "",
   serviceDate: "",
 };
@@ -130,16 +130,19 @@ export function ServiceForm({
   const advNum = parseBnNumber(f.advance) ?? 0;
   const due = computeDue(billNum, advNum);
 
-  // Till calculator only — cash above the bill is change to hand back, so it
-  // is never stored. Overpay is rejected on save; this just previews it.
+  // Till calculator only — the amount kept from the cash handed over is the
+  // জমা (advance); anything above that is change to return. Comparing against
+  // the bill instead was wrong: bill 1500 / advance 500 / cash 1000 must say
+  // "return 500", not "need 500 more".
   const cashNum = parseBnNumber(f.cashReceived) ?? 0;
-  const changeGap = cashNum > 0 ? Math.abs(cashNum - billNum) : 0;
+  const changeDiff = cashNum - advNum;
+  const changeGap = cashNum > 0 ? Math.abs(changeDiff) : 0;
   const changeLabel =
     cashNum <= 0
       ? "ফেরত দেওয়ার টাকা (হিসাবের জন্য)"
-      : cashNum > billNum
+      : changeDiff > 0
         ? "ফেরত দিন (বাকি টাকা)"
-        : cashNum === billNum
+        : changeDiff === 0
           ? "ঠিক আছে"
           : "আরও দরকার";
 
@@ -307,7 +310,7 @@ export function ServiceForm({
             inputMode="numeric"
           />
           <p className="mt-1 text-xs text-gray-500">
-            শুধু হিসাবের জন্য — সেভ হয় না। বিলের বেশি টাকা হলে ফেরত দেওয়ার টাকা
+            শুধু হিসাবের জন্য — সেভ হয় না। জমার বেশি টাকা হলে ফেরত দেওয়ার টাকা
             নিচে দেখা যাবে।
           </p>
         </div>

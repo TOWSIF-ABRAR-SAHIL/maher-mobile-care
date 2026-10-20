@@ -243,6 +243,8 @@ try {
     cwd: repoRoot,
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, MAHER_STANDALONE: "1" },
+    // Windows cannot spawn a .cmd directly (EINVAL) — run it through the shell.
+    ...(process.platform === "win32" ? { shell: true } : {}),
   });
 } catch {
   fail("`npm run build` failed");
@@ -291,9 +293,15 @@ function makeServerPathsPortable(dir) {
   // The whole quoted literal is matched, not just its prefix, so the remainder
   // of the path can be re-emitted inside quotes: leaving it bare would leave
   // "/lib/..." dangling after the concatenation.
+  // Windows adds one more variant: the baked URL is file:///D:/... (three
+  // slashes, drive letter), while repoRoot itself has no leading slash, so the
+  // plain prefix would only match file://D:/... A leading-slash variant covers it.
+  const repoForward = repoRoot.replace(/\\/g, "/");
   const repoPrefixes = [
-    repoRoot.replace(/\\/g, "/"),
-    repoRoot.replace(/\\/g, "/").replace(/ /g, "%20"),
+    repoForward,
+    repoForward.replace(/ /g, "%20"),
+    `/${repoForward}`,
+    `/${repoForward}`.replace(/ /g, "%20"),
   ].map((value) => new RegExp(`"file://${escapeRegExp(value)}([^"]*)"`, "g"));
 
   // $1 is the part of the path after the repository root, which still holds the
@@ -374,9 +382,12 @@ function escapeRegExp(value) {
  */
 function findBakedPaths(dir) {
   const hits = [];
+  const repoForward = repoRoot.replace(/\\/g, "/");
   const markers = [
-    repoRoot.replace(/\\/g, "/"),
-    repoRoot.replace(/\\/g, "/").replace(/ /g, "%20"),
+    repoForward,
+    repoForward.replace(/ /g, "%20"),
+    `/${repoForward}`,
+    `/${repoForward}`.replace(/ /g, "%20"),
   ];
 
   const walk = (current) => {
@@ -495,7 +506,12 @@ if (!fs.existsSync(path.join(nodeExtract, "node.exe"))) {
   fs.rmSync(nodeExtract, { recursive: true, force: true });
   log("extracting node.exe ...");
   try {
-    execFileSync("unzip", ["-q", "-o", nodeZip, "-d", cacheDir], { stdio: ["ignore", "inherit", "inherit"] });
+    // Same Windows reason as the npm call above: a .cmd shim (stock Windows
+    // has no unzip, so PATH may provide one) cannot be spawned directly.
+    execFileSync("unzip", ["-q", "-o", nodeZip, "-d", cacheDir], {
+      stdio: ["ignore", "inherit", "inherit"],
+      ...(process.platform === "win32" ? { shell: true } : {}),
+    });
   } catch {
     fail("could not extract the Node zip (is unzip installed?)");
   }

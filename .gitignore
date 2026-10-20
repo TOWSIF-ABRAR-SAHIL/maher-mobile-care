@@ -4,6 +4,7 @@
 # next.js
 /.next/
 /out/
+/lobu windows/
 
 # production
 /build
@@ -28,6 +29,8 @@ next-env.d.ts
 /data/
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 
 /lib/generated/prisma
 

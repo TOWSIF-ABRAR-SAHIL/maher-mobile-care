@@ -3,7 +3,7 @@
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 8 suites, 146 checks (see README §7).
+- **Automated coverage:** `npm test` → 8 suites, 147 checks (see README §7).
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -42,10 +42,10 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **B1** Fill: customer `ZTEST01`, phone `01700000001`, model `Redmi Note 10`, problem `ডিসপ্লে`, technician **NURUL**, shop cost code `*M#` — *risk: নেই*
 - [ ] **B2** Type total bill `১৬০০` (Bengali digits). Expect: বাকি = `1,600` — *risk: নেই*
 - [ ] **B3** Type advance `৫০০`. Expect: বাকি = `1,100` — *risk: নেই*
-- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `২০০০`. Expect: **ফেরত দিন = ৪০০** (bill 1600) — *risk: নেই*
-- [ ] **B5** Change it to `১০০০`. Expect: **আরও দরকার = ৬০০** — *risk: নেই*
+- [ ] **B4** Type **কাস্টমারের কাছ থেকে পাওয়া টাকা** `১০০০`. Expect: **ফেরত দিন = ৫০০** (bill 1600, জমা 500 — change is calculated against জমা) — *risk: নেই*
+- [ ] **B5** Change it to `৩০০`. Expect: **আরও দরকার = ২০০** — *risk: নেই*
 - [ ] **B6** Clear the field. Expect: the box shows `0` and the label reads "ফেরত দেওয়ার টাকা (হিসাবের জন্য)" — *risk: নেই*
-- [ ] **B7** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears — *risk: মাঝারি*
+- [ ] **B7** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears, and কাজের অবস্থা resets to **চলমান** (the new-entry default) — *risk: মাঝারি*
 - [ ] **B8** Read the daily cards. Expect: কাজ ১ · বিল 1,600 · বাকি 1,100 · খরচ **৳0** (a code counts as 0) (digits are always shown Western, even though Bengali input is accepted) plus a **"+1টি কোড"** hint — *risk: নেই*
 - [ ] **B9** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: খরচ card = `৳১,২০০` and the "+কোড" hint disappears — *risk: মাঝারি*
 - [ ] **B10** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*

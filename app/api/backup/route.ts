@@ -91,7 +91,10 @@ export async function POST(_req: NextRequest) {
     const file = `maher-${stamp()}.db`;
     const abs = join(BACKUP_DIR, file);
     // Filename is generated server-side — no user input reaches the SQL.
-    await prisma.$executeRawUnsafe(`VACUUM INTO '${abs.replace(/'/g, "''")}'`);
+    // Windows paths use backslashes + drive letters (C:\...) with possible
+    // spaces; SQLite accepts forward slashes, so normalize before quoting.
+    const sqlitePath = abs.replace(/\\/g, "/").replace(/'/g, "''");
+    await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlitePath}'`);
 
     // Prune old snapshots, keep the newest KEEP_SNAPSHOTS.
     // Pre-restore safety copies are kept separately (newest 5).

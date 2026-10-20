@@ -40,11 +40,16 @@ function hashFile(abs) {
 
 function run(command, args, env, label) {
   return new Promise((resolve, reject) => {
+    // .cmd/.bat shims (npm.cmd, npx.cmd) cannot be spawned directly on Windows
+    // with Node 20+ — Spawn EINVAL. Go through the shell for them only; node.exe
+    // and other real executables stay direct so argument quoting is untouched.
+    const viaShell = IS_WINDOWS && /\.(cmd|bat)$/i.test(command);
     const child = spawn(command, args, {
       cwd: ROOT,
       env,
       stdio: "inherit",
       windowsHide: true,
+      shell: viaShell,
     });
     child.on("error", reject);
     child.on("exit", (code) => {

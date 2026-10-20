@@ -38,7 +38,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 146-check suite all pass on it).
+(build, lint, typecheck and the full 147-check suite all pass on it).
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -113,7 +113,7 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip ships separately on GitHub as release `v1.0.0-windows`
+The client zip ships separately on GitHub as release `v1.0.1-windows`
 (`MAHER-Windows-Client.zip`, test-data free). The client copies that folder
 to `C:\MAHER` and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
@@ -293,7 +293,7 @@ scripts/
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
-  laneA.js                 → Lane A audit (22 checks)
+  laneA.js                 → Lane A audit (23 checks)
   laneBC.js                → Lanes B+C audit (15 checks)
   api-check.js             → API contract + validation + restore-guard + roster (43)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (24 checks)
@@ -327,10 +327,11 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   no delete+recreate).
 - **কাস্টমারের কাছ থেকে পাওয়া টাকা (Cash Received)** — a till calculator only.
   Type what the customer handed over and the box below shows the change to
-  return (bill 850, cash 1000 → “ফেরত দিন ৳150”), or the shortfall when it is
-  less. **It is never saved and never sent to the server.**
+  return, calculated against **জমা (the amount kept)** — not the bill. Example:
+  bill 1500, জমা 500, cash 1000 → “ফেরত দিন ৳500”; cash 300 → shortfall 200.
+  **It is never saved and never sent to the server.**
 - **Overpay is rejected.** জমা can never exceed মোট বিল — the save is blocked
-  with “জমা মোট বিলের বেশি হতে পারে না”. Cash above the bill belongs in the
+  with “জমা মোট বিলের বেশি হতে পারে না”. Cash above the জমা belongs in the
   calculator above, not in the ledger.
 - **💰 বাকি তালিকা (সব তারিখ)** — every active record with money outstanding,
   independent of the selected day, with call + WhatsApp buttons per row.
@@ -402,6 +403,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   still offers their name (marked “নিষ্ক্রিয়”) so saving cannot silently
   reassign the job to somebody else.
 - Statuses: `Pending → In-Progress → Completed → Delivered` (badge click order).
+  New entries default to **In-Progress (চলমান)**; editing a row keeps that row's
+  existing status until it is changed.
 - **Cost privacy is local-only.** The APIs return `shopExpense`/`expenseAmount`
   because the app runs on the shop's own PC behind `127.0.0.1`. The guarantee
   that matters is the paper: the customer receipt never prints cost, and the
@@ -469,7 +472,7 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (8 suites, 146 checks) entirely on
+`npm test` runs the full regression (8 suites, 147 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
@@ -490,8 +493,8 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Latest full run: **8/8 suites, 146/146 checks** — core E2E 9 · P0 E2E 13 ·
-Lane A 22 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · launcher
+- Latest full run: **8/8 suites, 147/147 checks** — core E2E 9 · P0 E2E 13 ·
+Lane A 23 · Lane B+C 15 · API 43 · roster E2E 24 · responsive 6 · launcher
     decisions 14 · 0 FAIL, 0 JS errors.
 - **The by-hand checklist is executed too.** All 110 steps of
   `MANUAL-TEST.md` were run end-to-end against a throwaway database — including
@@ -624,9 +627,10 @@ technician.
 
 ## 10. Windows delivery changelog
 
-The app was developed on Linux, so nothing here could be assumed to work on a
-client's PC — every Windows-specific claim was verified against the real
-Windows binaries instead.
+The app was originally developed on Linux, so nothing here could be assumed to
+work on a client's PC — every Windows-specific claim was verified against the
+real Windows binaries instead. The current package is now built natively on
+Windows as well; the run that proved it is at the end of this section.
 
 **Added**
 - `npm run build:portable` → `out/MAHER/`: a self-contained folder with a bundled
@@ -653,11 +657,28 @@ Windows binaries instead.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **146** automated checks pass, and the live database is byte-identical.
+- All **147** automated checks pass, and the live database is byte-identical.
 
-**Not yet verified on real hardware.** The package is built for
-`windows-x64` and inspected as Windows binaries, but it has never been
-*executed* on Windows — no Windows machine or CI runner was available here. The
-launcher's shell behaviour (`cd /d`, `errorlevel`, CRLF, Chrome `--app` mode) is
-therefore the part that still needs one real Windows run to confirm. Until then,
-treat `PREPARE-WINDOWS.md` as the first-run checklist.
+**Native Windows run (20 Oct 2026).** The package has now been built *and*
+executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
+better-sqlite3 ABI 127 — not only cross-inspected. Launching it from a clean
+temp copy succeeded (health, roster, stats), and the first real shop test found
+two user-facing bugs that neither the earlier Linux pass nor the automated suite
+had caught; both are fixed:
+
+- **The cash-change box compared against the bill.** Bill 1500 / জমা 500 /
+  cash 1000 printed “আরও দরকার ৫০০” instead of “ফেরত দিন ৫০০”. The calculator
+  now subtracts the **জমা (advance)** — the amount actually kept — and the laneA
+  regression pins both the change and the shortfall case.
+- **New jobs defaulted to `Pending`.** The shop starts every job as
+  **চলমান (In-Progress)**; the entry form and the create API now default there.
+
+The Windows test harness needed three fixes of its own before it could run
+natively: `npm.cmd`/`npx.cmd` need `shell: true` on Node 20+ (`Spawn EINVAL`),
+screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
+the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
+The launchers URL-escape spaces in the database path (`%20`) as well. With those
+in place: **8/8 suites, 147/147 checks, 0 JS errors on Windows**, the live
+`prisma/dev.db` stayed byte-identical, and the packaged window was driven by
+hand for the shop test above. `PREPARE-WINDOWS.md` remains the first-run
+checklist for the client PC.
