@@ -7,9 +7,10 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 
 ## Tumi Ja Pabe
 
-Ekta zip file: `MAHER-Windows-Client.zip` — GitHub release
-`v1.0.1-windows`-e ache. Ei version e tomar prothom Windows test e pawa
-duita bug fix kora hoyeche.
+Ekta zip file: `MAHER-Windows-Client.zip` — local build
+`out\MAHER-Windows-Client.zip` (v1.0.2). Eta GitHub release `v1.0.2-windows`-e
+publish korte hobe. Ei version e cash/change calculator ta client-er request e
+bad dewa hoyeche.
 
 > **Repo ta PRIVATE.** Tai GitHub-er link client-ke dile o kaj korbe
 > na (login chara download hobe na)। Client-ke file ta **nije** pathate

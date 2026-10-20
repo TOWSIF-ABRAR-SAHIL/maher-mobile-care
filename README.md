@@ -113,10 +113,10 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip ships separately on GitHub as release `v1.0.1-windows`
-(`MAHER-Windows-Client.zip`, test-data free) — the repo is **private**, so the
-release URL needs a GitHub login and the file itself is what goes to the client
-(pen drive, chat, email). The client unpacks that folder on
+The client zip is built as `out/MAHER-Windows-Client.zip` (v1.0.2, test-data
+free) and should be published as release `v1.0.2-windows` — the repo is
+**private**, so the release URL needs a GitHub login and the file itself is what
+goes to the client (pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
 path is resolved relative to the launcher — and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
