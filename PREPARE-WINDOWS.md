@@ -95,11 +95,14 @@ Zip-ta Windows-e niye ashar por:
 
 1. Zip file-e right-click korun
 2. "Extract All..." (ba "Extract Here") click korun
-3. Jeta thobe seta `C:\MAHER` folder-e dewa hobe
+3. Jeta thobe seta jekono **local fixed disk** e rakhun —
+   `C:\MAHER` ba `D:\MAHER`, duitai thik. (Client D: cheyeche:
+   Windows abar install e shudhu C: format hole D: bache.)
 
-Kharchi: `C:\MAHER\MAHER MOBILE CARE.bat` ei file ta thakte hobe.
+Kharchi: `D:\MAHER\MAHER MOBILE CARE.bat` (ba jekhane rakhben) ei
+file ta thakte hobe.
 
-Check korar jonne Windows File Explorer-e `C:\MAHER` open kore dekho.
+Check korar jonne Windows File Explorer-e oi folder ta open kore dekho.
 Vitey thaka uchit:
 
 ```
@@ -123,7 +126,8 @@ ektathe move korben na. Poora MAHER folder copy korte hobe.
 
 ## Step 3: Chalan
 
-`C:\MAHER\MAHER MOBILE CARE.bat` file-ta double-click korun.
+`D:\MAHER\MAHER MOBILE CARE.bat` (ba jekhane rakhben) file-ta
+double-click korun.
 
 Ki hobe:
 
@@ -183,10 +187,11 @@ technician dropdown — sob.
 
 ## Shesh korar por
 
-Windows theke app bondho korun. `data\` folder ektai jinis check korun:
+Windows theke app bondho korun. `data\` folder ektai jinis check korun
+(jekhane rakhben sekhane — jemon `D:\MAHER\data\`):
 
 ```
-C:\MAHER\data\
+D:\MAHER\data\
 ├── shop.db
 └── backups\
 ```
@@ -204,11 +209,28 @@ Erokom kichu na koren:
 
 ---
 
+## Windows abar install korle ki hobe
+
+- Jodi MAHER `D:\MAHER` te thake ar Windows install korar shomoy
+  **shudhu C: drive format** koren, tahole `D:\MAHER` er record,
+  technician ar backup **shob bache**। Notun Windows-e shudhu
+  `D:\MAHER\MAHER MOBILE CARE.bat` double-click korlei hobe.
+- Desktop shortcut thakle seta hariye jabe — abar banate hobe.
+- Kintu "delete all partitions" / "clean install" / "Reset this PC →
+  Remove everything" korle D: o jete pare। Ar disk nosto hole to
+  C: ba D: konoTai bache na.
+- Tai **asol backup**: majhe majhe `data\backups` er notun `.db`
+  file ekta pen-drive-e kopi rakha। Ei ekta obhyash-i shob
+  poristhitite bachabe.
+
+---
+
 ## Upgrade niyom (bhitre ar kichu)
 
 Future-e update dile:
 
-1. `C:\MAHER\data` folder-ta sojiye rakho (copy kore ekta jaygay rakhun)
+1. `<MAHER>\data` folder-ta sojiye rakho (copy kore ekta jaygay rakhun) —
+   jemon `D:\MAHER\data`
 2. `app` ar `runtime` folder delete korun
 3. Notun version-er `app` ar `runtime` folder copy korun
 4. `MAHER MOBILE CARE.bat` abar chalan

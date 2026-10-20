@@ -114,11 +114,17 @@ npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client
 ```
 
 The client zip ships separately on GitHub as release `v1.0.1-windows`
-(`MAHER-Windows-Client.zip`, test-data free). The client copies that folder
-to `C:\MAHER` and double-clicks
+(`MAHER-Windows-Client.zip`, test-data free). The client unpacks that folder on
+any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
+path is resolved relative to the launcher — and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
 internet. The shop window opens in Chrome/Edge app mode — no address bar, so it
 behaves like normal desktop software.
+
+A second partition (`D:`) survives a Windows reinstall that only formats `C:`,
+which is why the shop chose it. It is **not** a backup: a full disk wipe, a dead
+drive or an accidental delete takes `D:` too, so `data\backups` still needs a
+pen-drive copy now and then.
 
 ```
 MAHER\

@@ -12,6 +12,16 @@ CHALANO
 3. Prothombar 4 jon technician dekhabe:
    ASRAFUL, NAYEM, NURUL, RONI.
 
+KOTHAY RAKHBEN
+--------------
+- PC-r jekono LOCAL disk e rakhun: C:\MAHER ba D:\MAHER.
+- D: te rakhle Windows abar install korleo (jodi shudhu C: format
+  hoy) apnar record bache. Network drive, pen-drive ba OneDrive
+  folder-e rakhben na.
+- Eta backup NA! Disk nosto hole C: ba D: konoTai thake na — tai
+  majhe majhe "data\backups" folder-er notun .db file ekta
+  pen-drive-e kopi rakhen.
+
 BONDHO KORA
 -----------
 App window bondho korlei hobe. Puro server bondho korte chaile
@@ -23,6 +33,8 @@ SOTORKOTA (data haraben na)
   dokaner shob record (shop.db) ar backup.
 - Update ashle shudhu "app" ar "runtime" folder bodlabe,
   "data" folder-e haat diben na.
+- "data\backups" folder-er notun .db file majhe majhe ekta
+  pen-drive-e kopi rakhen — eta-i asol backup.
 
 SOMOSSA HOLE
 ------------
