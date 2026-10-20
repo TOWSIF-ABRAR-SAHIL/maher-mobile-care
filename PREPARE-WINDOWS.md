@@ -11,6 +11,10 @@ Ekta zip file: `MAHER-Windows-Client.zip` — GitHub release
 `v1.0.1-windows`-e ache. Ei version e tomar prothom Windows test e pawa
 duita bug fix kora hoyeche.
 
+> **Repo ta PRIVATE.** Tai GitHub-er link client-ke dile o kaj korbe
+> na (login chara download hobe na)। Client-ke file ta **nije** pathate
+> hobe — pen-drive, WhatsApp ba email attachment।
+
 Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 (Purono `MAHER-Windows-Test.zip` test-er jonno chilo — client-ke dibe na.)
 

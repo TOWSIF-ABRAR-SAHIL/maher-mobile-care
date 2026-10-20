@@ -114,7 +114,9 @@ npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client
 ```
 
 The client zip ships separately on GitHub as release `v1.0.1-windows`
-(`MAHER-Windows-Client.zip`, test-data free). The client unpacks that folder on
+(`MAHER-Windows-Client.zip`, test-data free) — the repo is **private**, so the
+release URL needs a GitHub login and the file itself is what goes to the client
+(pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
 path is resolved relative to the launcher — and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
