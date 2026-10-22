@@ -44,7 +44,7 @@ export function TodayStats({
     return (
       <div
         data-testid="today-stats"
-        className="grid grid-cols-2 gap-2 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-2 md:grid-cols-4"
       >
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-20" />
@@ -70,7 +70,7 @@ export function TodayStats({
   return (
     <div
       data-testid="today-stats"
-      className="grid grid-cols-2 gap-2 lg:grid-cols-4"
+      className="grid grid-cols-2 gap-2 md:grid-cols-4"
     >
       <DayCard
         border="border-l-blue-500"

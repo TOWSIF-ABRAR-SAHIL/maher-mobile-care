@@ -30,7 +30,7 @@ export function Receipt({ service }: { service: ServiceDTO }) {
   return (
     <div
       data-receipt
-      className="mx-auto w-full max-w-xl bg-white p-6 text-sm text-black"
+      className="mx-auto w-full max-w-xl bg-white p-4 text-sm text-black sm:p-6"
     >
       {/* Shop header */}
       <div className="text-center">
@@ -49,7 +49,7 @@ export function Receipt({ service }: { service: ServiceDTO }) {
       <hr className="my-3 border-t-2 border-black" />
 
       {/* Bill meta */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p>
           বিল নং: <span className="font-bold">#{service.id}</span>
         </p>
@@ -70,7 +70,7 @@ export function Receipt({ service }: { service: ServiceDTO }) {
       <table className="w-full">
         <tbody>
           <tr>
-            <td className="w-28 py-0.5 align-top text-gray-600">গ্রাহক</td>
+            <td className="w-24 py-0.5 align-top text-gray-600 sm:w-28">গ্রাহক</td>
             <td className="py-0.5 font-semibold">{service.customerName}</td>
           </tr>
           <tr>
@@ -145,7 +145,7 @@ export function Receipt({ service }: { service: ServiceDTO }) {
       <hr className="my-3 border-t-2 border-black" />
 
       {/* Signatures */}
-      <div className="mt-6 flex justify-between gap-8">
+      <div className="mt-6 flex justify-between gap-4 sm:gap-8">
         <div className="flex-1 text-center">
           <div className="border-t border-gray-500 pt-1">
             <div
@@ -194,7 +194,7 @@ export function ReceiptDialog({
           if (!open) onClose();
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[92dvh] overflow-y-auto p-4 sm:max-w-lg sm:p-6">
           <DialogHeader>
             <DialogTitle>বিল প্রিভিউ (কাস্টমার কপি)</DialogTitle>
           </DialogHeader>

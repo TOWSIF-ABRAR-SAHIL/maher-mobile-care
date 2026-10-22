@@ -42,7 +42,7 @@ export function TechnicianStats({
   return (
     <section
       data-testid="technician-stats"
-      className="rounded-xl border bg-white p-3 shadow-md"
+      className="rounded-xl border bg-white p-3 shadow-md sm:p-4"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold tracking-tight text-gray-800">
@@ -52,7 +52,7 @@ export function TechnicianStats({
           কার্ডে ক্লিক করে শুধু ওই টেকনিশিয়ানের কাজ দেখুন
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {loading
           ? [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)
           : stats.map((t) => {
@@ -83,7 +83,7 @@ export function TechnicianStats({
                 >
                   <p
                     className={cn(
-                      "flex items-center gap-1 font-bold",
+                      "flex flex-wrap items-center gap-1 break-words font-bold",
                       t.isActive ? nameColor(t.technician) : "text-gray-500"
                     )}
                   >

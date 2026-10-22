@@ -33,7 +33,7 @@ export function MonthlySummary({
   loading: boolean;
 }) {
   return (
-    <section className="rounded-xl bg-[#1e293b] p-4 shadow-md print:bg-white print:text-black">
+    <section className="rounded-xl bg-[#1e293b] p-3 shadow-md sm:p-4 print:bg-white print:text-black">
       <h2 className="mb-1 text-sm font-semibold tracking-tight text-white sm:text-base print:text-black">
         📊 ওভারঅল রিপোর্ট (Monthly Summary)
       </h2>
@@ -56,27 +56,27 @@ export function MonthlySummary({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-300">
+        <div className="flex flex-col gap-1.5 text-xs text-slate-300 sm:flex-row sm:items-center">
           <Input
             type="date"
             value={range.from}
             onChange={(e) => {
               if (e.target.value) onCustom(e.target.value, range.to);
             }}
-            className="h-8 w-auto border-slate-600 bg-slate-800 text-xs text-slate-200"
+            className="h-8 w-full min-w-0 border-slate-600 bg-slate-800 text-xs text-slate-200 sm:w-auto"
           />
-          <span>–</span>
+          <span className="hidden sm:inline">–</span>
           <Input
             type="date"
             value={range.to}
             onChange={(e) => {
               if (e.target.value) onCustom(range.from, e.target.value);
             }}
-            className="h-8 w-auto border-slate-600 bg-slate-800 text-xs text-slate-200"
+            className="h-8 w-full min-w-0 border-slate-600 bg-slate-800 text-xs text-slate-200 sm:w-auto"
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {loading || !summary ? (
           [0, 1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-20 bg-slate-700" />

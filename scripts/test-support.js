@@ -172,28 +172,44 @@ async function waitToast(page, text) {
 
 const DAILY_SECTION = '[data-testid="daily-services"]';
 
+/** Daily rows are a table on desktop and cards below 1024px. */
+const DAILY_CARD_SELECTOR = '[data-testid^="service-card-"]';
+
 async function dailyRows(page) {
-  return page.evaluate((selector) => {
-    const section = document.querySelector(selector);
-    if (!section) return [];
-    return [...section.querySelectorAll("tbody tr")].map((tr) => tr.textContent);
-  }, DAILY_SECTION);
+  return page.evaluate(
+    (selector, cardSelector) => {
+      const section = document.querySelector(selector);
+      if (!section) return [];
+      const rows = [...section.querySelectorAll("tbody tr")];
+      if (rows.length > 0) return rows.map((tr) => tr.textContent);
+      return [...section.querySelectorAll(cardSelector)].map(
+        (card) => card.textContent
+      );
+    },
+    DAILY_SECTION,
+    DAILY_CARD_SELECTOR
+  );
 }
 
 async function clickDailyRowButton(page, name, title) {
   await page.evaluate(
-    (selector, rowName, buttonTitle) => {
+    (selector, cardSelector, rowName, buttonTitle) => {
       const section = document.querySelector(selector);
       if (!section) throw new Error("daily services section missing");
-      const row = [...section.querySelectorAll("tbody tr")].find((tr) =>
-        tr.textContent.includes(rowName)
-      );
+      const row =
+        [...section.querySelectorAll("tbody tr")].find((tr) =>
+          tr.textContent.includes(rowName)
+        ) ||
+        [...section.querySelectorAll(cardSelector)].find((card) =>
+          card.textContent.includes(rowName)
+        );
       if (!row) throw new Error("daily row missing: " + rowName);
       const button = row.querySelector(`button[title='${buttonTitle}']`);
       if (!button) throw new Error(`${buttonTitle} missing for ${rowName}`);
       button.click();
     },
     DAILY_SECTION,
+    DAILY_CARD_SELECTOR,
     name,
     title
   );
@@ -201,34 +217,41 @@ async function clickDailyRowButton(page, name, title) {
 
 async function clickDailyStatus(page, name) {
   await page.evaluate(
-    (selector, rowName) => {
+    (selector, cardSelector, rowName) => {
       const section = document.querySelector(selector);
       if (!section) throw new Error("daily services section missing");
-      const row = [...section.querySelectorAll("tbody tr")].find((tr) =>
-        tr.textContent.includes(rowName)
-      );
+      const row =
+        [...section.querySelectorAll("tbody tr")].find((tr) =>
+          tr.textContent.includes(rowName)
+        ) ||
+        [...section.querySelectorAll(cardSelector)].find((card) =>
+          card.textContent.includes(rowName)
+        );
       if (!row) throw new Error("daily row missing: " + rowName);
-      const button = row.querySelector("td button");
+      const button = row.querySelector("td button, button");
       if (!button) throw new Error("status button missing for " + rowName);
       button.click();
     },
     DAILY_SECTION,
+    DAILY_CARD_SELECTOR,
     name
   );
 }
 
 async function waitDailyRow(page, name, present = true, timeout = 15000) {
   await page.waitForFunction(
-    (selector, rowName, shouldBePresent) => {
+    (selector, cardSelector, rowName, shouldBePresent) => {
       const section = document.querySelector(selector);
       if (!section) return false;
-      const found = [...section.querySelectorAll("tbody tr")].some((tr) =>
-        tr.textContent.includes(rowName)
-      );
+      const found = [
+        ...section.querySelectorAll("tbody tr"),
+        ...section.querySelectorAll(cardSelector),
+      ].some((row) => row.textContent.includes(rowName));
       return shouldBePresent ? found : !found;
     },
     { polling: 500, timeout },
     DAILY_SECTION,
+    DAILY_CARD_SELECTOR,
     name,
     present
   );

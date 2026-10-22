@@ -461,7 +461,7 @@ export default function Home() {
         </div>
       ) : null}
       <main
-        className={`mx-auto max-w-7xl space-y-2.5 px-3 py-2.5 ${
+        className={`mx-auto w-full max-w-7xl space-y-2.5 px-3 py-2.5 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
           receipt ? "print:hidden" : ""
         }`}
       >
@@ -536,8 +536,8 @@ export default function Home() {
           />
         </div>
 
-        <div className="grid items-start gap-4 lg:grid-cols-12">
-          <div ref={formRef} className="min-w-0 scroll-mt-24 lg:col-span-4">
+        <div className="grid items-start gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <div ref={formRef} className="min-w-0 scroll-mt-24">
             <ServiceForm
               key={editing?.id ?? "new"}
               initial={editing}
@@ -554,7 +554,7 @@ export default function Home() {
               onCancelEdit={() => setEditing(null)}
             />
           </div>
-          <div className="min-w-0 lg:col-span-8">
+          <div className="min-w-0">
             <ServiceTable
               services={services}
               loading={loading}
@@ -621,7 +621,7 @@ export default function Home() {
           carries the shop name) but must never end up on a customer's bill,
           so it is hidden only while a receipt is open — same rule as <main>. */}
       <footer
-        className={`mx-auto max-w-7xl px-3 pb-6 ${
+        className={`mx-auto w-full max-w-7xl px-3 pb-6 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
           receipt ? "print:hidden" : ""
         }`}
       >

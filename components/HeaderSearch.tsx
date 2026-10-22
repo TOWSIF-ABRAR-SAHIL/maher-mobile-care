@@ -237,7 +237,7 @@ export function HeaderSearch({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "k") return;
-      if (!window.matchMedia("(min-width: 1024px)").matches) return;
+      if (!window.matchMedia("(min-width: 1280px)").matches) return;
       if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       setOpen(true);
@@ -270,7 +270,7 @@ export function HeaderSearch({
   };
 
   return (
-    <div ref={wrapRef} className="relative hidden lg:block">
+    <div ref={wrapRef} className="relative hidden shrink-0 xl:block print:hidden">
       <Input
         ref={inputRef}
         id="global-search"
@@ -328,7 +328,7 @@ export function MobileSearch({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "k") return;
-      if (window.matchMedia("(min-width: 1024px)").matches) return;
+      if (window.matchMedia("(min-width: 1280px)").matches) return;
       if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       setOpen(true);
@@ -353,7 +353,7 @@ export function MobileSearch({
           type="button"
           size="icon"
           variant="secondary"
-          className="h-8 w-8 shrink-0 border border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white lg:hidden"
+          className="h-8 w-8 shrink-0 border border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white xl:hidden print:hidden"
           aria-label="সার্চ করুন"
           title="সার্চ (Ctrl+K)"
           data-testid="mobile-search-open"

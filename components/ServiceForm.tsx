@@ -324,7 +324,7 @@ export function ServiceForm({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div>
             <Label htmlFor="svc-name">কাস্টমারের নাম</Label>
-            <Input id="svc-name" value={f.customerName} onChange={set("customerName")} className="h-9 lg:h-8" />
+            <Input id="svc-name" value={f.customerName} onChange={set("customerName")} className="h-9 xl:h-8" />
           </div>
           <div>
             <Label htmlFor="svc-phone">মোবাইল নম্বর (WhatsApp)</Label>
@@ -334,7 +334,7 @@ export function ServiceForm({
               onChange={set("phone")}
               placeholder="017xxxxxxxx"
               inputMode="tel"
-              className="h-9 lg:h-8"
+              className="h-9 xl:h-8"
             />
           </div>
         </div>
@@ -353,7 +353,7 @@ export function ServiceForm({
               placeholder={
                 isProductSale ? "যেমন: 18W Charger" : "যেমন: Redmi Note 10"
               }
-              className="h-9 lg:h-8"
+              className="h-9 xl:h-8"
             />
           </div>
           <div>
@@ -367,7 +367,7 @@ export function ServiceForm({
                 setF((p) => ({ ...p, technician: v }));
               }}
             >
-              <SelectTrigger id="svc-tech" className="h-9 lg:h-8">
+              <SelectTrigger id="svc-tech" className="h-9 xl:h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -406,7 +406,7 @@ export function ServiceForm({
             placeholder={
               isProductSale ? "যেমন: Type-C, 1 মিটার" : "যেমন: ডিসপ্লে পরিবর্তন"
             }
-            className="h-9 lg:h-8"
+            className="h-9 xl:h-8"
           />
         </div>
 
@@ -419,7 +419,7 @@ export function ServiceForm({
               onChange={set("totalBill")}
               placeholder="0"
               inputMode="numeric"
-              className="h-9 lg:h-8"
+              className="h-9 xl:h-8"
             />
           </div>
           <div>
@@ -430,7 +430,7 @@ export function ServiceForm({
               onChange={set("advance")}
               placeholder="0"
               inputMode="numeric"
-              className="h-9 lg:h-8"
+              className="h-9 xl:h-8"
             />
           </div>
         </div>
@@ -442,7 +442,7 @@ export function ServiceForm({
               id="svc-due"
               value={formatTaka(due).replace("৳", "").trim()}
               readOnly
-              className="h-9 bg-gray-50 font-semibold lg:h-8"
+              className="h-9 bg-gray-50 font-semibold xl:h-8"
             />
           </div>
           <div>
@@ -455,7 +455,7 @@ export function ServiceForm({
                 setF((p) => ({ ...p, status: v }));
               }}
             >
-              <SelectTrigger id="svc-status" disabled={isProductSale} className="h-9 lg:h-8">
+              <SelectTrigger id="svc-status" disabled={isProductSale} className="h-9 xl:h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -491,7 +491,7 @@ export function ServiceForm({
                 maxLength={24}
                 aria-invalid={normalizedExpense.kind === "invalid"}
                 aria-describedby="svc-expense-help"
-                className={`h-9 lg:h-8 ${
+                className={`h-9 xl:h-8 ${
                   normalizedExpense.kind === "invalid"
                     ? "border-red-500 focus-visible:ring-red-500"
                     : ""
@@ -535,7 +535,7 @@ export function ServiceForm({
                 maxLength={100}
                 placeholder="দোকানের নাম (ঐচ্ছিক)"
                 autoComplete="off"
-                className="h-9 lg:h-8"
+                className="h-9 xl:h-8"
               />
               <datalist id="parts-shop-options">
                 {partsShops.map((shop) => (
@@ -558,7 +558,7 @@ export function ServiceForm({
               type="date"
               value={f.serviceDate}
               onChange={set("serviceDate")}
-              className="h-9 lg:h-8"
+              className="h-9 xl:h-8"
             />
           </div>
         ) : null}

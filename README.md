@@ -38,7 +38,8 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 230-check suite all pass on it).
+(build, lint and typecheck pass on it). The v1.1.4 298-check regression was also
+run on **Node 24.15.0 / npm 11.12.1** on the current Windows build host.
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -115,8 +116,8 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip is built as `out/MAHER-Windows-Client.zip` (v1.1.3, test-data
-free) and should be published as release `v1.1.3-windows` - the repo is
+The client zip is built as `out/MAHER-Windows-Client.zip` (v1.1.4, test-data
+free) and should be published as release `v1.1.4-windows` - the repo is
 **private**, so the release URL needs a GitHub login and the file itself is what
 goes to the client (pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
@@ -317,7 +318,8 @@ scripts/
   laneE.js                 → return/refund + damage-loss audit (16 checks)
   api-check.js             → API contract + validation + restore-guard + roster (59)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (25 checks)
-  responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
+  responsive-check.js      → 10 widths, 360–1920px: header, search, card/table,
+                             grid, sticky actions + dialogs (74 checks)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
 out/                        → build output: MAHER/ package + zip (git-ignored)
@@ -332,16 +334,19 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 **Dashboard (one page):**
 - Sticky blue-gradient navbar — date prev/next/picker, **আজ**, Sync, Backup,
-  Restore, ⚙️ টেকনিশিয়ান, Print, plus the **navbar search** on the right:
+  Restore, টেকনিশিয়ান, Print, plus the **navbar search**:
   `🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)`. Typing 2+ characters shows a
   live dropdown; clicking a result opens its receipt, and the pencil loads it
-  into the form. `Ctrl+K` focuses the input; on mobile a 🔍 icon opens a top
-  search sheet. Keyboard `←`/`→` changes day (not while typing).
+  into the form. `Ctrl+K` focuses the input; below 1280px a 🔍 icon opens a top
+  search sheet. The header compacts to three rows on phones/tablets and two rows
+  from 1280px, so it never eats half the screen. Keyboard `←`/`→` changes day
+  (not while typing).
 - Technician cards — one per **active** technician (card count follows the
   roster), plus a greyed “নিষ্ক্রিয়” card for anyone who has left the shop but
   still has work on the shown date, so the day's cards always add up to
-  আজকের মোট কাজ. Cards sit in a 5-column desktop grid and **clicking one filters
-  the daily table to that technician**; clicking it again clears the filter.
+  আজকের মোট কাজ. Cards sit in a 5-column desktop grid (3 on tablet, 2 on phone)
+  and **clicking one filters the daily list to that technician**; clicking it
+  again clears the filter.
 - 4 daily cards — কাজ / বিল / বাকি / খরচ. The খরচ card always shows the real
   decoded total **including damage loss** (+`Nটি কোড` hint when codes are in
   use). The বিল card also shows **জমা** (advance) and, when applicable, the
@@ -381,22 +386,28 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   editable so a loss can be recorded or corrected later.
 - **💰 বাকি তালিকা** — the button itself shows the live count and total
   (`১টি • ৳৭০০`) and opens a dialog containing every active record with money
-  outstanding, independent of the selected day. The table keeps
-  `তারিখ | কাস্টমার | মডেল/অবস্থা | বিল/জমা/বাকি | যোগাযোগ | অ্যাকশন`, with
-  working call + WhatsApp buttons per row. The **মোট বাকি** headline is a SQL
-  aggregate over *all* matching rows, so it stays 100% accurate even when the
-  rendered list is capped. Close with X or Escape.
-- **Compact desktop layout** — navbar → report/dues buttons → technician cards →
-  today's cards → form (4/12) + table (8/12) → footer. At 1920×1080 the complete
+  outstanding, independent of the selected day. Desktop keeps
+  `তারিখ | কাস্টমার | মডেল/অবস্থা | বিল/জমা/বাকি | যোগাযোগ | অ্যাকশন`; below
+  1024px the same records become cards with call + WhatsApp buttons per record.
+  The **মোট বাকি** headline is a SQL aggregate over *all* matching rows, so it
+  stays 100% accurate even when the rendered list is capped. Close with X or
+  Escape.
+- **Responsive dashboard** — navbar → report/dues buttons → technician cards →
+  today's cards → form + service list → footer. Below 1280px the form and list
+  stack; at 1280px+ they sit side by side (380px form + remaining width), and
+  the page container widens at 1440px and 1600px. At 1920×1080 the complete
   entry form and its save button fit without scrolling the page.
 - **⚙️ টেকনিশিয়ান** (header) → **টেকনিশিয়ান ব্যবস্থাপনা** dialog: add, rename and
   deactivate technicians. Renaming asks first when it would rewrite history;
   deleting is a soft-delete that keeps every old record intact.
-- Service table — client-side filter within the selected day (name / ID /
-  phone / model / problem), status chips with counts. The **খরচ** column is
-  always visible and shows the stored code; each row's eye reveals **only that
-  row's** decoded amount. A legacy plain-number value is masked as `৳••••`
-  until it is converted. The parts-shop name sits under the code.
+- Service list — a table at 1024px+ and touch-friendly cards below 1024px, so
+  every action is reachable without sideways scrolling. The table's action
+  column stays pinned to the right when the table scrolls. Client-side filter
+  within the selected day (name / ID / phone / model / problem), status chips
+  with counts. The **খরচ** column is always visible and shows the stored code;
+  each row's eye reveals **only that row's** decoded amount. A legacy
+  plain-number value is masked as `৳••••` until it is converted. The parts-shop
+  name sits under the code.
   **1-click status advance**
   (badge click → next stage; ফেরত is terminal and skips this cycle),
   edit/delete(→archive), **⚖️ return/damage**, plus per-row **bill print**,
@@ -598,12 +609,12 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (11 suites, 230 checks) entirely on
+`npm test` runs the full regression (11 suites, 298 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (136 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (139 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -619,18 +630,20 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- v1.1.3 full run: **11/11 suites, 230/230 checks** — Launcher 14 · Expense
+- v1.1.4 full run: **11/11 suites, 298/298 checks** — Launcher 14 · Expense
   upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 16 ·
-  API 59 · Technician 25 · Responsive 6, 0 FAIL, 0 JS errors; the live shop DB
+  API 59 · Technician 25 · Responsive 74, 0 FAIL, 0 JS errors; the live shop DB
   hash stayed unchanged.
+- v1.1.3 historical run: **11/11 suites, 230/230 checks** — same suites with
+  Responsive 6, before the phone/tablet card views and breakpoint expansion.
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  136 steps, including a real PDF print/read-back; run it on the target PC after
+  139 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
-- Desktop + 360px mobile + print-emulation verified; the shop DB stayed
-  byte-identical (hash-checked).
+- Desktop + 360–1920px responsive widths + print-emulation verified; the shop
+  DB stayed byte-identical (hash-checked).
 
 ---
 
@@ -712,6 +725,32 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 ---
 
 ## 9. Changelog
+
+### v1.1.4 — responsive phone, tablet & desktop dashboard
+
+**Changed**
+- The sticky navbar is now a compact ladder: 3 rows on phones/tablets, 2 rows
+  from 1280px. All six actions (Sync, Backup, Restore, টেকনিশিয়ান, Print, আজ)
+  stay visible at every width; the search input moves into the title row at
+  1280px and a 🔍 sheet opens below that. `Ctrl+K` follows the same breakpoint.
+- The dashboard form and service list stack below 1280px and sit side by side
+  at 1280px+ (`380px` form + remaining width). The container widens at 1440px
+  and 1600px instead of leaving unused desktop space.
+- The daily service list and বাকি তালিকা render as cards below 1024px and as
+  tables at 1024px+. The service table's action column is sticky, so the six
+  row actions cannot be hidden behind horizontal scrolling.
+- Receipt, report, dues, technician and adjustment dialogs use phone-safe
+  padding and wrap/stack their date controls, cards and contact rows.
+- Daily/technician/monthly cards reflow at phone and tablet widths; form inputs
+  keep 36px touch heights until 1280px.
+
+**Verified**
+- `scripts/responsive-check.js` expanded from 6 checks at 3 widths to **74
+  checks at 10 widths** (360, 390, 640, 768, 960, 1024, 1280, 1366, 1440,
+  1920): page overflow, header height/actions, search mode, card/table view,
+  sticky action visibility, dashboard grid, phone/tablet dialogs and JS errors.
+- Full v1.1.4 run: **11/11 suites, 298/298 checks**, 0 FAIL, 0 JS errors; the
+  live shop DB hash stayed unchanged.
 
 ### v1.1.3 — automatic expense codes & money audit
 
@@ -938,7 +977,7 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **230** automated checks pass, and the live database is byte-identical.
+- All **298** automated checks pass, and the live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
@@ -960,6 +999,6 @@ screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
-`prisma/dev.db` byte-identical. The current v1.1.3 run is **11/11 suites,
-230/230 checks**; the packaged window was also driven by hand for the shop test
-above. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.
+`prisma/dev.db` byte-identical. The current v1.1.4 run is **11/11 suites,
+298/298 checks**; the earlier v1.1.2 packaged window was also driven by hand
+for the shop test above. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.

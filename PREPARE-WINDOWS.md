@@ -8,7 +8,7 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 ## Tumi Ja Pabe
 
 Ekta zip file: `MAHER-Windows-Client.zip` — local build
-`out\MAHER-Windows-Client.zip` (v1.1.3). Eta GitHub release `v1.1.3-windows`-e
+`out\MAHER-Windows-Client.zip` (v1.1.4). Eta GitHub release `v1.1.4-windows`-e
 publish korte hobe. Entry form-e code (`*J#`) likhle raw code ar decoded taka
 (`৳১৫০০`) duitai dekha jay; shudhu number (`1500`) likhleo save-er shomoy seta
 **canonical code** (`*J#`) hoye jay. Privacy shudhu **service talika-r খরচ
@@ -19,7 +19,16 @@ receipt ba PDF-e cost, code, parts-shop ba profit kokhono jay na. Cash/change
 calculator, receipt address, PAID stamp, WhatsApp + **PDF শেয়ার** sob age-r
 motoi ache.
 
-Notun v1.1.3:
+Notun v1.1.4:
+- phone/tablet-e puro app responsive: header chhoto (phone-e 3 row, 1280px+
+  theke 2 row), sob action button dekha jay;
+- 1024px-er niche service talika ar **বাকি তালিকা** card hoy; 1024px+ theke
+  table, ar table scroll korleo action column dan dike atke thake;
+- 1280px-er niche form ar list niche-upor; 1280px+ theke pasapashi;
+- receipt/report/dues/technician dialog phone-e fit hoy, date control gulo
+  wrap/stack hoy.
+
+Ager notun (v1.1.3):
 - number likhle auto code; code likhle jemon likhben temoni thake;
 - purono numeric cost upgrade/restore-e automatic code hoye jay — taka
   kokhono hariye jay na ba plain number hisebe expose hoy na;
@@ -60,7 +69,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **11 suites, 230 checks**, live data er hash-o same ache.
+suite pass koreche — **11 suites, 298 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -111,7 +120,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **230/230 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **298/298 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -286,7 +295,10 @@ Prothom bar notun version chalanor shomoy migration **automatic** hoy; apni
 shudhu `data` folder-ta niye chinta korben na. Purono snapshot restore korleo
 notun column-gulo `0`/blank hoye safe thake.
 
-v1.1.3-e kono notun database column nei. Kintu purono **numeric shop cost**
+v1.1.4-e kono notun database column nei — shudhu UI/layout change. Tai
+v1.1.3 theke upgrade korle `data` folder same thake.
+
+v1.1.3-e-o kono notun database column chilo na. Kintu purono **numeric shop cost**
 thakle first run-e (ar purono snapshot restore korle) seta automatic code hoye
 jay; `expenseAmount` same thake. Tai upgrade-er age backup nin, tarpor app
 chalan — table-e number er bodole code dekhben.
@@ -308,7 +320,7 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    ```powershell
    tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `version` hobe `1.1.3`, `sourceCommit` HEAD-er sathe milbe (release-er
+   `version` hobe `1.1.4`, `sourceCommit` HEAD-er sathe milbe (release-er
    age sob change commit kore nio), `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno

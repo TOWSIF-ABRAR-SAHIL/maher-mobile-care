@@ -1,11 +1,12 @@
-# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.1.3
+# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.1.4
 
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 11 suites, 230 checks (see README §7).
+- **Automated coverage:** `npm test` → 11 suites, 298 checks (see README §7).
   E13–E20 below cover the v1.1.2 return/refund and damage-loss ledger; B7/B7b,
-  E1, E14b and L2 pin the v1.1.3 automatic expense codes and per-row eye.
+  E1, E14b and L2 pin the v1.1.3 automatic expense codes and per-row eye;
+  K1–K10 cover the v1.1.4 responsive header, cards/table and dialogs.
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -211,6 +212,9 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **K5** Tap **✕ ফিল্টার সরান**. Expect: it responds on touch — *risk: নেই*
 - [ ] **K6** At 360px, expect the desktop search input to be hidden and a **🔍** icon visible. Tap it; expect a top search sheet with the same placeholder, autofocus, and live results; close it — *risk: নেই*
 - [ ] **K7** Open **📊 ওভারঅল রিপোর্ট** and **💰 বাকি তালিকা** at 360px. Expect: each dialog fits the screen with no sideways page scroll — *risk: নেই*
+- [ ] **K8** At 360px, scroll to the service list. Expect: each record is a card (not a sideways table), with customer, model/problem, bill/জমা/বাকি and all six action buttons visible — *risk: নেই*
+- [ ] **K9** Widen the window to 768px, then 1024px. Expect: the header stays compact; the list is cards at 768px and becomes a table at 1024px; at 1024px the action buttons stay pinned to the right even if the table scrolls — *risk: নেই*
+- [ ] **K10** Widen to 1280px. Expect: the header drops to two rows, the search box reappears in the title row, and the form sits beside the service list — *risk: নেই*
 
 ---
 

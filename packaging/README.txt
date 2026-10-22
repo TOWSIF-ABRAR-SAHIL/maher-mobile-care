@@ -12,8 +12,17 @@ CHALANO
 3. Prothombar 4 jon technician dekhabe:
    ASRAFUL, NAYEM, NURUL, RONI.
 
-NOTUN (v1.1.3)
+NOTUN (v1.1.4)
 --------------
+- Phone/tablet-e puro app chhoto hoy: header 3 row (1280px+ theke 2 row),
+  ar Sync/Backup/Restore/Technician/Print/Aaj — shob button dekha jay.
+- 1024px-er niche service talika ar "বাকি তালিকা" card hoy; 1024px+ theke
+  table. Table scroll korleo action button-gulo dan dike atke thake.
+- 1280px-er niche form ar list niche-upor; 1280px+ theke pasapashi.
+- Receipt, report, baki list ar technician dialog phone-e fit hoy.
+
+AGER NOTUN (v1.1.3)
+-------------------
 - Shop khoroch-e shudhu number likhleo seta save-er shomoy gopon code
   hoye jay (jemon 1500 -> *J#). Code likhle jemon likhben temoni thake.
 - Purono numeric khoroch app chalanor shomoy ba purono backup restore
@@ -99,4 +108,4 @@ SOMOSSA HOLE
 1. "MAHER STOP.bat" chaliye abar "MAHER MOBILE CARE.bat" chalan.
 2. Tao na hole "logs" folder-er "maher.log" file-ta support-ke pathan.
 
-Vershon: 1.1.3 (Windows 64-bit, offline)
+Vershon: 1.1.4 (Windows 64-bit, offline)
