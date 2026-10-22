@@ -332,16 +332,19 @@ async function main() {
     // The server decoder is authoritative; the UI badge is only a preview.
     const codeShop = unique("CodeShop");
     const codeCases = [
-      ["*J#", 1500],
-      ["T#", 800],
-      ["GJ+", 450],
-      ["gj+", 450], // lowercase accepted
-      ["1500", 1500],
-      ["*M#", 1600],
-      ["*B#", 1200],
+      // [input, decoded amount, exact stored value]
+      ["*J#", 1500, "*J#"],
+      ["T#", 800, "T#"],
+      ["GJ+", 450, "GJ+"],
+      ["gj+", 450, "gj+"], // lowercase codes stay as typed
+      ["1500", 1500, "*J#"], // plain numbers become canonical codes
+      ["1234", 1234, "*ADG"],
+      ["1000", 1000, "*+#"],
+      ["*M#", 1600, "*M#"],
+      ["*B#", 1200, "*B#"], // B is still a valid alias for 2
     ];
     let firstCodeId = null;
-    for (const [raw, expected] of codeCases) {
+    for (const [raw, expected, stored] of codeCases) {
       const res = await api("/api/services", json({
         customerName: unique("ExpenseCode"),
         phone: "01000000333",
@@ -361,13 +364,13 @@ async function main() {
       }
       check(
         "EC1",
-        `shop code ${JSON.stringify(raw)} decodes to ${expected} and keeps the raw value`,
+        `shop input ${JSON.stringify(raw)} decodes to ${expected}, stored as ${JSON.stringify(stored)}`,
         res.ok &&
-          res.body.shopExpense === raw &&
+          res.body.shopExpense === stored &&
           res.body.expenseAmount === expected &&
           res.body.partsShop === codeShop,
         JSON.stringify(res.body && {
-          raw: res.body.shopExpense,
+          stored: res.body.shopExpense,
           amount: res.body.expenseAmount,
           shop: res.body.partsShop,
           error: res.body.error,
@@ -456,6 +459,23 @@ async function main() {
         raw: updatedCode.body.shopExpense,
         amount: updatedCode.body.expenseAmount,
         shop: updatedCode.body.partsShop,
+      })
+    );
+
+    const numericUpdate = await api(
+      `/api/services/${firstCodeId}`,
+      put({ shopExpense: "1234" })
+    );
+    check(
+      "EC5b",
+      "update also converts a plain number to a canonical code",
+      numericUpdate.ok &&
+        numericUpdate.body.shopExpense === "*ADG" &&
+        numericUpdate.body.expenseAmount === 1234,
+      JSON.stringify({
+        stored: numericUpdate.body.shopExpense,
+        amount: numericUpdate.body.expenseAmount,
+        error: numericUpdate.body.error,
       })
     );
 

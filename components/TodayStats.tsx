@@ -60,6 +60,12 @@ export function TodayStats({
   ]
     .filter(Boolean)
     .join(" • ");
+  const billHint = [
+    `জমা ${formatTaka(stats.advance)}`,
+    stats.refund > 0 ? `ফেরত ${formatTaka(stats.refund)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <div
@@ -81,7 +87,7 @@ export function TodayStats({
         label={`${prefix} মোট বিল`}
         value={formatTaka(stats.bill)}
         valueClass="text-green-600"
-        hint={stats.refund > 0 ? `ফেরত ${formatTaka(stats.refund)}` : undefined}
+        hint={billHint}
       />
       <DayCard
         border="border-l-red-500"

@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
       where: { archived: false, serviceDate: { gte: start, lte: end } },
       select: {
         totalBill: true,
+        advance: true,
         expenseAmount: true,
         due: true,
         status: true,
@@ -83,6 +84,7 @@ export async function GET(req: NextRequest) {
     const activeRows = rows.filter((r) => r.status !== "Returned");
     const returnedRows = rows.filter((r) => r.status === "Returned");
     const bill = activeRows.reduce((s, r) => s + r.totalBill, 0);
+    const advance = activeRows.reduce((s, r) => s + r.advance, 0);
     const expense = rows.reduce((s, r) => s + r.expenseAmount, 0);
     const due = activeRows.reduce((s, r) => s + r.due, 0);
     const damageLoss = rows.reduce((s, r) => s + r.damageLoss, 0);
@@ -94,6 +96,7 @@ export async function GET(req: NextRequest) {
       summary: {
         count: activeRows.length,
         bill,
+        advance,
         expense,
         due,
         profit: bill - expense - damageLoss,

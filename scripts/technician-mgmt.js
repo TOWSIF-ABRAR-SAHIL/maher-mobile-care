@@ -17,6 +17,7 @@ const {
   typeInto,
   uniqueName,
   waitDailyRow,
+  waitToast,
 } = require("./test-support");
 
 const BASE = resolveTestBase();
@@ -434,6 +435,45 @@ let browser = null;
     `rows=${rows.length}`
   );
   await clickCard(RENAMED);
+
+  // ---------- T8d: editing an inactive technician's old job ----------
+  // The form still offers the inactive name; the API must accept that same
+  // name on PUT instead of rejecting the row as if the user picked someone
+  // outside the roster.
+  // OWNER is a prefix of the other seeded row (OWNER + "A"), so select the
+  // exact row id instead of the first text match.
+  await page.evaluate(
+    (selector, id) => {
+      const section = document.querySelector(selector);
+      const row = [...section.querySelectorAll("tbody tr")].find(
+        (tr) => tr.children[0]?.textContent?.trim() === String(id)
+      );
+      if (!row) throw new Error("owner row missing: " + id);
+      const button = row.querySelector('button[title="এডিট"]');
+      if (!button) throw new Error("edit button missing: " + id);
+      button.click();
+    },
+    DAILY,
+    ownerJob.body.id
+  );
+  await page.waitForSelector("#svc-date", { polling: 300, timeout: 8000 });
+  await typeInto(page, "svc-problem", "Inactive technician edit probe");
+  await submitButton(page, "আপডেট করুন");
+  await waitToast(page, "আপডেট হয়েছে").catch(() => null);
+  await new Promise((r) => setTimeout(r, 600));
+  const ownerAfterEdit = (await dayRows()).find(
+    (s) => s.id === ownerJob.body.id
+  );
+  check(
+    "T8d",
+    "a deactivated technician's old job can still be edited without reassignment",
+    ownerAfterEdit?.technician === RENAMED &&
+      ownerAfterEdit?.problem === "Inactive technician edit probe",
+    JSON.stringify({
+      tech: ownerAfterEdit?.technician,
+      problem: ownerAfterEdit?.problem,
+    })
+  );
 
   // ---------- T15: the last active technician cannot be deleted ----------
   const allTech = (await api(page, "/api/technicians?all=true")).body.technicians;

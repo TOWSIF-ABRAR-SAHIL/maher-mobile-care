@@ -38,7 +38,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint, typecheck and the full 215-check suite all pass on it).
+(build, lint, typecheck and the full 230-check suite all pass on it).
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -86,7 +86,8 @@ Other scripts:
 | `npm run cleanup:test-data` | list leftover test rows (dry-run; `-- --confirm` removes) |
 | `npm run lint` | eslint check |
 | `npm run seed -- --fresh` | wipe + load 16 sample entries (demo data!) |
-| `npm run backfill:expense-codes` | dry-run repair of pre-v1.0.4 code rows; add `-- --confirm` to write |
+| `npm run backfill:expense-codes` | dry-run repair of old numeric/code rows; add `-- --confirm` to write |
+| `npm run audit:money` | dry-run ledger audit (due/refund/expense); add `-- --confirm` for safe repairs |
 | `npx prisma migrate dev` | apply DB migrations |
 | `npx prisma generate` | regenerate client (auto-runs on postinstall) |
 
@@ -114,8 +115,8 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip is built as `out/MAHER-Windows-Client.zip` (v1.1.2, test-data
-free) and should be published as release `v1.1.2-windows` - the repo is
+The client zip is built as `out/MAHER-Windows-Client.zip` (v1.1.3, test-data
+free) and should be published as release `v1.1.3-windows` - the repo is
 **private**, so the release URL needs a GitHub login and the file itself is what
 goes to the client (pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
@@ -299,19 +300,23 @@ scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
   build-portable.mjs       → npm run build:portable: bundle Node 22, swap in the
                              Windows better-sqlite3, strip leaks, assert no .db/.env
-  first-run.mjs            → create/upgrade the shop DB without the Prisma CLI
+  first-run.mjs            → create/upgrade the shop DB without the Prisma CLI;
+                             converts old numeric expense rows to codes on every start
   launch.mjs               → start the server, wait for real readiness, open the window
                                (--stop ends it by port owner)
     launch-decide.mjs         → reuse / takeover / refuse rules, unit tested
+  audit-money.ts           → dry-run ledger audit; --confirm applies safe repairs
+  backfill-expense-codes.ts→ dry-run/convert old expense rows; --confirm writes
+  expense-upgrade.test.js  → first-run/backfill/audit repair suite (10 checks)
   test-support.js          → shared browser helpers (launch, type, wait, api…)
   e2e-maher.js             → core flow E2E (9 checks)
   e2e-p0.js                → P0 features E2E (13 checks)
   laneA.js                 → Lane A audit (26 checks)
   laneBC.js                → Lanes B+C audit (24 checks)
   laneD.js                 → redesign/search/product-sale audit (28 checks)
-  laneE.js                 → return/refund + damage-loss audit (15 checks)
-  api-check.js             → API contract + validation + restore-guard + roster (56)
-  technician-mgmt.js       → v1.1 roster dialog + card filtering (24 checks)
+  laneE.js                 → return/refund + damage-loss audit (16 checks)
+  api-check.js             → API contract + validation + restore-guard + roster (59)
+  technician-mgmt.js       → v1.1 roster dialog + card filtering (25 checks)
   responsive-check.js      → 360/768/1024px overflow + JS-error checks (6)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
@@ -339,20 +344,24 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   the daily table to that technician**; clicking it again clears the filter.
 - 4 daily cards — কাজ / বিল / বাকি / খরচ. The খরচ card always shows the real
   decoded total **including damage loss** (+`Nটি কোড` hint when codes are in
-  use). Only the service table's cost codes stay private. A returned job adds
-  `+Nটি ফেরত` under কাজ, and the refunded cash is shown under বিল; returned
-  bills are excluded from বিল, বাকি and technician totals.
+  use). The বিল card also shows **জমা** (advance) and, when applicable, the
+  refund memo. Only the service table's cost codes stay private. A returned job
+  adds `+Nটি ফেরত` under কাজ; returned bills are excluded from বিল, বাকি and
+  technician totals.
 - **📊 ওভারঅল রিপোর্ট** opens the range report in a dialog: presets
   (বিগত ৩০ দিন / এই মাস / গত মাস) + custom থেকে–পর্যন্ত, then cards কাজ / বিল /
-  খরচ / **বাকি** / লাভ + date-range label. লাভ = বিল − খরচ − ড্যামেজ ক্ষতি.
+  খরচ / **বাকি** / লাভ + date-range label. বিল shows **জমা** as a hint.
+  লাভ = বিল − খরচ − ড্যামেজ ক্ষতি. Returned refunds are grouped by the job's
+  service date (not the later refund timestamp).
   Presets follow the navbar date;
   custom stays fixed. Close with X or Escape. Dashboard printing still carries
   the same report via a hidden print-only copy.
 - Entry form — all fields, **বাকি auto-calculates live**, Bengali digits
   accepted (`১৬০০` → 1600). Shop expense accepts a number or a keypad code
-  (`*J#` → 1500). The raw code stays visible and the live badge shows the
-  decoded amount directly (`গোপন কোড: *J# ➔ ৳১৫০০`). There is also a free-text
-  **পার্টস কেনার দোকান** field with previous-name suggestions.
+  (`*J#` → 1500). A plain number is converted to the canonical code on save
+  (`1500` → `*J#`, `1234` → `*ADG`), while a typed code stays as typed. The live
+  badge previews the code and decoded amount (`গোপন কোড: *J# ➔ ৳১৫০০`). There is
+  also a free-text **পার্টস কেনার দোকান** field with previous-name suggestions.
   Edit reuses the same form (incl. date correction — no delete+recreate).
 - **🛍️ প্রোডাক্ট সেল** — a toggle at the top of the form switches between
   🛠️ সার্ভিসিং (default) and product sale. Product mode renames the fields to
@@ -384,9 +393,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   deactivate technicians. Renaming asks first when it would rewrite history;
   deleting is a soft-delete that keeps every old record intact.
 - Service table — client-side filter within the selected day (name / ID /
-  phone / model / problem), status chips with counts, eye-toggle for the
-  খরচ / পার্টস দোকান column (hidden by default; shows stored codes only,
-  plain-number costs as `৳••••`, and stays open until toggled),
+  phone / model / problem), status chips with counts. The **খরচ** column is
+  always visible and shows the stored code; each row's eye reveals **only that
+  row's** decoded amount. A legacy plain-number value is masked as `৳••••`
+  until it is converted. The parts-shop name sits under the code.
   **1-click status advance**
   (badge click → next stage; ফেরত is terminal and skips this cycle),
   edit/delete(→archive), **⚖️ return/damage**, plus per-row **bill print**,
@@ -406,7 +416,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   wrong restore is itself restorable. The swap is atomic and
   snapshot-column-validated — a bad snapshot is rejected *before* anything is
   touched. Older snapshots without the new optional columns still restore;
-  those fields default to `NULL`/`0`.
+  those fields default to `NULL`/`0`. A restored pre-v1.1.3 numeric shop expense
+  is converted to a code immediately; the same repair also runs on every start.
+- Archiving a returned job warns that its refund, expense and damage loss also
+  leave every report and the profit calculation.
 - Print guard blocks blank prints; paper gets receipt-only or clean dashboard.
 
 **Customer bill (print/PDF):**
@@ -448,12 +461,15 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - Repair status and payment are **independent**: setting `Completed` or
   `Delivered` does not clear বাকি. A row leaves বাকি তালিকা only when its money
   is actually collected.
-- `shopExpense` keeps the raw input. A number is used as-is; a keypad code
-  (`*J#`) is decoded by the shared server decoder and stored in
-  `expenseAmount` (1500). Both count in খরচ/profit.
+- `shopExpense` stores a **canonical keypad code**. A typed number is converted
+  on save (`1500` → `*J#`); a typed code stays as typed. Both are decoded by the
+  shared server decoder into `expenseAmount` (1500). Both count in খরচ/profit.
 - **Secret-code mapping:** `*`=1, `+`=0, `#`=00, ABC=2, DEF=3, GHI=4,
   JKL=5, MNO=6, PQRS=7, TUV=8, WXYZ=9; digits stay as typed and lowercase is
-  accepted. `*J#`=1500, `T#`=800, `GJ+`=450, `*M#`=1600, `*B#`=1200.
+  accepted. Canonical encoding uses the first letter of each group:
+  `0→+`, `1→*`, `2→A`, `3→D`, … `9→W`, with `00→#`.
+  Examples: `*J#`=1500, `T#`=800, `GJ+`=450, `*M#`=1600, `*B#`=1200
+  (`B`/`C` remain valid aliases for `2`; only newly encoded numbers use `A`).
 - `partsShop` is internal-only free text (≤100 chars) and never printed.
 - `damageLoss` is a separate internal shop cost for technician-caused damage
   (≤ ৳ scope is the same numeric rules as a bill). It is **not** `shopExpense`
@@ -466,7 +482,9 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - **Refund is a cash memo, not a second profit deduction.** Returned rows are
   excluded from count, bill, due, revenue and technician performance, so their
   bill never becomes profit. Their normal `expenseAmount` and `damageLoss` still
-  belong to the shop.
+  belong to the shop. Refund reports group by the job's **service date**, not
+  the later `returnedAt` timestamp, so the cash memo stays with the day the job
+  belonged to.
 - `profit = active bill − expenseAmount (all non-archived rows) − damageLoss
   (all non-archived rows)`. Returned bills contribute zero; refunds are not
   subtracted again. Shop overhead like rent is NOT in the system — “লাভ” is
@@ -498,9 +516,11 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   New entries default to **In-Progress (চলমান)**; editing a row keeps that row's
   existing status until it is changed.
 - **Cost-code privacy lives only in the service table.** The খরচ column is
-  hidden until the eye is clicked and then shows only the stored code (e.g.
-  `*B#`); a plain-number cost is rendered as `৳••••`. The parts-shop name sits
-  under the code. The decoded amount is never printed in the table.
+  always visible and shows only the stored code (e.g. `*B#`); a legacy
+  plain-number cost is rendered as `৳••••`. Each row has its own eye that
+  reveals only that row's decoded amount; there is no global reveal. The
+  parts-shop name sits under the code. The decoded amount is never printed in
+  the table until that row's eye is clicked.
 - Everything else stays open: the entry form shows the decoded amount, the
   daily খরচ card shows the real total (including damage loss), and the monthly
   report shows real খরচ/লাভ. The customer receipt/PDF never prints cost, code,
@@ -518,7 +538,7 @@ One table, `Service`, 22 columns (grouped below by role):
 | `technician` | String | roster name (plain text so old snapshots stay valid) |
 | `totalBill`, `advance`, `due` | Int | the money triple (`due` is derived; Returned stores 0) |
 | `status` | String | `Pending`/`In-Progress`/`Completed`/`Delivered`/`Returned` |
-| `shopExpense` | String? | raw keypad code (`*J#`) **or** a number, free text |
+| `shopExpense` | String? | canonical keypad code (`*J#`); legacy numeric/code aliases still decode, free text |
 | `expenseAmount` | Int | decoded numeric cost for profit (1500 for `*J#`) |
 | `partsShop` | String? | internal parts-buying shop name, never printed |
 | `returnedAt` | DateTime? | when the full advance was returned |
@@ -578,12 +598,12 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (10 suites, 215 checks) entirely on
+`npm test` runs the full regression (11 suites, 230 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (134 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (136 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -599,11 +619,14 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- v1.1.2 full run: **10/10 suites, 215/215 checks** — Launcher 14 · E2E 9+13 ·
-  Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 15 · API 56 · Technician 24 ·
-  Responsive 6, 0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
+- v1.1.3 full run: **11/11 suites, 230/230 checks** — Launcher 14 · Expense
+  upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 16 ·
+  API 59 · Technician 25 · Responsive 6, 0 FAIL, 0 JS errors; the live shop DB
+  hash stayed unchanged.
+- v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
+  Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  134 steps, including a real PDF print/read-back; run it on the target PC after
+  136 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360px mobile + print-emulation verified; the shop DB stayed
@@ -613,6 +636,25 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 
 ## 8. Hardening notes (recent work)
 
+- **Expense codes are canonical, old rows are upgraded.** v1.1.3 converts a
+  plain-number shop expense into a keypad code at every entry path (form, API,
+  first-run, backfill, restore) and keeps a typed code unchanged. A code and its
+  `expenseAmount` can no longer drift apart silently. Old snapshots with numeric
+  expenses are normalized **after** the atomic restore, and `first-run.mjs`
+  repeats the same repair on every start, so a power cut during post-processing
+  cannot leave the shop with a permanently exposed number.
+- **Money audit instead of guesswork.** `scripts/audit-money.ts` checks every
+  row's due, returned refund, expense code/amount and invalid values. It is
+  dry-run by default; `--confirm` applies only due/expense/returned-refund
+  repairs. Overpay, invalid codes, stale `returnedAt`, and negative/oversized
+  amount-only expenses are reported for a human and left untouched.
+- **Per-row cost reveal.** The service table always shows the cost column, but
+  only the saved code; each row's eye reveals that row's amount alone. Bill,
+  joma, due and every report still show their real totals. Receipt/PDF privacy
+  is unchanged.
+- **Reports agree on dates and advances.** Daily/monthly `advance` is summed
+  only from active rows; refunds are grouped by the job's service date. The
+  dashboard hints (জমা, ফেরত, লাভ = বিল − খরচ − ক্ষতি) now match the API math.
 - **Restore is atomic and column-validated.** `POST /api/backup/restore`
   checks the snapshot's `Service` columns *before* touching anything, then
   swaps rows inside a single `BEGIN IMMEDIATE … COMMIT` transaction. Old or
@@ -670,6 +712,39 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 ---
 
 ## 9. Changelog
+
+### v1.1.3 — automatic expense codes & money audit
+
+**Added**
+- A typed **number** in দোকান খরচ is now saved as a canonical keypad code
+  (`1500` → `*J#`, `1234` → `*ADG`); a typed code remains exactly as typed.
+  `expenseAmount` is decoded for both, so খরচ/লাভ stay correct.
+- The **খরচ** column is always visible, shows only the code, and each row has
+  its own eye that reveals only that row's amount. The old global toggle is
+  gone; the cost column and parts-shop name remain internal.
+- Existing numeric rows are converted automatically by `first-run.mjs` on every
+  start, after restoring an old snapshot, and by
+  `npm run backfill:expense-codes`. A row with an empty code but a non-zero
+  amount gets its code rebuilt rather than losing the expense.
+- `npm run audit:money` — dry-run ledger audit for due/refund/expense drift,
+  with conservative `--confirm` repairs. It reports invalid codes, overpay and
+  other inconsistencies without touching them.
+- `advance` (জমা) is now included in daily and monthly stats and shown as a hint
+  under বিল. Refund reporting is grouped by the job's service date, not the
+  later refund timestamp.
+- Archiving a returned job now warns that its refund, expense and damage loss
+  also leave the reports/profit.
+- A deactivated technician's own historical row can be edited without being
+  silently reassigned.
+
+**Verified**
+- New `scripts/expense-upgrade.test.js` covers first-run normalization, the
+  backfill script and audit dry-run/confirm on a throwaway database.
+- laneE simulates an old snapshot with a numeric expense and verifies restore
+  converts it; laneA pins the per-row eye isolation; api-check pins numeric
+  conversion and legacy `*B#` preservation.
+- Full v1.1.3 run: **11/11 suites, 230/230 checks**, 0 FAIL, 0 JS errors; the
+  live shop DB hash stayed unchanged.
 
 ### v1.1.2 — return/refund & technician damage loss
 
@@ -863,7 +938,7 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **215** automated checks pass, and the live database is byte-identical.
+- All **230** automated checks pass, and the live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
@@ -885,6 +960,6 @@ screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
-`prisma/dev.db` byte-identical. The current v1.1.2 run is **10/10 suites,
-215/215 checks**; the packaged window was also driven by hand for the shop test
+`prisma/dev.db` byte-identical. The current v1.1.3 run is **11/11 suites,
+230/230 checks**; the packaged window was also driven by hand for the shop test
 above. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.

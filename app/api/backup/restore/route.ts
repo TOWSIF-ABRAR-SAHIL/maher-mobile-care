@@ -4,6 +4,10 @@ import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { prisma } from "@/lib/prisma";
 import { resolveBackupDir } from "@/lib/db-path";
+import {
+  encodeShopExpenseAmount,
+  normalizeShopExpense,
+} from "@/lib/expense-code";
 
 export const dynamic = "force-dynamic";
 
@@ -154,12 +158,76 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
+    // Old snapshots stored a plain number in shopExpense. Convert those rows
+    // to the canonical code after the restore, so the dashboard never exposes
+    // a restored numeric cost. Best-effort: a restore must not be reported as
+    // failed just because this post-processing hit an unrelated error; the
+    // next app start (first-run) repeats the same normalization.
+    let normalizedExpenses = 0;
+    try {
+      const rows = await prisma.service.findMany({
+        select: { id: true, shopExpense: true, expenseAmount: true },
+      });
+      const changes: {
+        id: number;
+        shopExpense: string | null;
+        expenseAmount: number;
+      }[] = [];
+      for (const row of rows) {
+        const normalized = normalizeShopExpense(row.shopExpense);
+        if (normalized.kind === "invalid") continue;
+        if (normalized.kind === "empty" && row.expenseAmount < 0) continue;
+        let nextCode = normalized.stored;
+        let nextAmount = normalized.amount ?? 0;
+        // Preserve an amount-only row by rebuilding its code.
+        if (
+          normalized.kind === "empty" &&
+          Number.isSafeInteger(row.expenseAmount) &&
+          row.expenseAmount > 0
+        ) {
+          try {
+            nextCode = encodeShopExpenseAmount(row.expenseAmount);
+            nextAmount = row.expenseAmount;
+          } catch {
+            continue;
+          }
+        }
+        if (
+          nextCode !== (row.shopExpense ?? null) ||
+          nextAmount !== row.expenseAmount
+        ) {
+          changes.push({
+            id: row.id,
+            shopExpense: nextCode,
+            expenseAmount: nextAmount,
+          });
+        }
+      }
+      if (changes.length > 0) {
+        await prisma.$transaction(
+          changes.map((change) =>
+            prisma.service.update({
+              where: { id: change.id },
+              data: {
+                shopExpense: change.shopExpense,
+                expenseAmount: change.expenseAmount,
+              },
+            })
+          )
+        );
+        normalizedExpenses = changes.length;
+      }
+    } catch (err) {
+      console.error("Expense normalization after restore failed:", err);
+    }
+
     const live = await prisma.service.count();
     return NextResponse.json({
       ok: true,
       restored: live,
       incoming,
       safety,
+      normalizedExpenses,
     });
   } catch (err) {
     console.error("POST /api/backup/restore failed:", err);

@@ -125,6 +125,7 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
       // Verified before returning: an up-to-date ledger is the normal case, and
       // also the one where a table can be missing without it looking wrong.
       verifySchema(db, path.basename(dbFile));
+      normalizeExpenseRows(db, log);
       log(`database already up to date (${applied.size} migration(s) applied)`);
       return [];
     }
@@ -162,11 +163,156 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
     }
 
     verifySchema(db, path.basename(dbFile));
+    normalizeExpenseRows(db, log);
 
     return done;
   } finally {
     db.close();
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Expense-code upgrade (v1.1.3)                                       */
+/* ------------------------------------------------------------------ */
+
+const MAX_SHOP_EXPENSE = 999_999_999;
+const BN_DIGITS = {
+  "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4",
+  "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9",
+};
+const CODE_DIGITS = {
+  "*": "1", "+": "0", "#": "00",
+  A: "2", B: "2", C: "2",
+  D: "3", E: "3", F: "3",
+  G: "4", H: "4", I: "4",
+  J: "5", K: "5", L: "5",
+  M: "6", N: "6", O: "6",
+  P: "7", Q: "7", R: "7", S: "7",
+  T: "8", U: "8", V: "8",
+  W: "9", X: "9", Y: "9", Z: "9",
+};
+const ENCODE_DIGITS = {
+  "0": "+", "1": "*", "2": "A", "3": "D", "4": "G",
+  "5": "J", "6": "M", "7": "P", "8": "T", "9": "W",
+};
+
+function encodeShopExpenseAmount(amount) {
+  const digits = String(amount);
+  let code = "";
+  for (let i = digits.length - 1; i >= 0; ) {
+    if (i >= 1 && digits[i] === "0" && digits[i - 1] === "0") {
+      code = "#" + code;
+      i -= 2;
+    } else {
+      code = ENCODE_DIGITS[digits[i]] + code;
+      i -= 1;
+    }
+  }
+  return code;
+}
+
+function normalizeExpenseInput(raw) {
+  const input = String(raw ?? "").trim();
+  if (!input) return { kind: "empty", stored: null, amount: 0 };
+
+  const numericText = input
+    .split("")
+    .map((ch) => BN_DIGITS[ch] ?? ch)
+    .join("")
+    .replace(/[,\s৳]/g, "");
+  if (/^\d+$/.test(numericText)) {
+    const amount = Number(numericText);
+    if (!Number.isSafeInteger(amount) || amount > MAX_SHOP_EXPENSE) {
+      return { kind: "invalid", stored: null, amount: null };
+    }
+    return {
+      kind: "number",
+      stored: encodeShopExpenseAmount(amount),
+      amount,
+    };
+  }
+
+  const compact = input
+    .split("")
+    .map((ch) => BN_DIGITS[ch] ?? ch)
+    .join("")
+    .replace(/[,\s৳]/g, "");
+  if (!/^[0-9*+#A-Za-z]+$/.test(compact)) {
+    return { kind: "invalid", stored: null, amount: null };
+  }
+  let digits = "";
+  for (const ch of compact) {
+    const upper = ch.toUpperCase();
+    digits += CODE_DIGITS[upper] ?? ch;
+  }
+  const amount = parseInt(digits, 10);
+  if (!Number.isFinite(amount) || !Number.isSafeInteger(amount) || amount > MAX_SHOP_EXPENSE) {
+    return { kind: "invalid", stored: null, amount: null };
+  }
+  return { kind: "code", stored: input, amount };
+}
+
+/**
+ * Converts pre-v1.1.3 numeric shopExpense rows into canonical codes and
+ * repairs expenseAmount for valid codes. Runs on every start; a no-op when all
+ * rows are already canonical. Exported so the portable first-run test can
+ * exercise it against a throwaway database.
+ */
+export function normalizeExpenseRows(db, log = () => {}) {
+  const rows = db
+    .prepare("SELECT id, shopExpense, expenseAmount FROM Service")
+    .all();
+  const update = db.prepare(
+    "UPDATE Service SET shopExpense = ?, expenseAmount = ? WHERE id = ?"
+  );
+  const run = db.transaction(() => {
+    let changed = 0;
+    let invalid = 0;
+    for (const row of rows) {
+      let normalized = normalizeExpenseInput(row.shopExpense);
+      if (normalized.kind === "invalid") {
+        invalid += 1;
+        continue;
+      }
+      // An empty raw value with a non-zero decoded amount is a ledger value
+      // without its display code. Re-create the code instead of wiping money
+      // out of the profit calculation. Negative / oversized amounts are left
+      // for the audit rather than silently zeroed.
+      if (normalized.kind === "empty") {
+        if (
+          !Number.isSafeInteger(row.expenseAmount) ||
+          row.expenseAmount < 0 ||
+          row.expenseAmount > MAX_SHOP_EXPENSE
+        ) {
+          invalid += 1;
+          continue;
+        }
+        if (row.expenseAmount > 0) {
+          normalized = {
+            kind: "number",
+            stored: encodeShopExpenseAmount(row.expenseAmount),
+            amount: row.expenseAmount,
+          };
+        }
+      }
+      if (
+        normalized.stored !== (row.shopExpense ?? null) ||
+        normalized.amount !== row.expenseAmount
+      ) {
+        update.run(normalized.stored, normalized.amount, row.id);
+        changed += 1;
+      }
+    }
+    return { changed, invalid };
+  });
+  const result = run();
+  if (result.changed > 0) {
+    log(`normalized ${result.changed} expense row(s) to keypad codes`);
+  }
+  if (result.invalid > 0) {
+    log(`warning: ${result.invalid} expense row(s) have an invalid code and were left unchanged`);
+  }
+  return result;
 }
 
 /**

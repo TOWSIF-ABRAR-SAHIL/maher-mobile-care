@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContactButtons } from "@/components/ContactButtons";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatTaka } from "@/lib/utils";
+import { dhakaDateKey } from "@/lib/dhaka";
 import type { ServiceDTO } from "@/lib/types";
 
 export interface DuesResponse {
@@ -77,7 +78,7 @@ export function OutstandingDues({
               {dues.services.map((s) => (
                 <tr key={s.id} className="border-t">
                   <td className="whitespace-nowrap p-2 text-gray-600">
-                    {s.serviceDate.slice(0, 10)}
+                    {dhakaDateKey(s.serviceDate)}
                     <div className="font-mono text-xs text-gray-400">
                       #{s.id}
                     </div>

@@ -161,6 +161,7 @@ let browser = null;
   const expected = {
     count: before.day.today.count + 1,
     bill: before.day.today.bill + 1700,
+    advance: before.day.today.advance + 500,
     due: before.day.today.due + 1200,
     expense: before.day.today.expense + 1500,
   };
@@ -182,6 +183,10 @@ let browser = null;
   // The report lives in a dialog now. Capture the dashboard text first (the
   // dialog overlay would otherwise be the only thing readable), then open it.
   const visible = await visibleBody();
+  const todayCards = await page.$eval(
+    '[data-testid="today-stats"]',
+    (el) => el.innerText
+  );
   await openReport();
   await page.waitForFunction(
     (expense, profit) => {
@@ -201,8 +206,11 @@ let browser = null;
     "today cards = snapshot + hand calc; খরচ ও লাভ visible without a peek",
     t.today.count === expected.count &&
       t.today.bill === expected.bill &&
+      t.today.advance === expected.advance &&
       t.today.due === expected.due &&
       t.today.expense === expected.expense &&
+      todayCards.includes("জমা") &&
+      todayCards.includes(tk(expected.advance)) &&
       visible.includes(tk(expected.bill)) &&
       visible.includes(tk(expected.due)) &&
       visible.includes(tk(expected.expense)) &&

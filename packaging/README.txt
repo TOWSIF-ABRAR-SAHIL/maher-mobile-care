@@ -12,8 +12,23 @@ CHALANO
 3. Prothombar 4 jon technician dekhabe:
    ASRAFUL, NAYEM, NURUL, RONI.
 
-NOTUN (v1.1.2)
+NOTUN (v1.1.3)
 --------------
+- Shop khoroch-e shudhu number likhleo seta save-er shomoy gopon code
+  hoye jay (jemon 1500 -> *J#). Code likhle jemon likhben temoni thake.
+- Purono numeric khoroch app chalanor shomoy ba purono backup restore
+  korar shomoy automatic code hoye jay — taka same thake.
+- Service talika-r "খরচ" column shob shomoy dekha jay ar shudhu code
+  dekhay. Protyek row-er nijer eye click korle shudhu oi row-er taka
+  dekhay; onno row lukiye thake. Global eye nei.
+- "বিল" card-er niche "জমা" hint, ar report-eo joma dekhay.
+- Ferot kora kaj archive korar age warning dey: oi row-er refund,
+  khoroch ar damage loss report/labh theke bad jabe.
+- Inactive technician-er purono row edit korleo technician auto bad
+  hoy na; oi nam-i thake.
+
+AGER NOTUN (v1.1.2)
+-------------------
 - Service talika-r protyek row-e "⚖️ ফেরত / ড্যামেজ ক্ষতি" button.
 - Kaj na hoye thakle "ফেরত / রিফান্ড" tab theke puro joma ferot din.
   Status "ফেরত" hobe, বাকি 0 hobe, ar oi kaj bill/count/technician
@@ -66,19 +81,22 @@ SOTORKOTA (data haraben na)
 
 GOPON KHORCH (privacy)
 ----------------------
-- Entry form-e code (`*J#`) likhle raw code ar decoded taka (`৳১৫০০`)
-  duitai dekha jabe — form-e kichu lukiye nei.
-- Service talika-r **খরচ** button chaple cost column khule; sekhane
-  shudhu code (`*J#`) dekha jay, decoded taka na. Code na diye shudhu
-  number likhle oi cell-e "৳••••" dekha jay. Column ta abar button
-  chaple bondho hoy.
+- Entry form-e code (`*J#`) ba number (`1500`) likhle raw/decode kora
+  taka (`৳১৫০০`) form-e dekha jabe — form-e kichu lukiye nei.
+- Service talika-r **খরচ** column shob shomoy dekha jay; sekhane shudhu
+  code (`*J#`, `*A#`) dekhay, decoded taka na. Protyek row-er nijer
+  **eye** click korle shudhu oi row-er taka dekhay; onno row lukiye
+  thake. Kono global eye button nei.
+- Purono plain-number cost (upgrade/restore-er age) `৳••••` dekha jay
+  jodi kono karon e normalize na hoy; app chalanor shomoy seta
+  automatic code hoye jay.
 - Daily khoroch card ar monthly khoroch/labh age-r motoi khola thake.
 - Customer bill ba PDF-e cost, code, parts-shop ba profit kokhono
-  thake na.
+  thake na. Ferot/refund er kotha thake, damage loss/note thake na.
 
 SOMOSSA HOLE
 ------------
 1. "MAHER STOP.bat" chaliye abar "MAHER MOBILE CARE.bat" chalan.
 2. Tao na hole "logs" folder-er "maher.log" file-ta support-ke pathan.
 
-Vershon: 1.1.2 (Windows 64-bit, offline)
+Vershon: 1.1.3 (Windows 64-bit, offline)

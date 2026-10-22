@@ -1,6 +1,8 @@
 /* Lane E: return/refund + technician damage-loss ledger.
  * Runs against the throwaway database supplied by scripts/run-tests.js — never
  * the live shop DB. */
+const Database = require("better-sqlite3");
+const path = require("node:path");
 const {
   api,
   clickDailyRowButton,
@@ -199,6 +201,7 @@ async function setTextarea(page, id, value) {
     daily.today.count === 1 &&
       daily.today.returnedCount === 1 &&
       daily.today.bill === 1500 &&
+      daily.today.advance === 1500 &&
       daily.today.due === 0 &&
       daily.today.refund === 1200 &&
       daily.today.damageLoss === 1000,
@@ -214,6 +217,7 @@ async function setTextarea(page, id, value) {
     monthly.summary.count === 1 &&
       monthly.summary.returnedCount === 1 &&
       monthly.summary.bill === 1500 &&
+      monthly.summary.advance === 1500 &&
       monthly.summary.expense === 0 &&
       monthly.summary.damageLoss === 1000 &&
       monthly.summary.refund === 1200 &&
@@ -316,6 +320,35 @@ async function setTextarea(page, id, value) {
     })
   );
 
+  // Archiving a returned job also removes its refund/expense/damage from every
+  // report. The confirmation must say so before the user commits.
+  await clickDailyRowButton(page, UI_JOB, "ডিলিট");
+  await page.waitForSelector('[role="alertdialog"]', {
+    polling: 100,
+    timeout: 8000,
+  });
+  const archiveText = await page.evaluate(
+    () => document.querySelector('[role="alertdialog"]')?.textContent || ""
+  );
+  await page.evaluate(() =>
+    [...document.querySelectorAll('[role="alertdialog"] button')]
+      .find((b) => b.textContent.includes("বাতিল"))
+      .click()
+  );
+  await page.waitForFunction(
+    () => !document.querySelector('[role="alertdialog"]'),
+    { polling: 100, timeout: 5000 }
+  );
+  const stillActive = (await getServices(page)).find((s) => s.id === uiJob.id);
+  check(
+    "E10b",
+    "archive warning says a returned job's refund/expense/damage leave reports",
+    archiveText.includes("রিফান্ড, খরচ ও ড্যামেজ ক্ষতিও") &&
+      archiveText.includes("রিপোর্ট") &&
+      stillActive?.archived === false,
+    JSON.stringify({ archiveText: archiveText.slice(-160), archived: stillActive?.archived })
+  );
+
   const afterUiDaily = (await api(page, `/api/stats?date=${TODAY}`)).body;
   check(
     "E11",
@@ -323,6 +356,7 @@ async function setTextarea(page, id, value) {
     afterUiDaily.today.count === 1 &&
       afterUiDaily.today.returnedCount === 2 &&
       afterUiDaily.today.bill === 1500 &&
+      afterUiDaily.today.advance === 1500 &&
       afterUiDaily.today.refund === 2400 &&
       afterUiDaily.today.damageLoss === 1300,
     JSON.stringify(afterUiDaily.today)
@@ -346,6 +380,17 @@ async function setTextarea(page, id, value) {
   // New snapshot round-trip: mutate a row, restore, and verify the ledger.
   const snap = await api(page, "/api/backup", { method: "POST" });
   if (!snap.ok) throw new Error("backup snapshot failed: " + JSON.stringify(snap.body));
+  // Simulate a pre-v1.1.3 backup: a numeric shopExpense with a stale amount.
+  // Restore must convert it to a canonical code, not leave the number visible.
+  const snapPath = path.join(process.env.MAHER_BACKUP_DIR, snap.body.file);
+  const snapDb = new Database(snapPath);
+  try {
+    snapDb
+      .prepare("UPDATE Service SET shopExpense = ?, expenseAmount = ? WHERE id = ?")
+      .run("1500", 0, completed.id);
+  } finally {
+    snapDb.close();
+  }
   const mutate = await api(page, `/api/services/${completed.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -362,14 +407,20 @@ async function setTextarea(page, id, value) {
   const restoredReturn = restoredRows.find((s) => s.id === toReturn.id);
   check(
     "E13",
-    "snapshot restore preserves refund/damage columns",
+    "snapshot restore preserves refund/damage columns and converts legacy numbers",
     restored.ok &&
+      restored.body.normalizedExpenses >= 1 &&
       restoredDone?.damageLoss === 500 &&
+      restoredDone?.shopExpense === "*J#" &&
+      restoredDone?.expenseAmount === 1500 &&
       restoredReturn?.status === "Returned" &&
       restoredReturn?.refundAmount === 1200 &&
       restoredReturn?.damageLoss === 500,
     JSON.stringify({
       ok: restored.ok,
+      normalized: restored.body.normalizedExpenses,
+      doneExpense: restoredDone?.shopExpense,
+      doneAmount: restoredDone?.expenseAmount,
       doneLoss: restoredDone?.damageLoss,
       refund: restoredReturn?.refundAmount,
       returnLoss: restoredReturn?.damageLoss,

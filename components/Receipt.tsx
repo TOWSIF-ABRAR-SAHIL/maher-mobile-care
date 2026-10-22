@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SHOP } from "@/lib/shop";
+import { dhakaDateKey } from "@/lib/dhaka";
 import { STATUS_BN, formatTaka, type ServiceStatus } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -55,7 +56,7 @@ export function Receipt({ service }: { service: ServiceDTO }) {
         <p>
           তারিখ:{" "}
           <span className="font-semibold">
-            {service.serviceDate.slice(0, 10)}
+            {dhakaDateKey(service.serviceDate)}
           </span>
         </p>
         <p>

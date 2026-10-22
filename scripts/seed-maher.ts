@@ -7,7 +7,7 @@
  * Fully offline against the database selected by lib/db-path.
  */
 import { prisma } from "../lib/prisma";
-import { decodeShopExpense } from "../lib/expense-code";
+import { normalizeShopExpense } from "../lib/expense-code";
 import { computeDue } from "../lib/utils";
 
 const fresh = process.argv.includes("--fresh");
@@ -60,6 +60,7 @@ const SEED: Seed[] = [
 
 let ok = 0;
   for (const s of SEED) {
+    const normalizedExpense = normalizeShopExpense(s.shopExpense ?? "");
     const created = await prisma.service.create({
       data: {
         customerName: s.customerName,
@@ -71,9 +72,8 @@ let ok = 0;
         advance: s.advance,
         due: computeDue(s.totalBill, s.advance),
         status: s.status,
-        shopExpense: s.shopExpense || null,
-        expenseAmount:
-          decodeShopExpense(s.shopExpense ?? "").amount ?? 0,
+        shopExpense: normalizedExpense.stored,
+        expenseAmount: normalizedExpense.amount ?? 0,
         serviceDate: midday(s.daysAgo),
       },
     });

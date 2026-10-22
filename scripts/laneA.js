@@ -305,63 +305,96 @@ let browser = null;
   await chip("সব");
   await new Promise((r) => setTimeout(r, 400));
 
-  // ---- A6: eye toggle + code-only cost column ----
-  const kh0 = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some((th) =>
-      th.textContent.includes("খরচ")
-    )
-  );
-  await page.click('[data-testid="expense-toggle"]');
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some(
-        (th) => th.textContent.includes("খরচ")
-      ),
-    { polling: 100, timeout: 2000 }
-  );
-  const kh1 = await page.evaluate(() => {
+  // ---- A6: always-visible code column + per-row eye ----
+  const createdId = created?.id;
+  const globalToggle = await page.$('[data-testid="expense-toggle"]');
+  const kh0 = await page.evaluate(() => {
     const table = document.querySelector('[data-testid="daily-services"]');
+    if (!table) return { h: false, rows: [] };
     const headers = [...table.querySelectorAll("thead th")];
     const idx = headers.findIndex((th) => th.textContent.includes("খরচ"));
-    const cells = [...table.querySelectorAll("tbody tr")].map(
-      (tr) => tr.children[idx]?.textContent || ""
-    );
     return {
       h: idx !== -1,
-      cells,
-      codeCell: cells.find((t) => t.includes("*B#")) || "",
-      maskedNumeric: cells.some((t) => t.includes("৳••••")),
-      hasArrow: cells.some((t) => t.includes("➔")),
-      leaksAmount: cells.some((t) => t.includes("১২০০") || t.includes("1900")),
+      rows: [...table.querySelectorAll("tbody tr")].map((tr) => ({
+        id: tr.children[0]?.textContent?.trim() || "",
+        cost: tr.children[idx]?.textContent || "",
+      })),
     };
   });
-  // It must stay open for the session: no 5-second auto-hide any more.
-  await new Promise((r) => setTimeout(r, 5500));
-  const stillOpen = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some((th) =>
-      th.textContent.includes("খরচ")
-    )
+  const createdCost =
+    kh0.rows.find((r) => r.id === String(createdId))?.cost || "";
+  const referenceCost =
+    kh0.rows.find((r) => r.id === String(seedId))?.cost || "";
+  const beforeReveal = await page.evaluate(
+    (id) => !!document.querySelector(`[data-testid="expense-amount-${id}"]`),
+    createdId
   );
-  await page.click('[data-testid="expense-toggle"]');
+  await page.click(`[data-testid="expense-reveal-${createdId}"]`);
   await page.waitForFunction(
-    () =>
-      ![...document.querySelectorAll('[data-testid="daily-services"] thead th')].some(
-        (th) => th.textContent.includes("খরচ")
+    (id) =>
+      document
+        .querySelector(`[data-testid="expense-amount-${id}"]`)
+        ?.textContent?.includes("1,200"),
+    { polling: 100, timeout: 3000 },
+    createdId
+  );
+  const revealed = await page.evaluate(
+    (id, refId) => ({
+      amount:
+        document.querySelector(`[data-testid="expense-amount-${id}"]`)
+          ?.textContent || "",
+      otherRevealed: !!document.querySelector(
+        `[data-testid="expense-amount-${refId}"]`
       ),
-    { polling: 100, timeout: 2000 }
+    }),
+    createdId,
+    seedId
+  );
+  await page.click(`[data-testid="expense-reveal-${createdId}"]`);
+  await page.waitForFunction(
+    (id) => !document.querySelector(`[data-testid="expense-amount-${id}"]`),
+    { polling: 100, timeout: 3000 },
+    createdId
+  );
+  await page.click(`[data-testid="expense-reveal-${seedId}"]`);
+  await page.waitForFunction(
+    (id) =>
+      document
+        .querySelector(`[data-testid="expense-amount-${id}"]`)
+        ?.textContent?.includes("1,500"),
+    { polling: 100, timeout: 3000 },
+    seedId
+  );
+  const referenceAmount = await page.evaluate(
+    (id) =>
+      document.querySelector(`[data-testid="expense-amount-${id}"]`)
+        ?.textContent || "",
+    seedId
   );
   check(
     "A6",
-    "eye reveals cost codes only (numbers masked, parts shop shown); stays open until toggled",
-    !kh0 &&
-      kh1.h &&
-      kh1.codeCell.includes("*B#") &&
-      kh1.codeCell.includes("LaneA Parts Shop") &&
-      kh1.maskedNumeric &&
-      !kh1.hasArrow &&
-      !kh1.leaksAmount &&
-      stillOpen,
-    JSON.stringify({ ...kh1, stillOpen })
+    "cost column always shows codes; per-row eye reveals only that row's amount",
+    globalToggle === null &&
+      kh0.h &&
+      createdCost.includes("*B#") &&
+      createdCost.includes("LaneA Parts Shop") &&
+      !createdCost.includes("1,200") &&
+      referenceCost.includes("*J#") &&
+      !referenceCost.includes("1,500") &&
+      !referenceCost.includes("৳••••") &&
+      !beforeReveal &&
+      revealed.amount.includes("1,200") &&
+      !revealed.otherRevealed &&
+      referenceAmount.includes("1,500"),
+    JSON.stringify({
+      globalToggle: !!globalToggle,
+      h: kh0.h,
+      createdCost,
+      referenceCost,
+      beforeReveal,
+      revealed,
+      referenceAmount,
+    })
   );
 
   // ---- A7: 1-click status on the reference row (reverted at cleanup) ----

@@ -13,7 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { StatusBadge } from "@/components/StatusBadge";
-import { dayLabel } from "@/lib/dhaka";
+import { dayLabel, dhakaDateKey } from "@/lib/dhaka";
 import { telHref, whatsAppHref } from "@/lib/contact";
 import { formatTaka } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
@@ -155,7 +155,7 @@ function SearchResults({
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
                   <span className="font-mono">#{s.id}</span>
-                  <span>{dayLabel(s.serviceDate.slice(0, 10))}</span>
+                  <span>{dayLabel(dhakaDateKey(s.serviceDate))}</span>
                   <span className="truncate">{s.phone}</span>
                 </span>
                 <span className="mt-1 flex items-center gap-2">

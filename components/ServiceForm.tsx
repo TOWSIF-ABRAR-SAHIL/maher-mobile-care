@@ -22,7 +22,8 @@ import {
   formatTakaBn,
   parseBnNumber,
 } from "@/lib/utils";
-import { decodeShopExpense } from "@/lib/expense-code";
+import { normalizeShopExpense } from "@/lib/expense-code";
+import { dhakaDateKey } from "@/lib/dhaka";
 import { validateServicePayload } from "@/lib/service-validation";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -69,7 +70,7 @@ function toForm(s: ServiceDTO) {
     status: s.status,
     shopExpense: s.shopExpense ?? "",
     partsShop: s.partsShop ?? "",
-    serviceDate: s.serviceDate.slice(0, 10),
+    serviceDate: dhakaDateKey(s.serviceDate),
   };
 }
 
@@ -167,7 +168,7 @@ export function ServiceForm({
   const billNum = parseBnNumber(f.totalBill) ?? 0;
   const advNum = parseBnNumber(f.advance) ?? 0;
   const due = computeDue(billNum, advNum);
-  const decodedExpense = decodeShopExpense(f.shopExpense);
+  const normalizedExpense = normalizeShopExpense(f.shopExpense);
 
   const chooseService = () => {
     if (!isProductSale) return;
@@ -488,10 +489,10 @@ export function ServiceForm({
                 autoComplete="off"
                 spellCheck={false}
                 maxLength={24}
-                aria-invalid={decodedExpense.kind === "invalid"}
+                aria-invalid={normalizedExpense.kind === "invalid"}
                 aria-describedby="svc-expense-help"
                 className={`h-9 lg:h-8 ${
-                  decodedExpense.kind === "invalid"
+                  normalizedExpense.kind === "invalid"
                     ? "border-red-500 focus-visible:ring-red-500"
                     : ""
                 }`}
@@ -501,22 +502,27 @@ export function ServiceForm({
                 aria-live="polite"
                 className="mt-1 min-h-[16px] text-[11px]"
               >
-                {decodedExpense.kind === "code" &&
-                decodedExpense.amount !== null ? (
+                {normalizedExpense.kind === "code" &&
+                normalizedExpense.amount !== null ? (
                   <span className="font-medium text-emerald-700">
-                    গোপন কোড: {decodedExpense.raw} ➔{" "}
-                    {formatTakaBn(decodedExpense.amount)}
+                    গোপন কোড: {normalizedExpense.stored} ➔{" "}
+                    {formatTakaBn(normalizedExpense.amount)}
                   </span>
-                ) : decodedExpense.kind === "number" &&
-                  decodedExpense.amount !== null ? (
-                  <span className="text-amber-700">
-                    সংখ্যাটি সরাসরি দেখা যায় — গোপন রাখতে কোড ব্যবহার করুন।
+                ) : normalizedExpense.kind === "number" &&
+                  normalizedExpense.amount !== null ? (
+                  <span className="font-medium text-emerald-700">
+                    সেভ করলে কোড হবে: {normalizedExpense.stored} ➔{" "}
+                    {formatTakaBn(normalizedExpense.amount)}
                   </span>
-                ) : decodedExpense.kind === "invalid" ? (
+                ) : normalizedExpense.kind === "invalid" ? (
                   <span className="font-medium text-red-600">
-                    {decodedExpense.error}
+                    {normalizedExpense.error}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="text-gray-500">
+                    খালি রাখলে দোকান খরচ ০ ধরা হবে।
+                  </span>
+                )}
               </div>
             </div>
             <div>

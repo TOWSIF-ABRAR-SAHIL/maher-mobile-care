@@ -1,9 +1,12 @@
 import { whatsAppHref } from "@/lib/contact";
+import { dhakaDateKey } from "@/lib/dhaka";
 import type { ServiceDTO } from "@/lib/types";
 
 /** File name used both for the shared PDF and the download fallback. */
 export function receiptPdfFileName(service: ServiceDTO): string {
-  const date = (service.serviceDate || "").slice(0, 10) || "unknown-date";
+  const date = service.serviceDate
+    ? dhakaDateKey(service.serviceDate)
+    : "unknown-date";
   return `MAHER-Bill-${service.id}-${date}.pdf`;
 }
 

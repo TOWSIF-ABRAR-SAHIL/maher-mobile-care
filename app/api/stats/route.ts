@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
       select: {
         technician: true,
         totalBill: true,
+        advance: true,
         due: true,
         status: true,
         expenseAmount: true,
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest) {
         count: activeRows.length,
         bill: activeRows.reduce((s, r) => s + r.totalBill, 0),
         due: activeRows.reduce((s, r) => s + r.due, 0),
+        advance: activeRows.reduce((s, r) => s + r.advance, 0),
         expense: rows.reduce((s, r) => s + r.expenseAmount, 0),
         damageLoss: rows.reduce((s, r) => s + r.damageLoss, 0),
         refund: returnedRows.reduce((s, r) => s + r.refundAmount, 0),

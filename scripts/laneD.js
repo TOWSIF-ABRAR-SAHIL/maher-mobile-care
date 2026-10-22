@@ -195,13 +195,19 @@ let browser = null;
       ].every((x) => t.includes(x)),
       totalBill: t.includes("৳1,000"),
       totalDue: t.includes("৳700"),
+      joma: t.includes("জমা"),
       noMasked: !t.includes("৳••••"),
     };
   });
   check(
     "D2a",
-    "report dialog has 3 presets + 5 monthly values",
-    report.presets && report.cards && report.totalBill && report.totalDue && report.noMasked,
+    "report dialog has 3 presets + 5 monthly values including joma",
+    report.presets &&
+      report.cards &&
+      report.totalBill &&
+      report.totalDue &&
+      report.joma &&
+      report.noMasked,
     JSON.stringify({ presets: report.presets, cards: report.cards })
   );
   await closeDialog("report-dialog");

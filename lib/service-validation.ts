@@ -1,5 +1,5 @@
 import { dhakaDateKey, isDateKey, serviceDateFromKey } from "./dhaka";
-import { decodeShopExpense } from "./expense-code";
+import { normalizeShopExpense } from "./expense-code";
 import {
   FLOW_STATUSES,
   FALLBACK_TECHNICIANS,
@@ -10,7 +10,7 @@ import {
 
 /** Matches every user-facing validation error thrown by this module. */
 export const SERVICE_VALIDATION_PATTERN =
-  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|সঠিক তারিখ|ভুল ডেটা|গোপন কোড|পার্টস কেনার দোকান|বদলানো|must be|Invalid date/;
+  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|অনেক বড়|সঠিক তারিখ|ভুল ডেটা|গোপন কোড|পার্টস কেনার দোকান|বদলানো|must be|Invalid date/;
 
 /** Advance (জমা) may never exceed the bill — anything above the bill is
  *  overpay, not a valid ledger value. */
@@ -139,6 +139,9 @@ function validateStatus(value: unknown): string {
   return status;
 }
 
+/** Largest amount a single INTEGER column can safely hold in SQLite/Prisma. */
+export const MAX_SERVICE_AMOUNT = 2_147_483_647;
+
 /** Accepts Western or Bengali digits and always floors to a non-negative integer. */
 export function parseServiceAmount(value: unknown, field: string): number {
   let parsed: number | null;
@@ -150,7 +153,11 @@ export function parseServiceAmount(value: unknown, field: string): number {
   if (parsed === null || parsed < 0) {
     throw new Error(`${field}তে সঠিক সংখ্যা দিন`);
   }
-  return Math.floor(parsed);
+  const floored = Math.floor(parsed);
+  if (!Number.isSafeInteger(floored) || floored > MAX_SERVICE_AMOUNT) {
+    throw new Error(`${field}র পরিমাণ অনেক বড়`);
+  }
+  return floored;
 }
 
 /**
@@ -182,12 +189,14 @@ export function validateServicePayload(
     throw new Error(OVERPAY_MESSAGE);
   }
 
-  const decodedExpense = decodeShopExpense(values.shopExpense);
-  if (decodedExpense.kind === "invalid") {
-    throw new Error(decodedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন");
+  const normalizedExpense = normalizeShopExpense(values.shopExpense);
+  if (normalizedExpense.kind === "invalid") {
+    throw new Error(
+      normalizedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
+    );
   }
-  const shopExpense = decodedExpense.kind === "empty" ? null : decodedExpense.raw;
-  const expenseAmount = decodedExpense.amount ?? 0;
+  const shopExpense = normalizedExpense.stored;
+  const expenseAmount = normalizedExpense.amount ?? 0;
   const partsShop = optionalPartsShop(values.partsShop);
   const damageLossRaw = String(values.damageLoss ?? "").trim();
   const damageLoss =
@@ -343,15 +352,14 @@ export function validateServiceUpdate(
   }
 
   if (raw.shopExpense !== undefined) {
-    const decodedExpense = decodeShopExpense(raw.shopExpense);
-    if (decodedExpense.kind === "invalid") {
+    const normalizedExpense = normalizeShopExpense(raw.shopExpense);
+    if (normalizedExpense.kind === "invalid") {
       throw new Error(
-        decodedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
+        normalizedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
       );
     }
-    data.shopExpense =
-      decodedExpense.kind === "empty" ? null : decodedExpense.raw;
-    data.expenseAmount = decodedExpense.amount ?? 0;
+    data.shopExpense = normalizedExpense.stored;
+    data.expenseAmount = normalizedExpense.amount ?? 0;
   }
 
   if (raw.damageLoss !== undefined) {

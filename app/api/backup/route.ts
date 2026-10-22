@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
 import { resolveBackupDir } from "@/lib/db-path";
+import { dhakaDateKey } from "@/lib/dhaka";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function GET(_req: NextRequest) {
       lines.push(
         [
           r.id,
-          new Date(r.serviceDate).toISOString().slice(0, 10),
+          dhakaDateKey(r.serviceDate),
           csvCell(r.customerName),
           csvCell(r.phone),
           csvCell(r.model),
@@ -72,7 +73,7 @@ export async function GET(_req: NextRequest) {
     }
     // BOM so Excel renders Bengali text correctly.
     const body = "﻿" + lines.join("\n");
-    const day = new Date().toISOString().slice(0, 10);
+    const day = dhakaDateKey(new Date());
     return new NextResponse(body, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",

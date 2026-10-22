@@ -50,6 +50,7 @@ import {
   type ServiceStatus,
 } from "@/lib/utils";
 import { isShopExpenseCode } from "@/lib/expense-code";
+import { dhakaDateKey } from "@/lib/dhaka";
 import type { ServiceDTO } from "@/lib/types";
 
 export function ServiceTable({
@@ -82,9 +83,10 @@ export function ServiceTable({
   const [archived, setArchived] = useState<ServiceDTO[]>([]);
   const [archLoading, setArchLoading] = useState(false);
   const [restoring, setRestoring] = useState<number | null>(null);
-  // Privacy: the খরচ column starts hidden; the eye reveals the codes for the
-  // rest of the session. It never shows the decoded taka amount.
-  const [showExpense, setShowExpense] = useState(false);
+  // Privacy: the খরচ column always shows the saved code. A per-row eye
+  // reveals only that row's taka amount, so a customer cannot link the code
+  // to a price by looking at the list.
+  const [revealedExpenses, setRevealedExpenses] = useState<Record<number, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
   const [sharingId, setSharingId] = useState<number | null>(null);
   const sharingRef = useRef(false);
@@ -247,22 +249,6 @@ export function ServiceTable({
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowExpense((v) => !v)}
-            data-testid="expense-toggle"
-            aria-pressed={showExpense}
-            title={showExpense ? "খরচ লুকান" : "খরচ দেখুন"}
-            className="print:hidden"
-          >
-            {showExpense ? (
-              <Eye className="mr-1 h-4 w-4" />
-            ) : (
-              <EyeOff className="mr-1 h-4 w-4" />
-            )}
-            খরচ
-          </Button>
-          <Button
             variant={showArchived ? "default" : "outline"}
             size="sm"
             onClick={() => setShowArchived((v) => !v)}
@@ -349,7 +335,7 @@ export function ServiceTable({
               <TableHead>মডেল ও সমস্যা</TableHead>
               <TableHead>অবস্থা</TableHead>
               <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
-              {showExpense ? <TableHead>খরচ / পার্টস দোকান</TableHead> : null}
+              <TableHead>খরচ / পার্টস দোকান</TableHead>
               <TableHead className="text-right print:hidden">অ্যাকশন</TableHead>
             </TableRow>
           </TableHeader>
@@ -368,7 +354,7 @@ export function ServiceTable({
                 <TableCell className="font-mono font-semibold">{s.id}</TableCell>
                 {showArchived ? (
                   <TableCell className="whitespace-nowrap text-sm text-gray-600">
-                    {s.serviceDate.slice(0, 10)}
+                    {dhakaDateKey(s.serviceDate)}
                   </TableCell>
                 ) : null}
                 <TableCell>
@@ -428,17 +414,57 @@ export function ServiceTable({
                     </div>
                   )}
                 </TableCell>
-                {showExpense ? (
                 <TableCell className="align-top">
                   {s.shopExpense || s.partsShop || s.damageLoss > 0 ? (
                     <div className="space-y-0.5">
                       {s.shopExpense ? (
-                        <div className="font-medium">
-                          {/* Codes are safe to show. A plain number is the real
-                              amount, so the list never prints it. */}
-                          {isShopExpenseCode(s.shopExpense)
-                            ? s.shopExpense
-                            : "৳••••"}
+                        <div className="flex flex-wrap items-center gap-1 font-medium">
+                          {/* Codes are safe to show. A legacy plain number is
+                              the real amount, so the list never prints it. */}
+                          <span
+                            data-testid={`expense-code-${s.id}`}
+                            className="font-mono"
+                          >
+                            {isShopExpenseCode(s.shopExpense)
+                              ? s.shopExpense
+                              : "৳••••"}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`expense-reveal-${s.id}`}
+                            aria-label={
+                              revealedExpenses[s.id]
+                                ? "খরচের টাকা লুকান"
+                                : "খরচের টাকা দেখুন"
+                            }
+                            aria-pressed={!!revealedExpenses[s.id]}
+                            title={
+                              revealedExpenses[s.id]
+                                ? "খরচের টাকা লুকান"
+                                : "খরচের টাকা দেখুন"
+                            }
+                            onClick={() =>
+                              setRevealedExpenses((prev) => ({
+                                ...prev,
+                                [s.id]: !prev[s.id],
+                              }))
+                            }
+                            className="rounded p-0.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                          >
+                            {revealedExpenses[s.id] ? (
+                              <EyeOff className="h-3.5 w-3.5" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          {revealedExpenses[s.id] ? (
+                            <span
+                              data-testid={`expense-amount-${s.id}`}
+                              className="text-xs font-semibold text-emerald-700"
+                            >
+                              {formatTaka(s.expenseAmount)}
+                            </span>
+                          ) : null}
                         </div>
                       ) : null}
                       {s.partsShop ? (
@@ -462,7 +488,6 @@ export function ServiceTable({
                     <span className="text-gray-400">—</span>
                   )}
                 </TableCell>
-                ) : null}
                 <TableCell className="print:hidden">
                   <div className="flex justify-end gap-1">
                     {showArchived ? (
@@ -596,6 +621,17 @@ export function ServiceTable({
               {deleteTarget
                 ? `ID ${deleteTarget.id} — ${deleteTarget.customerName} (${deleteTarget.model}) তালিকা ও হিসাব থেকে বাদ যাবে। পরে "আর্কাইভ দেখুন" থেকে ফিরিয়ে আনা যাবে।`
                 : ""}
+              {deleteTarget &&
+              isReturned(deleteTarget.status) &&
+              (deleteTarget.refundAmount > 0 ||
+                deleteTarget.expenseAmount > 0 ||
+                deleteTarget.damageLoss > 0) ? (
+                <span className="mt-2 block font-medium text-red-700">
+                  ⚠️ এই ফেরত কাজের রিফান্ড, খরচ ও ড্যামেজ ক্ষতিও সব রিপোর্ট ও
+                  লাভের হিসাব থেকে বাদ যাবে। আর্কাইভ থেকে ফিরিয়ে আনলে আবার
+                  হিসাবে যোগ হবে।
+                </span>
+              ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

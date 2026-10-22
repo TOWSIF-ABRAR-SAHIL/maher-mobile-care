@@ -99,11 +99,12 @@ export function MonthlySummary({
               <p className="mt-1 text-xl font-bold text-green-400 print:text-green-700">
                 {formatTaka(summary.bill)}
               </p>
-              {summary.refund > 0 ? (
-                <p className="mt-0.5 text-[11px] text-amber-300 print:text-amber-700">
-                  ফেরত {formatTaka(summary.refund)}
-                </p>
-              ) : null}
+              <p className="mt-0.5 text-[11px] text-slate-300 print:text-gray-600">
+                জমা {formatTaka(summary.advance)}
+                {summary.refund > 0
+                  ? ` • ফেরত ${formatTaka(summary.refund)}`
+                  : ""}
+              </p>
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-center print:border-gray-300 print:bg-white">
               <p className="text-sm text-slate-300 print:text-gray-600">{unitLabel(mode, "খরচ")}</p>
@@ -127,14 +128,17 @@ export function MonthlySummary({
               <p className="mt-1 text-xl font-bold text-green-400 print:text-green-700">
                 {formatTaka(summary.profit)}
               </p>
+              <p className="mt-0.5 text-[11px] text-slate-400 print:text-gray-600">
+                বিল − খরচ − ক্ষতি
+              </p>
             </div>
           </>
         )}
       </div>
       {summary && summary.refund > 0 ? (
         <p className="mt-2 text-center text-[11px] text-amber-300 print:text-amber-800">
-          ↩️ ফেরত {formatTaka(summary.refund)} ({summary.returnedCount}টি কাজ)
-          — বিল থেকে বাদ, তাই লাভ থেকে আলাদা বাদ হয়নি।
+          ↩️ ফেরত {formatTaka(summary.refund)} ({summary.returnedCount}টি কাজ,
+          কাজের তারিখ অনুযায়ী) — বিল থেকে বাদ, তাই লাভ থেকে আলাদা বাদ হয়নি।
         </p>
       ) : null}
     </section>

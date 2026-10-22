@@ -53,11 +53,13 @@ export interface DayStats {
   bill: number;
   /** Non-returned jobs only. */
   due: number;
+  /** Advances (জমা) on non-returned jobs whose service date is this day. */
+  advance: number;
   /** Normal shop expense (parts etc.), including returned jobs. */
   expense: number;
   /** Internal damage loss, including returned jobs. */
   damageLoss: number;
-  /** Cash returned today on Returned jobs. */
+  /** Refunds on Returned jobs whose service date is this day (memo only). */
   refund: number;
   /** How many of the day's rows are Returned (not part of `count`). */
   returnedCount: number;
@@ -75,6 +77,8 @@ export interface MonthlySummary {
   count: number;
   /** Non-returned jobs only. */
   bill: number;
+  /** Advances (জমা) on non-returned jobs in this range. */
+  advance: number;
   /** Normal shop expense (parts etc.), including returned jobs. */
   expense: number;
   /** Non-returned jobs only. */
@@ -83,7 +87,7 @@ export interface MonthlySummary {
   profit: number;
   /** Internal damage loss, including returned jobs. */
   damageLoss: number;
-  /** Cash returned on Returned jobs. Already excluded from `bill`; memo only. */
+  /** Refunds on Returned jobs by service date. `bill` already excludes them. */
   refund: number;
   /** How many rows are Returned (not part of `count`). */
   returnedCount: number;

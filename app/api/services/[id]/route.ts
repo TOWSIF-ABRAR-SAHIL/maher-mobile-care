@@ -23,7 +23,17 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const allowedTechnicians = await activeTechnicianNames();
+    const activeTechnicians = await activeTechnicianNames();
+    // Keep an edited row's own technician valid even after that person was
+    // deactivated. Without this, saving an old job would force a reassignment
+    // or fail, even though the form still offers the inactive name.
+    const allowedTechnicians = Array.from(
+      new Set(
+        existing.technician
+          ? [...activeTechnicians, existing.technician]
+          : activeTechnicians
+      )
+    );
     if (allowedTechnicians.length === 0) {
       return NextResponse.json(
         { error: "প্রথমে একজন টেকনিশিয়ান যোগ করুন।" },

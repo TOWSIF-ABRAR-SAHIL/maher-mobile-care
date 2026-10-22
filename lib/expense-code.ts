@@ -26,12 +26,22 @@ export type ShopExpenseKind = "empty" | "number" | "code" | "invalid";
 
 export interface DecodedShopExpense {
   kind: ShopExpenseKind;
-  /** Trimmed input exactly as typed; this is what gets stored. */
+  /** Trimmed input exactly as typed. */
   raw: string;
   /** Numeric Taka value, or null when the input is invalid. */
   amount: number | null;
   /** Bengali validation message for an invalid input. */
   error: string | null;
+}
+
+/**
+ * The value the database should keep: a canonical keypad code for a plain
+ * number, the typed code unchanged, or NULL for an empty input.
+ */
+export interface NormalizedShopExpense extends DecodedShopExpense {
+  stored: string | null;
+  /** True only when a plain number was converted into a code. */
+  converted: boolean;
 }
 
 const BN_DIGITS: Record<string, string> = {
@@ -53,6 +63,53 @@ const CODE_DIGITS: Record<string, string> = {
   T: "8", U: "8", V: "8",
   W: "9", X: "9", Y: "9", Z: "9",
 };
+
+/**
+ * Canonical encoding uses the first letter of each phone-keypad group:
+ * 0→+, 1→*, 2→A, 3→D, 4→G, 5→J, 6→M, 7→P, 8→T, 9→W.
+ * Consecutive `00` digits are folded into `#` from right to left.
+ */
+const ENCODE_DIGITS: Record<string, string> = {
+  "0": "+",
+  "1": "*",
+  "2": "A",
+  "3": "D",
+  "4": "G",
+  "5": "J",
+  "6": "M",
+  "7": "P",
+  "8": "T",
+  "9": "W",
+};
+
+/**
+ * Convert a validated numeric expense into its canonical keypad code.
+ * Examples: 1500 → *J#, 800 → T#, 450 → GJ+, 0 → +.
+ */
+export function encodeShopExpenseAmount(amount: number): string {
+  if (
+    !Number.isSafeInteger(amount) ||
+    amount < 0 ||
+    amount > MAX_SHOP_EXPENSE
+  ) {
+    throw new Error(SHOP_EXPENSE_AMOUNT_ERROR);
+  }
+
+  // Use the canonical decimal form, not the typed text: "001500" and "1500"
+  // must produce exactly the same code.
+  const digits = String(amount);
+  let code = "";
+  for (let i = digits.length - 1; i >= 0; ) {
+    if (i >= 1 && digits[i] === "0" && digits[i - 1] === "0") {
+      code = "#" + code;
+      i -= 2;
+    } else {
+      code = ENCODE_DIGITS[digits[i]] + code;
+      i -= 1;
+    }
+  }
+  return code;
+}
 
 function invalid(raw: string, error: string): DecodedShopExpense {
   return { kind: "invalid", raw, amount: null, error };
@@ -114,6 +171,32 @@ export function decodeShopExpense(raw: unknown): DecodedShopExpense {
     return invalid(input, SHOP_EXPENSE_AMOUNT_ERROR);
   }
   return { kind: "code", raw: input, amount, error: null };
+}
+
+/**
+ * Normalize one input for storage.
+ *
+ * - Plain number → canonical code, amount preserved (`1500` → `*J#`).
+ * - Typed code → same trimmed code (codes remain codes).
+ * - Empty → NULL / 0.
+ * - Invalid → error, never written.
+ */
+export function normalizeShopExpense(raw: unknown): NormalizedShopExpense {
+  const decoded = decodeShopExpense(raw);
+  if (decoded.kind === "empty") {
+    return { ...decoded, stored: null, converted: false };
+  }
+  if (decoded.kind === "invalid" || decoded.amount === null) {
+    return { ...decoded, stored: null, converted: false };
+  }
+  if (decoded.kind === "number") {
+    return {
+      ...decoded,
+      stored: encodeShopExpenseAmount(decoded.amount),
+      converted: true,
+    };
+  }
+  return { ...decoded, stored: decoded.raw, converted: false };
 }
 
 /** True only for a valid code input, never for a plain number. */

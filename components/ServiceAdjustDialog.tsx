@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { dhakaDateKey } from "@/lib/dhaka";
 import { formatTaka, STATUS_BN } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -141,7 +142,7 @@ export function ServiceAdjustDialog({
                 </p>
                 {service.returnedAt ? (
                   <p className="mt-1 text-xs text-amber-800">
-                    তারিখ: {service.returnedAt.slice(0, 10)}
+                    তারিখ: {dhakaDateKey(service.returnedAt)}
                   </p>
                 ) : null}
                 {service.refundNote ? (
