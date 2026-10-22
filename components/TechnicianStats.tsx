@@ -40,8 +40,11 @@ export function TechnicianStats({
   onSelect: (name: string | null) => void;
 }) {
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-md">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <section
+      data-testid="technician-stats"
+      className="rounded-xl border bg-white p-3 shadow-md"
+    >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold tracking-tight text-gray-800">
           👤 টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
         </h2>
@@ -49,9 +52,9 @@ export function TechnicianStats({
           কার্ডে ক্লিক করে শুধু ওই টেকনিশিয়ানের কাজ দেখুন
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
         {loading
-          ? [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)
+          ? [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)
           : stats.map((t) => {
               const isSelected = selected === t.technician;
               return (
@@ -71,7 +74,7 @@ export function TechnicianStats({
                       : `${t.technician}-এর কাজ দেখুন`
                   }
                   className={cn(
-                    "rounded-xl border bg-gray-50 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    "rounded-xl border bg-gray-50 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                     // A technician who left the shop stays visible (greyed) when
                     // they still have work on this date, so the day's totals add up.
                     !t.isActive && "border-dashed bg-gray-100 opacity-70",

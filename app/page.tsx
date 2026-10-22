@@ -6,9 +6,8 @@ import { createRoot } from "react-dom/client";
 import { MapPin, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
-import { GlobalServiceSearch } from "@/components/GlobalServiceSearch";
 import { MonthlySummary } from "@/components/MonthlySummary";
-import { OutstandingDues } from "@/components/OutstandingDues";
+import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
 import { TechnicianManager } from "@/components/TechnicianManager";
 import { Receipt, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
@@ -21,7 +20,16 @@ import {
 import { ServiceTable } from "@/components/ServiceTable";
 import { TechnicianStats } from "@/components/TechnicianStats";
 import { TodayStats } from "@/components/TodayStats";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { dhakaDateKey, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
+import { toBnDigits } from "@/lib/utils";
 import type {
   MonthlyResponse,
   RangeMode,
@@ -48,8 +56,16 @@ export default function Home() {
   const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
   const [showRestore, setShowRestore] = useState(false);
   const [showTechManager, setShowTechManager] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [showDues, setShowDues] = useState(false);
+  // Dues are fetched here (not inside the dialog) so the trigger button can
+  // show the live count/total before the dialog is ever opened.
+  const [dues, setDues] = useState<DuesResponse | null>(null);
+  const [duesLoading, setDuesLoading] = useState(true);
   // v1.1: active roster drives the form dropdown and the dashboard cards.
   const [technicians, setTechnicians] = useState<string[]>([]);
+  // Internal parts-shop names, used only as datalist suggestions in the form.
+  const [partsShops, setPartsShops] = useState<string[]>([]);
   // Client-side card → table filter. Reset on every date change.
   const [techFilter, setTechFilter] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
@@ -63,6 +79,7 @@ export default function Home() {
   // rapid day-navigation never shows the wrong day's data.
   const reqId = useRef(0);
   const monthlyReq = useRef(0);
+  const duesReq = useRef(0);
 
   // Summary window. Presets are anchored to the navbar date ("আজকের দিনের
   // সাথে connection"), custom range stays fixed until a preset is picked.
@@ -99,6 +116,18 @@ export default function Home() {
       }
     } catch {
       /* the form falls back to its built-in list */
+    }
+  }, []);
+
+  const loadPartsShops = useCallback(async () => {
+    try {
+      const res = await fetch("/api/parts-shops");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.shops)) {
+        setPartsShops(data.shops.filter((s: unknown) => typeof s === "string"));
+      }
+    } catch {
+      /* suggestions are optional; free text still works */
     }
   }, []);
 
@@ -177,9 +206,26 @@ export default function Home() {
     }
   }, []);
 
+  const fetchDues = useCallback(async () => {
+    const my = ++duesReq.current;
+    try {
+      const d = await getJSON<DuesResponse>("/api/services/dues");
+      if (duesReq.current !== my) return;
+      setDues(d);
+    } catch {
+      if (duesReq.current === my) setDues(null);
+    } finally {
+      if (duesReq.current === my) setDuesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchMonthly(range);
   }, [range, fetchMonthly]);
+
+  useEffect(() => {
+    void fetchDues();
+  }, [fetchDues, dataVersion]);
 
   useEffect(() => {
     void load(date, true);
@@ -189,10 +235,15 @@ export default function Home() {
     void loadTechnicians();
   }, [loadTechnicians]);
 
+  useEffect(() => {
+    void loadPartsShops();
+  }, [loadPartsShops]);
+
   const sync = () => {
     setSyncing(true);
     void load(date, false);
     void fetchMonthly(rangeRef.current);
+    void fetchDues();
   };
 
   const goToday = () => applyDate(dhakaDateKey(new Date()));
@@ -321,8 +372,25 @@ export default function Home() {
   };
 
   const edit = (s: ServiceDTO) => {
+    if (s.status === "Returned") {
+      toast.info(
+        "ফেরত দেওয়া কাজ এডিট করা যায় না। ড্যামেজ ক্ষতি যোগ করতে টেবিলের ⚖️ বাটন ব্যবহার করুন।"
+      );
+      return;
+    }
     setEditing(s);
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // A dialog must close before the receipt dialog / form opens underneath it,
+  // otherwise two radix portals stack and focus gets trapped in the old one.
+  const editFromDues = (s: ServiceDTO) => {
+    setShowDues(false);
+    edit(s);
+  };
+  const receiptFromDues = (s: ServiceDTO) => {
+    setShowDues(false);
+    setReceipt(s);
   };
 
   // Tab-e fire ele chupchap refresh — Sync mone rakhte hoy na.
@@ -331,16 +399,18 @@ export default function Home() {
       if (document.visibilityState === "visible") {
         void load(dateRef.current, false);
         void fetchMonthly(rangeRef.current);
+        void fetchDues();
         // The roster can change in another tab (or via the manager while this
         // tab was in the background). Without this the entry form keeps a
         // technician that is no longer selectable and every save is rejected
         // with "সঠিক টেকনিশিয়ান বাছুন" until a manual reload.
         void loadTechnicians();
+        void loadPartsShops();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [load, fetchMonthly, loadTechnicians]);
+  }, [load, fetchMonthly, fetchDues, loadTechnicians, loadPartsShops]);
 
   // Dine prothom khulle auto snapshot (staff vulleo backup thakbe).
   // Ref guard: StrictMode double-invokes effects in dev — one snapshot only.
@@ -374,6 +444,14 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const duesButtonLabel = duesLoading
+    ? "💰 বাকি তালিকা (হিসাব হচ্ছে…)"
+    : dues
+      ? `💰 বাকি তালিকা (${toBnDigits(dues.count)}টি • ৳${toBnDigits(
+          dues.totalDue.toLocaleString("en-IN")
+        )})`
+      : "💰 বাকি তালিকা";
+
   return (
     <div className="min-h-dvh bg-gray-100">
       {/* Paper: ONLY the customer receipt prints — never the dashboard. */}
@@ -383,7 +461,7 @@ export default function Home() {
         </div>
       ) : null}
       <main
-        className={`mx-auto max-w-7xl space-y-5 px-3 py-4 ${
+        className={`mx-auto max-w-7xl space-y-2.5 px-3 py-2.5 ${
           receipt ? "print:hidden" : ""
         }`}
       >
@@ -401,7 +479,35 @@ export default function Home() {
           onRestore={() => setShowRestore(true)}
           onManageTechnicians={() => setShowTechManager(true)}
           onPrint={print}
+          searchRefreshKey={dataVersion}
+          onSearchEdit={edit}
+          onSearchReceipt={setReceipt}
         />
+
+        {/* Action row: report + dues are dialogs now, so the daily form and
+            table stay above the fold. */}
+        <div
+          data-testid="action-row"
+          className="flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap"
+        >
+          <Button
+            type="button"
+            data-testid="open-report"
+            onClick={() => setShowReport(true)}
+            className="w-full bg-slate-800 text-white hover:bg-slate-900 sm:w-auto"
+          >
+            📊 ওভারঅল রিপোর্ট
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="open-dues"
+            onClick={() => setShowDues(true)}
+            className="w-full border-red-300 bg-red-50 text-red-800 hover:bg-red-100 sm:w-auto"
+          >
+            {duesButtonLabel}
+          </Button>
+        </div>
 
         <TechnicianStats
           stats={stats?.techStats ?? []}
@@ -417,43 +523,38 @@ export default function Home() {
           today={dhakaDateKey(new Date())}
         />
 
-        <MonthlySummary
-          summary={monthly?.summary ?? null}
-          range={range}
-          mode={rangeMode}
-          onPreset={pickPreset}
-          onCustom={pickCustom}
-          loading={loading}
-        />
+        {/* Dashboard printing still includes the monthly report even though it
+            is a dialog on screen. The dialog itself is print:hidden. */}
+        <div className="hidden print:block" data-testid="monthly-print">
+          <MonthlySummary
+            summary={monthly?.summary ?? null}
+            range={range}
+            mode={rangeMode}
+            onPreset={pickPreset}
+            onCustom={pickCustom}
+            loading={loading}
+          />
+        </div>
 
-        <OutstandingDues
-          refreshKey={dataVersion}
-          onEdit={edit}
-          onReceipt={setReceipt}
-        />
-        <GlobalServiceSearch
-          refreshKey={dataVersion}
-          onEdit={edit}
-          onReceipt={setReceipt}
-        />
-
-        <div className="grid items-start gap-4 lg:grid-cols-10">
-          <div ref={formRef} className="min-w-0 scroll-mt-4 lg:col-span-3">
+        <div className="grid items-start gap-4 lg:grid-cols-12">
+          <div ref={formRef} className="min-w-0 scroll-mt-24 lg:col-span-4">
             <ServiceForm
               key={editing?.id ?? "new"}
               initial={editing}
               serviceDate={date}
               technicians={technicians}
+              partsShops={partsShops}
               onSaved={() => {
                 setEditing(null);
                 setDataVersion((v) => v + 1);
                 void load(date, false);
                 void fetchMonthly(range);
+                void loadPartsShops();
               }}
               onCancelEdit={() => setEditing(null)}
             />
           </div>
-          <div className="min-w-0 lg:col-span-7">
+          <div className="min-w-0 lg:col-span-8">
             <ServiceTable
               services={services}
               loading={loading}
@@ -473,6 +574,49 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      <Dialog open={showReport} onOpenChange={setShowReport}>
+        <DialogContent
+          data-testid="report-dialog"
+          className="max-h-[92dvh] sm:max-w-5xl"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>ওভারঅল রিপোর্ট</DialogTitle>
+            <DialogDescription>
+              বিগত ৩০ দিন, এই মাস বা গত মাসের সার্ভিস ও লাভের হিসাব
+            </DialogDescription>
+          </DialogHeader>
+          <MonthlySummary
+            summary={monthly?.summary ?? null}
+            range={range}
+            mode={rangeMode}
+            onPreset={pickPreset}
+            onCustom={pickCustom}
+            loading={loading}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDues} onOpenChange={setShowDues}>
+        <DialogContent
+          data-testid="dues-dialog"
+          className="max-h-[92dvh] sm:max-w-6xl"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>বাকি তালিকা</DialogTitle>
+            <DialogDescription>
+              সব তারিখের বাকি কাস্টমার, বিল, জমা ও যোগাযোগ
+            </DialogDescription>
+          </DialogHeader>
+          <OutstandingDues
+            dues={dues}
+            loading={duesLoading}
+            onEdit={editFromDues}
+            onReceipt={receiptFromDues}
+          />
+        </DialogContent>
+      </Dialog>
+
       {/* The banner is app chrome. It belongs on a dashboard printout (it
           carries the shop name) but must never end up on a customer's bill,
           so it is hidden only while a receipt is open — same rule as <main>. */}
@@ -521,6 +665,7 @@ export default function Home() {
           setDataVersion((v) => v + 1);
           void load(dateRef.current, false);
           void fetchMonthly(rangeRef.current);
+          void fetchDues();
         }}
       />
       <TechnicianManager

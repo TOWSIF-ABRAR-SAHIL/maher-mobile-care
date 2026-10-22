@@ -296,8 +296,16 @@ async function main() {
     const highId = afterRestore.body.services.find((s) => s.id === HIGH_ID);
     check(
       "R2",
-      "crafted snapshot restores the high-id row",
-      restored.ok && !!highId && highId.customerName === "HighIdRow",
+      "old snapshot without partsShop/refund/damage columns restores safely",
+      restored.ok &&
+        !!highId &&
+        highId.customerName === "HighIdRow" &&
+        highId.partsShop === null &&
+        highId.returnedAt === null &&
+        highId.refundAmount === 0 &&
+        highId.refundNote === null &&
+        highId.damageLoss === 0 &&
+        highId.damageNote === null,
       `${restored.status} ${JSON.stringify(restored.body.error || "")}`
     );
 
@@ -318,6 +326,162 @@ async function main() {
       "next id after restore is greater than the restored max(id)",
       nextCreate.ok && nextCreate.body.id > HIGH_ID,
       `got id ${nextCreate.body && nextCreate.body.id}, restored max(id) ${HIGH_ID}`
+    );
+
+    // ---- EC: secret-keypad expense decoding + parts shop ----------------
+    // The server decoder is authoritative; the UI badge is only a preview.
+    const codeShop = unique("CodeShop");
+    const codeCases = [
+      ["*J#", 1500],
+      ["T#", 800],
+      ["GJ+", 450],
+      ["gj+", 450], // lowercase accepted
+      ["1500", 1500],
+      ["*M#", 1600],
+      ["*B#", 1200],
+    ];
+    let firstCodeId = null;
+    for (const [raw, expected] of codeCases) {
+      const res = await api("/api/services", json({
+        customerName: unique("ExpenseCode"),
+        phone: "01000000333",
+        model: "Code Model",
+        technician: "NURUL",
+        problem: "Code decoding",
+        totalBill: 2000,
+        advance: 0,
+        status: "Pending",
+        shopExpense: raw,
+        partsShop: codeShop,
+        serviceDate: TODAY,
+      }));
+      if (res.ok) {
+        createdIds.push(res.body.id);
+        firstCodeId ??= res.body.id;
+      }
+      check(
+        "EC1",
+        `shop code ${JSON.stringify(raw)} decodes to ${expected} and keeps the raw value`,
+        res.ok &&
+          res.body.shopExpense === raw &&
+          res.body.expenseAmount === expected &&
+          res.body.partsShop === codeShop,
+        JSON.stringify(res.body && {
+          raw: res.body.shopExpense,
+          amount: res.body.expenseAmount,
+          shop: res.body.partsShop,
+          error: res.body.error,
+        })
+      );
+    }
+
+    const invalidCode = await api("/api/services", json({
+      customerName: unique("BadCode"),
+      phone: "01000000334",
+      model: "M",
+      technician: "NURUL",
+      problem: "P",
+      totalBill: 100,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "AB$",
+      partsShop: "",
+      serviceDate: TODAY,
+    }));
+    check(
+      "EC2",
+      "unsupported code characters are rejected",
+      invalidCode.status === 400 &&
+        String(invalidCode.body.error || "").includes("গোপন কোড"),
+      `${invalidCode.status} ${JSON.stringify(invalidCode.body.error || "")}`
+    );
+
+    const longCode = await api("/api/services", json({
+      customerName: unique("LongCode"),
+      phone: "01000000335",
+      model: "M",
+      technician: "NURUL",
+      problem: "P",
+      totalBill: 100,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "A".repeat(25),
+      partsShop: "",
+      serviceDate: TODAY,
+    }));
+    check(
+      "EC3",
+      "overlong code is rejected",
+      longCode.status === 400 &&
+        String(longCode.body.error || "").includes("গোপন কোড"),
+      `${longCode.status} ${JSON.stringify(longCode.body.error || "")}`
+    );
+
+    const longShop = await api("/api/services", json({
+      customerName: unique("LongShop"),
+      phone: "01000000336",
+      model: "M",
+      technician: "NURUL",
+      problem: "P",
+      totalBill: 100,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "",
+      partsShop: "x".repeat(101),
+      serviceDate: TODAY,
+    }));
+    check(
+      "EC4",
+      "overlong parts-shop name is rejected",
+      longShop.status === 400 &&
+        String(longShop.body.error || "").includes("পার্টস"),
+      `${longShop.status} ${JSON.stringify(longShop.body.error || "")}`
+    );
+
+    const updatedCode = await api(
+      `/api/services/${firstCodeId}`,
+      put({
+        shopExpense: "T#",
+        partsShop: "Updated Parts Shop",
+      })
+    );
+    check(
+      "EC5",
+      "update re-decodes the code and replaces the parts shop",
+      updatedCode.ok &&
+        updatedCode.body.shopExpense === "T#" &&
+        updatedCode.body.expenseAmount === 800 &&
+        updatedCode.body.partsShop === "Updated Parts Shop",
+      JSON.stringify(updatedCode.body && {
+        raw: updatedCode.body.shopExpense,
+        amount: updatedCode.body.expenseAmount,
+        shop: updatedCode.body.partsShop,
+      })
+    );
+
+    const shops = await api("/api/parts-shops");
+    check(
+      "EC6",
+      "parts-shop suggestions expose distinct used names",
+      shops.ok &&
+        shops.body.shops.includes(codeShop) &&
+        shops.body.shops.includes("Updated Parts Shop"),
+      JSON.stringify(shops.body.shops || shops.body.error || null)
+    );
+
+    const codeCsv = await fetch(`${BASE}/api/backup`).then((r) => r.text());
+    const csvLines = codeCsv.split(/\r?\n/);
+    const csvHeader = csvLines[0] || "";
+    const codeCsvLine = csvLines.find((line) => line.includes("*M#"));
+    check(
+      "EC7",
+      "CSV includes numeric expenseAmount and partsShop columns",
+      csvHeader.includes("expenseAmount") &&
+        csvHeader.includes("partsShop") &&
+        !!codeCsvLine &&
+        codeCsvLine.includes(",1600,") &&
+        codeCsvLine.includes(codeShop),
+      JSON.stringify({ header: csvHeader.slice(0, 180), row: codeCsvLine?.slice(0, 220) })
     );
 
     // ---- TC: v1.1 dynamic technicians -----------------------------------

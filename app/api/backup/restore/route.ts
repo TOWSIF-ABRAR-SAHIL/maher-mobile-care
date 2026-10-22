@@ -22,7 +22,18 @@ const REQUIRED_COLS = [
   "totalBill", "advance", "due", "status", "shopExpense", "expenseAmount",
   "serviceDate", "archived", "createdAt", "updatedAt",
 ];
-const COLS = REQUIRED_COLS.join(", ");
+// Columns added after the original backup format. A v1.0.3 snapshot must
+// still restore, so a missing optional column is skipped rather than rejecting
+// the whole file. Nullable columns then default to NULL; refundAmount and
+// damageLoss use their schema DEFAULT 0.
+const OPTIONAL_COLS = [
+  "partsShop",
+  "returnedAt",
+  "refundAmount",
+  "refundNote",
+  "damageLoss",
+  "damageNote",
+];
 
 /**
  * POST /api/backup/restore { file }
@@ -55,6 +66,7 @@ export async function POST(req: NextRequest) {
     //    live data empty.
     let incoming = 0;
     let missingCols: string[] = [];
+    let snapshotCols = new Set<string>();
     try {
       const snap = new Database(abs, { readonly: true });
       try {
@@ -71,6 +83,7 @@ export async function POST(req: NextRequest) {
             }[]
           ).map((c) => c.name)
         );
+        snapshotCols = snapCols;
         missingCols = REQUIRED_COLS.filter((c) => !snapCols.has(c));
         incoming = (
           snap.prepare("SELECT COUNT(*) AS n FROM Service").get() as {
@@ -97,6 +110,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // New snapshots carry optional columns; old ones omit them. Skipping a
+    // nullable column leaves NULL; skipping refundAmount/damageLoss applies
+    // their DEFAULT 0, which is exactly the pre-v1.1.2 behaviour.
+    const insertCols = [
+      ...REQUIRED_COLS,
+      ...OPTIONAL_COLS.filter((c) => snapshotCols.has(c)),
+    ];
+    const insertColList = insertCols.join(", ");
+
     // 2) Safety copy of CURRENT data before touching anything.
     const safety = `safety-${stamp()}.db`;
     const safetyAbs = join(BACKUP_DIR, safety);
@@ -116,7 +138,7 @@ export async function POST(req: NextRequest) {
     try {
       await prisma.$executeRawUnsafe(`DELETE FROM Service`);
       const inserted = await prisma.$executeRawUnsafe(
-        `INSERT INTO Service (${COLS}) SELECT ${COLS} FROM snap.Service`
+        `INSERT INTO Service (${insertColList}) SELECT ${insertColList} FROM snap.Service`
       );
       // Row-count sanity check before committing; mismatch → rollback.
       if (inserted !== incoming) {

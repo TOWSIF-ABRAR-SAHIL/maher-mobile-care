@@ -69,25 +69,37 @@ export async function GET(req: NextRequest) {
     }
     const { start, end } = dhakaRangeBounds(from, to);
 
-    const agg = await prisma.service.aggregate({
+    const rows = await prisma.service.findMany({
       where: { archived: false, serviceDate: { gte: start, lte: end } },
-      _count: { _all: true },
-      _sum: { totalBill: true, expenseAmount: true, due: true },
+      select: {
+        totalBill: true,
+        expenseAmount: true,
+        due: true,
+        status: true,
+        damageLoss: true,
+        refundAmount: true,
+      },
     });
-
-    const bill = agg._sum.totalBill ?? 0;
-    const expense = agg._sum.expenseAmount ?? 0;
-    const due = agg._sum.due ?? 0;
+    const activeRows = rows.filter((r) => r.status !== "Returned");
+    const returnedRows = rows.filter((r) => r.status === "Returned");
+    const bill = activeRows.reduce((s, r) => s + r.totalBill, 0);
+    const expense = rows.reduce((s, r) => s + r.expenseAmount, 0);
+    const due = activeRows.reduce((s, r) => s + r.due, 0);
+    const damageLoss = rows.reduce((s, r) => s + r.damageLoss, 0);
+    const refund = returnedRows.reduce((s, r) => s + r.refundAmount, 0);
 
     const payload: MonthlyResponse = {
       from,
       to,
       summary: {
-        count: agg._count._all,
+        count: activeRows.length,
         bill,
         expense,
         due,
-        profit: bill - expense,
+        profit: bill - expense - damageLoss,
+        damageLoss,
+        refund,
+        returnedCount: returnedRows.length,
       },
     };
     return NextResponse.json(payload);

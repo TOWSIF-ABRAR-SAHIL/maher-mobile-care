@@ -53,6 +53,54 @@ let browser = null;
   );
   await new Promise((r) => setTimeout(r, 1500));
   const body = () => page.evaluate(() => document.body.textContent);
+  const visibleBody = () => page.evaluate(() => document.body.innerText);
+  const openReport = async () => {
+    if (await page.$('[data-testid="report-dialog"]')) return;
+    await page.click('[data-testid="open-report"]');
+    await page.waitForFunction(
+      () => {
+        const d = document.querySelector('[data-testid="report-dialog"]');
+        return !!d && d.textContent.includes("ওভারঅল রিপোর্ট");
+      },
+      { polling: 100, timeout: 8000 }
+    );
+  };
+  const closeReport = async () => {
+    const open = await page.$('[data-testid="report-dialog"]');
+    if (!open) return;
+    await page.evaluate(() => {
+      const d = document.querySelector('[data-testid="report-dialog"]');
+      const x = d
+        ? [...d.querySelectorAll("button")].find(
+            (b) => b.textContent.trim() === "Close"
+          )
+        : null;
+      if (x) x.click();
+    });
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="report-dialog"]'),
+      { polling: 100, timeout: 8000 }
+    );
+  };
+  const reportText = () =>
+    page.evaluate(() => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      const sec = dlg?.querySelector("section");
+      return sec?.innerText || "";
+    });
+  const rangeText = () =>
+    page.evaluate(() => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      return dlg?.querySelector("section p")?.textContent || "";
+    });
+  const chip = (label) =>
+    page.evaluate((l) => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      const sec = dlg?.querySelector("section");
+      [...(sec?.querySelectorAll("button") || [])]
+        .find((x) => x.textContent.trim() === l)
+        ?.click();
+    }, label);
   const get = async (path) => (await api(page, path)).body;
 
   // Order-independent baseline: suites share this throwaway DB, and earlier
@@ -89,6 +137,7 @@ let browser = null;
       advance: 500,
       status: "Pending",
       shopExpense: "1500",
+      partsShop: "BC Parts Shop",
       serviceDate: TODAY,
     }),
   });
@@ -115,30 +164,58 @@ let browser = null;
     due: before.day.today.due + 1200,
     expense: before.day.today.expense + 1500,
   };
-  // The cards must render the same totals the API reports.
+  // Cost/profit are public on the dashboard again; only the service table's
+  // cost column keeps codes private. No peek is needed.
+  const roll = await get(
+    `/api/stats/monthly?from=${shiftDay(TODAY, -29)}&to=${TODAY}`
+  );
   await page.waitForFunction(
     (bill, due, expense) => {
-      const text = document.body.textContent;
+      const text = document.body.innerText;
       return text.includes(bill) && text.includes(due) && text.includes(expense);
     },
-    { polling: 500, timeout: 10000 },
+    { polling: 100, timeout: 5000 },
     tk(expected.bill),
     tk(expected.due),
     tk(expected.expense)
   );
-  const b = await body();
+  // The report lives in a dialog now. Capture the dashboard text first (the
+  // dialog overlay would otherwise be the only thing readable), then open it.
+  const visible = await visibleBody();
+  await openReport();
+  await page.waitForFunction(
+    (expense, profit) => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      const sec = dlg?.querySelector("section");
+      const text = sec?.innerText || "";
+      return text.includes(expense) && text.includes(profit);
+    },
+    { polling: 100, timeout: 5000 },
+    tk(roll.summary.expense),
+    tk(roll.summary.profit)
+  );
+  const report = await reportText();
   console.log("reached B1");
   check(
     "B1",
-    "today cards = snapshot + hand calc (1/1700/500/1200/1500)",
+    "today cards = snapshot + hand calc; খরচ ও লাভ visible without a peek",
     t.today.count === expected.count &&
       t.today.bill === expected.bill &&
       t.today.due === expected.due &&
       t.today.expense === expected.expense &&
-      b.includes(tk(expected.bill)) &&
-      b.includes(tk(expected.due)) &&
-      b.includes(tk(expected.expense)),
-    JSON.stringify(t.today)
+      visible.includes(tk(expected.bill)) &&
+      visible.includes(tk(expected.due)) &&
+      visible.includes(tk(expected.expense)) &&
+      !visible.includes("৳••••") &&
+      report.includes(tk(roll.summary.expense)) &&
+      report.includes(tk(roll.summary.profit)) &&
+      !report.includes("৳••••"),
+    JSON.stringify({
+      today: t.today,
+      roll: roll.summary,
+      reportHasExpense: report.includes(tk(roll.summary.expense)),
+      reportHasProfit: report.includes(tk(roll.summary.profit)),
+    })
   );
 
   // ---------- B2: tech cards ----------
@@ -163,22 +240,6 @@ let browser = null;
   );
 
   // ---------- B3: presets ----------
-  const rangeText = () =>
-    page.evaluate(() => {
-      const sec = [...document.querySelectorAll("section")].find((s) =>
-        s.textContent.includes("ওভারঅল রিপোর্ট")
-      );
-      return sec.querySelector("p").textContent;
-    });
-  const chip = (label) =>
-    page.evaluate((l) => {
-      const sec = [...document.querySelectorAll("section")].find((s) =>
-        s.textContent.includes("ওভারঅল রিপোর্ট")
-      );
-      [...sec.querySelectorAll("button")]
-        .find((x) => x.textContent.trim() === l)
-        .click();
-    }, label);
   await chip("এই মাস");
   await new Promise((r) => setTimeout(r, 900));
   const mThis = await get(
@@ -208,9 +269,8 @@ let browser = null;
 
   // ---------- B4: custom range ----------
   await page.evaluate((from, to) => {
-    const sec = [...document.querySelectorAll("section")].find((s) =>
-      s.textContent.includes("ওভারঅল রিপোর্ট")
-    );
+    const dlg = document.querySelector('[data-testid="report-dialog"]');
+    const sec = dlg.querySelector("section");
     const [f, end] = sec.querySelectorAll('input[type="date"]');
     const set = (el, v) => {
       Object.getOwnPropertyDescriptor(
@@ -240,6 +300,8 @@ let browser = null;
   );
 
   // ---------- B5: navbar connection ----------
+  // The report now blocks the navbar, so close it, move the day, reopen.
+  await closeReport();
   await page.evaluate((probe) => {
     const i = document.querySelector("header input[type='date']");
     Object.getOwnPropertyDescriptor(
@@ -249,6 +311,7 @@ let browser = null;
     i.dispatchEvent(new Event("input", { bubbles: true }));
   }, PROBE_DATE);
   await new Promise((r) => setTimeout(r, 1200));
+  await openReport();
   console.log("reached B5");
   check(
     "B5a",
@@ -263,11 +326,14 @@ let browser = null;
     (await rangeText()).includes(`1 ${monthLabel(PROBE_DATE)}`)
   );
   // back to today + rolling
+  await closeReport();
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="header-actions"] button')]
       .find((x) => x.textContent.includes("আজ"))
       .click()
   );
+  await new Promise((r) => setTimeout(r, 1200));
+  await openReport();
   await chip("বিগত ৩০ দিন");
   await new Promise((r) => setTimeout(r, 900));
 
@@ -275,9 +341,8 @@ let browser = null;
   const rollingBefore = await rangeText();
   const invalidFrom = shiftDay(TODAY, 10);
   await page.evaluate((from) => {
-    const sec = [...document.querySelectorAll("section")].find((s) =>
-      s.textContent.includes("ওভারঅল রিপোর্ট")
-    );
+    const dlg = document.querySelector('[data-testid="report-dialog"]');
+    const sec = dlg.querySelector("section");
     const [f] = sec.querySelectorAll('input[type="date"]');
     Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
@@ -289,10 +354,11 @@ let browser = null;
   const stillRolling = await rangeText();
   console.log("reached B6");
   check("B6", "from>to rejected, range kept", stillRolling === rollingBefore);
+  await closeReport();
 
   // ---------- C1: backup button ----------
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="header-actions"] button')]
       .find((x) => x.textContent.includes("ব্যাকআপ"))
       .click()
   );
@@ -341,7 +407,9 @@ let browser = null;
     "restore roundtrip (marker gone, baseline intact)",
     rs.ok &&
       !after.services.some((s) => s.customerName === MARKER) &&
-      after.services.some((s) => s.customerName === REPORT_BASE),
+      after.services.some((s) => s.customerName === REPORT_BASE) &&
+      after.services.find((s) => s.customerName === REPORT_BASE)?.partsShop ===
+        "BC Parts Shop",
     `marker#${marker.body.id} removed=${!after.services.some((s) => s.id === marker.body.id)}`
   );
 
@@ -374,6 +442,13 @@ let browser = null;
       paid: !!receipt?.querySelector("[data-paid-stamp]"),
     };
   });
+  check(
+    "C3p",
+    "receipt preview hides shop expense and parts-shop name",
+    !receiptInfo.text.includes("1500") &&
+      !receiptInfo.text.includes("BC Parts Shop"),
+    JSON.stringify(receiptInfo.text.slice(0, 200))
+  );
   check(
     "C3a",
     "receipt address has no Chandra Rd.",

@@ -8,11 +8,31 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 ## Tumi Ja Pabe
 
 Ekta zip file: `MAHER-Windows-Client.zip` — local build
-`out\MAHER-Windows-Client.zip` (v1.0.3). Eta GitHub release `v1.0.3-windows`-e
-publish korte hobe. Ei version e cash/change calculator ta client-er request e
-bad dewa hoyeche; sathe receipt-er address theke "Chandra Rd." bad, customer-er
-naam signature area-te, fully-paid bill-e **PAID** stamp, ar daily list-e
-WhatsApp + **PDF শেয়ার** action add kora hoyeche.
+`out\MAHER-Windows-Client.zip` (v1.1.2). Eta GitHub release `v1.1.2-windows`-e
+publish korte hobe. Entry form-e code (`*J#`) likhle raw code ar decoded taka
+(`৳১৫০০`) duitai dekha jay. Privacy shudhu **service talika-r খরচ column**-e:
+column default-e lukiye thake, eye click korle shudhu **code** dekha jay —
+decoded taka na; number diye likhle `৳••••` dekha jay. Daily khoroch card ar
+monthly khoroch/labh age-r motoi khola. Customer receipt ba PDF-e cost, code,
+parts-shop ba profit kokhono jay na. Cash/change calculator, receipt address,
+PAID stamp, WhatsApp + **PDF শেয়ার** sob age-r motoi ache.
+
+Notun v1.1.2: service talika-r protyek row-e **⚖️ ফেরত / ড্যামেজ ক্ষতি**
+button. Ekti kaj na hoye thakle **ফেরত / রিফান্ড** tab theke puro joma ferot
+dite parben — status **ফেরত** hobe, বাকি 0 hobe, ar oi kajের bill/count/technician
+performance theke bad jabe. **ড্যামেজ ক্ষতি** tab-e technician-er kharap kore
+bhanga parts-er internal loss likhben; eta customer-er bill ba receipt-e
+kokhono jabe na, shudhu dokaner khata/লাভ calculation-e bad jabe. Completed
+kaj-e customer puro bill dey, damage loss alada dokaner loss. Returned row
+form diye edit kora jabe na, kintu damage loss add/correct kora jabe.
+
+Ager notun (v1.0.7): navbar-er dan dike search box (placeholder
+`🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)`, live result, mobile-e 🔍 icon),
+**📊 ওভারঅল রিপোর্ট** ar **💰 বাকি তালিকা** dialog-e khole (button-e live count
+`১টি • ৳৭০০`), ar form-e **🛠️ সার্ভিসিং / 🛍️ প্রোডাক্ট সেল** toggle. Product
+sell-e status auto **ডেলিভারি** hoy ar name/details existing `model`/`problem`
+field-e save hoy. 1920×1080 screen-e puro form + **সেভ করুন** button ek scroll
+chara dekha jay.
 
 > **Repo ta PRIVATE.** Tai GitHub-er link client-ke dile o kaj korbe
 > na (login chara download hobe na)। Client-ke file ta **nije** pathate
@@ -27,7 +47,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **8 suites, 157 checks**, live data er hash-o same ache.
+suite pass koreche — **10 suites, 215 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -78,7 +98,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **157/157 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **215/215 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -248,6 +268,11 @@ Future-e update dile:
 Eita ami test korechi: `app` folder delete kore notun file diye chalale o
 `data` folder-r record, technician ar backup sob bachi thake.
 
+v1.1.2-te database-e return/refund/damage-er 5 ta notun column add hoy.
+Prothom bar notun version chalanor shomoy migration **automatic** hoy; apni
+shudhu `data` folder-ta niye chinta korben na. Purono snapshot restore korleo
+notun column-gulo `0`/blank hoye safe thake.
+
 ---
 
 ## Client-ke dewar age checklist (tumi korbe)
@@ -265,8 +290,8 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    ```powershell
    tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `version` hobe `1.0.3`, `sourceCommit` latest commit-er sathe milbe,
-   `target` hobe `windows-x64`.
+   `version` hobe `1.1.2`, `sourceCommit` HEAD-er sathe milbe (release-er
+   age sob change commit kore nio), `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno
    `MAHER-Windows-Test.zip`, client-er jonno **shudhu**
@@ -274,5 +299,16 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
 
 4. Client-er PC-te prothom run-e 4 default technician ashbe
    (ASRAFUL, NAYEM, NURUL, RONI) — test-er kono record thakbe na.
+
+5. Notun entry-e shop cost `*J#` likhe dekho: form-e `গোপন কোড: *J# ➔ ৳১৫০০`
+   dekha jabe. Service talika-r **খরচ** button chaple column khulbe, sekhane
+   shudhu `*J#` thakbe — taka na. Number diye cost likhle oi cell-e `৳••••`
+   thakbe. Customer bill/preview-e cost ba parts-shop name thakbe na.
+
+6. Ekta test entry bill `1500`, joma `500`, status **চলছে** diye save koro.
+   Oi row-er **⚖️** → **ফেরত / রিফান্ড** → confirm koro. Status **ফেরত**,
+   বাকি **৳0**, daily কাজ/বিল theke bad, ar receipt-e PAID stamp nei — ei
+   gulo dekho. Tarpor **⚖️** → **ড্যামেজ ক্ষতি**-te `500` likhe save koro;
+   customer receipt/PDF-e “ড্যামেজ” ba 500-er kono mention thakbe na.
 
 ---

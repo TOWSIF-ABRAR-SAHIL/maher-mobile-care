@@ -37,7 +37,9 @@ export async function GET(_req: NextRequest) {
     const header = [
       "id", "date", "customer", "phone", "model", "technician",
       "problem", "status", "bill", "advance", "due",
-      "expense", "archived", "created", "updated",
+      "expense", "expenseAmount", "partsShop",
+      "damageLoss", "damageNote", "returnedAt", "refundAmount", "refundNote",
+      "archived", "created", "updated",
     ];
     const lines = [header.join(",")];
     for (const r of rows) {
@@ -55,6 +57,13 @@ export async function GET(_req: NextRequest) {
           r.advance,
           r.due,
           csvCell(r.shopExpense ?? ""),
+          r.expenseAmount,
+          csvCell(r.partsShop ?? ""),
+          r.damageLoss,
+          csvCell(r.damageNote ?? ""),
+          r.returnedAt ? new Date(r.returnedAt).toISOString() : "",
+          r.refundAmount,
+          csvCell(r.refundNote ?? ""),
           r.archived ? "YES" : "",
           new Date(r.createdAt).toISOString(),
           new Date(r.updatedAt).toISOString(),

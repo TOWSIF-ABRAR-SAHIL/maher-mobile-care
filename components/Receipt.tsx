@@ -23,7 +23,9 @@ export function Receipt({ service }: { service: ServiceDTO }) {
   const statusBn =
     STATUS_BN[(service.status as ServiceStatus) ?? "Pending"] ??
     service.status;
-  const isPaid = service.totalBill > 0 && service.due === 0;
+  const isReturned = service.status === "Returned";
+  const isPaid =
+    !isReturned && service.totalBill > 0 && service.due === 0;
   return (
     <div
       data-receipt
@@ -91,6 +93,16 @@ export function Receipt({ service }: { service: ServiceDTO }) {
 
       <hr className="my-3 border-t border-gray-400" />
 
+      {isReturned ? (
+        <div className="my-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-center text-xs font-semibold text-amber-900">
+          ↩️ কাজটি সম্পন্ন হয়নি — মোবাইল ফেরত দেওয়া হয়েছে
+          {service.refundAmount > 0
+            ? ` এবং ${formatTaka(service.refundAmount)} ফেরত দেওয়া হয়েছে`
+            : ""}
+          ।
+        </div>
+      ) : null}
+
       {/* Money — bill / advance / due only, never shop cost */}
       <table className="w-full">
         <tbody>
@@ -106,6 +118,14 @@ export function Receipt({ service }: { service: ServiceDTO }) {
               {formatTaka(service.advance)}
             </td>
           </tr>
+          {isReturned ? (
+            <tr>
+              <td className="py-1 text-amber-800">ফেরত দেওয়া হয়েছে</td>
+              <td className="py-1 text-right font-semibold text-amber-800">
+                {formatTaka(service.refundAmount)}
+              </td>
+            </tr>
+          ) : null}
           <tr className="border-t-2 border-black">
             <td className="py-1.5 text-base font-bold">বাকি</td>
             <td className="py-1.5 text-right text-base font-extrabold">

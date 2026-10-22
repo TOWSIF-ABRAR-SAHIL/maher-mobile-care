@@ -13,6 +13,16 @@ export interface ServiceDTO {
   status: string;
   shopExpense: string | null;
   expenseAmount: number;
+  /** Internal only: parts-purchase shop name (never printed for customers). */
+  partsShop: string | null;
+  /** Set when an unfinished job is returned to the customer. */
+  returnedAt: string | null;
+  /** Full advance returned with a Returned job. Internal ledger value. */
+  refundAmount: number;
+  refundNote: string | null;
+  /** Internal only: shop-borne repair/compensation for technician damage. */
+  damageLoss: number;
+  damageNote: string | null;
   serviceDate: string;
   archived: boolean;
   createdAt: string;
@@ -37,10 +47,20 @@ export interface TechStat {
 }
 
 export interface DayStats {
+  /** Non-returned jobs only. */
   count: number;
+  /** Non-returned jobs only. */
   bill: number;
+  /** Non-returned jobs only. */
   due: number;
+  /** Normal shop expense (parts etc.), including returned jobs. */
   expense: number;
+  /** Internal damage loss, including returned jobs. */
+  damageLoss: number;
+  /** Cash returned today on Returned jobs. */
+  refund: number;
+  /** How many of the day's rows are Returned (not part of `count`). */
+  returnedCount: number;
   codeCount: number;
 }
 
@@ -51,11 +71,22 @@ export interface StatsResponse {
 }
 
 export interface MonthlySummary {
+  /** Non-returned jobs only. */
   count: number;
+  /** Non-returned jobs only. */
   bill: number;
+  /** Normal shop expense (parts etc.), including returned jobs. */
   expense: number;
+  /** Non-returned jobs only. */
   due: number;
+  /** bill - expense - damageLoss. */
   profit: number;
+  /** Internal damage loss, including returned jobs. */
+  damageLoss: number;
+  /** Cash returned on Returned jobs. Already excluded from `bill`; memo only. */
+  refund: number;
+  /** How many rows are Returned (not part of `count`). */
+  returnedCount: number;
 }
 
 export interface MonthlyResponse {

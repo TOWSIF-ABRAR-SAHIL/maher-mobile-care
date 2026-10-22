@@ -10,6 +10,8 @@ const CLASSES: Record<string, string> = {
     "border-transparent bg-green-100 text-green-800 hover:bg-green-100",
   Delivered:
     "border-transparent bg-gray-200 text-gray-700 hover:bg-gray-200",
+  Returned:
+    "border-transparent bg-amber-100 text-amber-800 hover:bg-amber-100",
 };
 
 export function StatusBadge({ status }: { status: string }) {

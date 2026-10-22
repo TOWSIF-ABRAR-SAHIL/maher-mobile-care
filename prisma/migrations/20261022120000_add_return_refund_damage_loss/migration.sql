@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Service" ADD COLUMN "returnedAt" DATETIME;
+ALTER TABLE "Service" ADD COLUMN "refundAmount" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Service" ADD COLUMN "refundNote" TEXT;
+ALTER TABLE "Service" ADD COLUMN "damageLoss" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Service" ADD COLUMN "damageNote" TEXT;

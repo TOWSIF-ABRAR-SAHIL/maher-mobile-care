@@ -7,7 +7,8 @@
  * Fully offline against the database selected by lib/db-path.
  */
 import { prisma } from "../lib/prisma";
-import { computeDue, parseBnNumber } from "../lib/utils";
+import { decodeShopExpense } from "../lib/expense-code";
+import { computeDue } from "../lib/utils";
 
 const fresh = process.argv.includes("--fresh");
 
@@ -71,7 +72,8 @@ let ok = 0;
         due: computeDue(s.totalBill, s.advance),
         status: s.status,
         shopExpense: s.shopExpense || null,
-        expenseAmount: parseBnNumber(s.shopExpense ?? "") ?? 0,
+        expenseAmount:
+          decodeShopExpense(s.shopExpense ?? "").amount ?? 0,
         serviceDate: midday(s.daysAgo),
       },
     });

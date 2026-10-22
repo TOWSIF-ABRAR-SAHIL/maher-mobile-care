@@ -11,11 +11,13 @@ import {
   Pencil,
   ReceiptText,
   RotateCcw,
+  Scale,
   Search,
   Share2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ServiceAdjustDialog } from "@/components/ServiceAdjustDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { whatsAppHref } from "@/lib/contact";
 import {
@@ -39,7 +41,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatTaka, STATUS_BN, STATUSES, type ServiceStatus } from "@/lib/utils";
+import {
+  FLOW_STATUSES,
+  formatTaka,
+  isReturned,
+  STATUS_BN,
+  STATUSES,
+  type ServiceStatus,
+} from "@/lib/utils";
+import { isShopExpenseCode } from "@/lib/expense-code";
 import type { ServiceDTO } from "@/lib/types";
 
 export function ServiceTable({
@@ -66,12 +76,14 @@ export function ServiceTable({
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ServiceDTO | null>(null);
+  const [adjustTarget, setAdjustTarget] = useState<ServiceDTO | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archived, setArchived] = useState<ServiceDTO[]>([]);
   const [archLoading, setArchLoading] = useState(false);
   const [restoring, setRestoring] = useState<number | null>(null);
-  // Privacy: খরচ column starts hidden — eye click reveals it per session.
+  // Privacy: the খরচ column starts hidden; the eye reveals the codes for the
+  // rest of the session. It never shows the decoded taka amount.
   const [showExpense, setShowExpense] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
   const [sharingId, setSharingId] = useState<number | null>(null);
@@ -141,8 +153,12 @@ export function ServiceTable({
   /** One tap on the badge moves the job to the next stage. */
   const advanceStatus = async (s: ServiceDTO) => {
     if (advancingRef.current) return;
-    const order = [...STATUSES];
-    const i = order.indexOf(s.status as ServiceStatus);
+    if (s.status === "Returned") {
+      toast.info("এই কাজ ফেরত দেওয়া হয়েছে");
+      return;
+    }
+    const order = [...FLOW_STATUSES];
+    const i = order.indexOf(s.status as (typeof FLOW_STATUSES)[number]);
     if (i === -1 || i === order.length - 1) {
       toast.info("এটা ডেলিভারি হয়ে গেছে");
       return;
@@ -234,6 +250,8 @@ export function ServiceTable({
             variant="outline"
             size="sm"
             onClick={() => setShowExpense((v) => !v)}
+            data-testid="expense-toggle"
+            aria-pressed={showExpense}
             title={showExpense ? "খরচ লুকান" : "খরচ দেখুন"}
             className="print:hidden"
           >
@@ -330,8 +348,8 @@ export function ServiceTable({
               <TableHead>কাস্টমার</TableHead>
               <TableHead>মডেল ও সমস্যা</TableHead>
               <TableHead>অবস্থা</TableHead>
-              <TableHead>হিসাব (বিল/জমা/বাকি)</TableHead>
-              {showExpense ? <TableHead>খরচ</TableHead> : null}
+              <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
+              {showExpense ? <TableHead>খরচ / পার্টস দোকান</TableHead> : null}
               <TableHead className="text-right print:hidden">অ্যাকশন</TableHead>
             </TableRow>
           </TableHeader>
@@ -339,7 +357,13 @@ export function ServiceTable({
             {filtered.map((s) => (
               <TableRow
                 key={s.id}
-                className={s.due > 0 ? "bg-red-50/60 hover:bg-red-50" : ""}
+                className={
+                  isReturned(s.status)
+                    ? "bg-amber-50/50 hover:bg-amber-50"
+                    : s.due > 0
+                      ? "bg-red-50/60 hover:bg-red-50"
+                      : ""
+                }
               >
                 <TableCell className="font-mono font-semibold">{s.id}</TableCell>
                 {showArchived ? (
@@ -369,7 +393,15 @@ export function ServiceTable({
                   >
                     <StatusBadge status={s.status} />
                   </button>
-                  {s.status === "Delivered" && s.due > 0 ? (
+                  {s.damageLoss > 0 ? (
+                    <div
+                      className="mt-1 whitespace-nowrap text-xs font-bold text-orange-700"
+                      title={`ড্যামেজ ক্ষতি: ${formatTaka(s.damageLoss)}`}
+                    >
+                      ⚠️ ড্যামেজ ক্ষতি
+                    </div>
+                  ) : null}
+                  {s.status === "Delivered" && s.due > 0 && !isReturned(s.status) ? (
                     <div className="mt-1 whitespace-nowrap text-xs font-bold text-red-600">
                       ⚠️ টাকা বাকি
                     </div>
@@ -382,14 +414,50 @@ export function ServiceTable({
                   <div className="text-green-700">
                     জমা: <span className="font-semibold">{formatTaka(s.advance)}</span>
                   </div>
-                  <div className={s.due > 0 ? "text-red-600" : "text-gray-500"}>
-                    বাকি: <span className="font-semibold">{formatTaka(s.due)}</span>
-                  </div>
+                  {isReturned(s.status) ? (
+                    <div className="text-amber-700">
+                      ফেরত:{" "}
+                      <span className="font-semibold">
+                        {formatTaka(s.refundAmount)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className={s.due > 0 ? "text-red-600" : "text-gray-500"}>
+                      বাকি:{" "}
+                      <span className="font-semibold">{formatTaka(s.due)}</span>
+                    </div>
+                  )}
                 </TableCell>
                 {showExpense ? (
-                <TableCell>
-                  {s.shopExpense ? (
-                    <span className="font-medium">{s.shopExpense}</span>
+                <TableCell className="align-top">
+                  {s.shopExpense || s.partsShop || s.damageLoss > 0 ? (
+                    <div className="space-y-0.5">
+                      {s.shopExpense ? (
+                        <div className="font-medium">
+                          {/* Codes are safe to show. A plain number is the real
+                              amount, so the list never prints it. */}
+                          {isShopExpenseCode(s.shopExpense)
+                            ? s.shopExpense
+                            : "৳••••"}
+                        </div>
+                      ) : null}
+                      {s.partsShop ? (
+                        <div
+                          className="max-w-40 truncate text-xs text-blue-700"
+                          title={s.partsShop}
+                        >
+                          {s.partsShop}
+                        </div>
+                      ) : null}
+                      {s.damageLoss > 0 ? (
+                        <div
+                          className="whitespace-nowrap text-xs font-semibold text-orange-700"
+                          title={s.damageNote ?? "ড্যামেজ ক্ষতি"}
+                        >
+                          ক্ষতি: {formatTaka(s.damageLoss)}
+                        </div>
+                      ) : null}
+                    </div>
                   ) : (
                     <span className="text-gray-400">—</span>
                   )}
@@ -464,12 +532,27 @@ export function ServiceTable({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8"
-                          title="এডিট"
-                          onClick={() => onEdit(s)}
+                          className="h-8 w-8 text-amber-700"
+                          title={
+                            isReturned(s.status)
+                              ? "ড্যামেজ ক্ষতি"
+                              : "ফেরত / ড্যামেজ ক্ষতি"
+                          }
+                          onClick={() => setAdjustTarget(s)}
                         >
-                          <Pencil />
+                          <Scale />
                         </Button>
+                        {!isReturned(s.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="এডিট"
+                            onClick={() => onEdit(s)}
+                          >
+                            <Pencil />
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -490,6 +573,15 @@ export function ServiceTable({
           )}
         </>
       )}
+
+      {adjustTarget ? (
+        <ServiceAdjustDialog
+          key={adjustTarget.id}
+          service={adjustTarget}
+          onClose={() => setAdjustTarget(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
 
       <AlertDialog
         open={!!deleteTarget}

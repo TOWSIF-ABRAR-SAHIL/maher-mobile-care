@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { Pencil, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactButtons } from "@/components/ContactButtons";
@@ -8,7 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatTaka } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
 
-interface DuesResponse {
+export interface DuesResponse {
   count: number;
   totalDue: number;
   /** Matching rows beyond the rendered page (list is capped server-side). */
@@ -18,35 +17,16 @@ interface DuesResponse {
 }
 
 export function OutstandingDues({
-  refreshKey,
+  dues,
+  loading,
   onEdit,
   onReceipt,
 }: {
-  refreshKey: number;
+  dues: DuesResponse | null;
+  loading: boolean;
   onEdit: (service: ServiceDTO) => void;
   onReceipt: (service: ServiceDTO) => void;
 }) {
-  const [dues, setDues] = useState<DuesResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/services/dues");
-      const data = (await res.json().catch(() => null)) as DuesResponse | null;
-      if (!res.ok || !data) throw new Error("বাকি তালিকা আসেনি");
-      setDues(data);
-    } catch {
-      setDues(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load, refreshKey]);
-
   return (
     <section
       data-testid="outstanding-dues"
@@ -70,8 +50,12 @@ export function OutstandingDues({
           ) : null}
         </div>
       </div>
-      {loading || !dues ? (
+      {loading ? (
         <p className="py-6 text-center text-sm text-gray-500">তালিকা আসছে…</p>
+      ) : !dues ? (
+        <p className="py-6 text-center text-sm text-red-600">
+          বাকি তালিকা আনা যায়নি — Sync করুন।
+        </p>
       ) : dues.services.length === 0 ? (
         <p className="rounded-lg border border-dashed py-8 text-center text-sm text-gray-500">
           কোনো বাকি নেই। সব টাকা উঠে গেছে। 🎉

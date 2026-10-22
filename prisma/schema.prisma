@@ -20,9 +20,15 @@ model Service {
   totalBill     Int      @default(0)
   advance       Int      @default(0) // জমা
   due           Int      @default(0) // বাকি (auto: totalBill - advance)
-  status        String   @default("Pending") // Pending, In-Progress, Completed, Delivered
-  shopExpense   String?  // দোকান খরচ (part code like *M# or a number)
-  expenseAmount Int      @default(0) // numeric expense for profit calc (0 when shopExpense is a code)
+  status        String   @default("Pending") // Pending, In-Progress, Completed, Delivered, Returned
+  shopExpense   String?  // দোকান খরচ: raw keypad code (*J#) or a number
+  expenseAmount Int      @default(0) // decoded numeric expense for profit calc
+  partsShop     String?  // পার্টস কেনার দোকান (internal only, never on a receipt)
+  returnedAt    DateTime? // set when an unfinished job is handed back
+  refundAmount  Int      @default(0) // cash returned to the customer
+  refundNote    String?  // internal note about the return/refund
+  damageLoss    Int      @default(0) // internal: shop-borne damage repair/compensation
+  damageNote    String?  // internal: what the technician damaged
   serviceDate   DateTime @default(now())
   archived      Boolean  @default(false) // soft-delete: hidden from lists/stats, restorable
   createdAt     DateTime @default(now())

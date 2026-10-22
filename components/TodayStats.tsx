@@ -16,7 +16,7 @@ function DayCard({
   valueClass?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-l-4 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${border}`}>
+    <div className={`rounded-xl border border-l-4 bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${border}`}>
       <p className="text-sm text-gray-600">{label}</p>
       <p className={`mt-1 text-xl font-extrabold tracking-tight tabular-nums ${valueClass ?? "text-gray-900"}`}>
         {value}
@@ -42,25 +42,46 @@ export function TodayStats({
   const prefix = date === today ? "আজকের" : "নির্বাচিত দিনের";
   if (loading || !stats) {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        data-testid="today-stats"
+        className="grid grid-cols-2 gap-2 lg:grid-cols-4"
+      >
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-20" />
         ))}
       </div>
     );
   }
+  const expenseHint = [
+    stats.damageLoss > 0
+      ? `এর মধ্যে ক্ষতি ${formatTaka(stats.damageLoss)}`
+      : null,
+    stats.codeCount > 0 ? `+ ${stats.codeCount}টি কোড` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div
+      data-testid="today-stats"
+      className="grid grid-cols-2 gap-2 lg:grid-cols-4"
+    >
       <DayCard
         border="border-l-blue-500"
         label={`${prefix} মোট কাজ`}
         value={`${stats.count} টি`}
+        hint={
+          stats.returnedCount > 0
+            ? `+ ${stats.returnedCount}টি ফেরত`
+            : undefined
+        }
       />
       <DayCard
         border="border-l-green-500"
         label={`${prefix} মোট বিল`}
         value={formatTaka(stats.bill)}
         valueClass="text-green-600"
+        hint={stats.refund > 0 ? `ফেরত ${formatTaka(stats.refund)}` : undefined}
       />
       <DayCard
         border="border-l-red-500"
@@ -71,9 +92,9 @@ export function TodayStats({
       <DayCard
         border="border-l-orange-500"
         label={`${prefix} মোট খরচ`}
-        value={formatTaka(stats.expense)}
+        value={formatTaka(stats.expense + stats.damageLoss)}
         valueClass="text-orange-600"
-        hint={stats.codeCount > 0 ? `+ ${stats.codeCount}টি কোড` : undefined}
+        hint={expenseHint || undefined}
       />
     </div>
   );

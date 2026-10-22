@@ -17,7 +17,11 @@ const LIST_LIMIT = 500;
  */
 export async function GET() {
   try {
-    const where = { archived: false, due: { gt: 0 } };
+    const where = {
+      archived: false,
+      status: { not: "Returned" },
+      due: { gt: 0 },
+    };
     const [services, totals] = await Promise.all([
       prisma.service.findMany({
         where,

@@ -63,6 +63,7 @@ let browser = null;
       advance: 500,
       status: "Pending",
       shopExpense: "1500",
+      partsShop: "LaneA Parts Shop",
       serviceDate: TODAY,
     }),
   });
@@ -105,11 +106,28 @@ let browser = null;
       .find((o) => o.textContent.trim() === "RONI")
       .click();
   });
+  // A programmatic option click can leave Radix's portal open; the first
+  // outside click would then only dismiss it instead of reaching the form.
+  await page.keyboard.press("Escape");
+  await new Promise((r) => setTimeout(r, 150));
   await typeInto(page,"svc-bill", "১০০০"); // Bengali digits
   await typeInto(page,"svc-adv", "300");
   await typeInto(page,"svc-expense", "*B#");
+  await typeInto(page,"svc-parts-shop", "LaneA Parts Shop");
   const dueShown = await page.$eval("#svc-due", (el) => el.value);
   check("A1a", "due auto-calc live", dueShown === "700", dueShown);
+  const badge = await page.$eval("#svc-expense-help", (el) => el.textContent || "");
+  const hasPeekButton = (await page.$('[data-testid="expense-reveal"]')) !== null;
+  check(
+    "A1b",
+    "form preview shows the code and its real amount directly",
+    badge.includes("গোপন কোড") &&
+      badge.includes("*B#") &&
+      badge.includes("৳১২০০") &&
+      !badge.includes("৳••••") &&
+      !hasPeekButton,
+    JSON.stringify({ badge, hasPeekButton })
+  );
   await submitButton(page,"সেভ করুন");
   await waitDailyRow(page, NAME, true);
   const created = (await apiDay(TODAY)).find(
@@ -117,25 +135,29 @@ let browser = null;
   );
   console.log("reached A1-submit");
   check(
-    "A1b",
-    "entry saved (bill 1000/adv 300/due 700, RONI, code expense 0)",
+    "A1c",
+    "entry saved (bill 1000/adv 300/due 700, RONI, code expense 1200 + parts shop)",
     created &&
       created.totalBill === 1000 &&
       created.advance === 300 &&
       created.due === 700 &&
       created.technician === "RONI" &&
-      created.expenseAmount === 0,
+      created.shopExpense === "*B#" &&
+      created.expenseAmount === 1200 &&
+      created.partsShop === "LaneA Parts Shop",
     JSON.stringify(
       created && {
         b: created.totalBill,
         a: created.advance,
         d: created.due,
         t: created.technician,
+        raw: created.shopExpense,
         e: created.expenseAmount,
+        shop: created.partsShop,
       }
     )
   );
-  check("A1c", "row count +1", (await rowCount()) === before + 1);
+  check("A1d", "row count +1", (await rowCount()) === before + 1);
 
   // ---- A2: validation (empty + bad bill), no row added ----
   const c2 = await rowCount();
@@ -283,31 +305,63 @@ let browser = null;
   await chip("সব");
   await new Promise((r) => setTimeout(r, 400));
 
-  // ---- A6: eye toggle ----
+  // ---- A6: eye toggle + code-only cost column ----
   const kh0 = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some((th) =>
       th.textContent.includes("খরচ")
     )
   );
-  await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="daily-services"] button')]
-      .find((b) => b.textContent.trim() === "খরচ")
-      .click()
+  await page.click('[data-testid="expense-toggle"]');
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some(
+        (th) => th.textContent.includes("খরচ")
+      ),
+    { polling: 100, timeout: 2000 }
   );
-  await new Promise((r) => setTimeout(r, 400));
-  const kh1 = await page.evaluate(() => ({
-    h: [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some((th) =>
+  const kh1 = await page.evaluate(() => {
+    const table = document.querySelector('[data-testid="daily-services"]');
+    const headers = [...table.querySelectorAll("thead th")];
+    const idx = headers.findIndex((th) => th.textContent.includes("খরচ"));
+    const cells = [...table.querySelectorAll("tbody tr")].map(
+      (tr) => tr.children[idx]?.textContent || ""
+    );
+    return {
+      h: idx !== -1,
+      cells,
+      codeCell: cells.find((t) => t.includes("*B#")) || "",
+      maskedNumeric: cells.some((t) => t.includes("৳••••")),
+      hasArrow: cells.some((t) => t.includes("➔")),
+      leaksAmount: cells.some((t) => t.includes("১২০০") || t.includes("1900")),
+    };
+  });
+  // It must stay open for the session: no 5-second auto-hide any more.
+  await new Promise((r) => setTimeout(r, 5500));
+  const stillOpen = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="daily-services"] thead th')].some((th) =>
       th.textContent.includes("খরচ")
-    ),
-    v: document
-      .querySelector('[data-testid="daily-services"] tbody')
-      .textContent.includes("*B#"),
-  }));
-  check("A6", "eye reveals expense column", !kh0 && kh1.h && kh1.v);
-  await page.evaluate(() =>
-    [...document.querySelectorAll("section button")]
-      .find((b) => b.textContent.trim() === "খরচ")
-      .click()
+    )
+  );
+  await page.click('[data-testid="expense-toggle"]');
+  await page.waitForFunction(
+    () =>
+      ![...document.querySelectorAll('[data-testid="daily-services"] thead th')].some(
+        (th) => th.textContent.includes("খরচ")
+      ),
+    { polling: 100, timeout: 2000 }
+  );
+  check(
+    "A6",
+    "eye reveals cost codes only (numbers masked, parts shop shown); stays open until toggled",
+    !kh0 &&
+      kh1.h &&
+      kh1.codeCell.includes("*B#") &&
+      kh1.codeCell.includes("LaneA Parts Shop") &&
+      kh1.maskedNumeric &&
+      !kh1.hasArrow &&
+      !kh1.leaksAmount &&
+      stillOpen,
+    JSON.stringify({ ...kh1, stillOpen })
   );
 
   // ---- A7: 1-click status on the reference row (reverted at cleanup) ----
@@ -513,10 +567,16 @@ let browser = null;
       bill: d.includes("বিল নং"),
       tech: d.includes("NURUL"),
       noCost: !d.includes("1500"),
+      noPartsShop: !d.includes("LaneA Parts Shop"),
     };
   });
   console.log("reached A10");
-  check("A10", "receipt preview (no cost leak)", rc.bill && rc.tech && rc.noCost, JSON.stringify(rc));
+  check(
+    "A10",
+    "receipt preview (no cost or parts-shop leak)",
+    rc.bill && rc.tech && rc.noCost && rc.noPartsShop,
+    JSON.stringify(rc)
+  );
 
   // ---- A11: archive the reference row (lane A leaves no active rows) ----
   // Later suites share this throwaway DB, so the reference row must not stay

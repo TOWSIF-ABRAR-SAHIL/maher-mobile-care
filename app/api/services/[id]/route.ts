@@ -35,6 +35,7 @@ export async function PUT(
       {
         totalBill: existing.totalBill,
         advance: existing.advance,
+        status: existing.status,
       },
       { allowedTechnicians }
     );

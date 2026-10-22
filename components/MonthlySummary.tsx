@@ -88,18 +88,33 @@ export function MonthlySummary({
               <p className="mt-1 text-xl font-bold text-blue-400 print:text-blue-700">
                 {summary.count} টি
               </p>
+              {summary.returnedCount > 0 ? (
+                <p className="mt-0.5 text-[11px] text-amber-300 print:text-amber-700">
+                  + {summary.returnedCount}টি ফেরত
+                </p>
+              ) : null}
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-center print:border-gray-300 print:bg-white">
               <p className="text-sm text-slate-300 print:text-gray-600">{unitLabel(mode, "বিল")}</p>
               <p className="mt-1 text-xl font-bold text-green-400 print:text-green-700">
                 {formatTaka(summary.bill)}
               </p>
+              {summary.refund > 0 ? (
+                <p className="mt-0.5 text-[11px] text-amber-300 print:text-amber-700">
+                  ফেরত {formatTaka(summary.refund)}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-center print:border-gray-300 print:bg-white">
               <p className="text-sm text-slate-300 print:text-gray-600">{unitLabel(mode, "খরচ")}</p>
               <p className="mt-1 text-xl font-bold text-orange-400 print:text-orange-700">
-                {formatTaka(summary.expense)}
+                {formatTaka(summary.expense + summary.damageLoss)}
               </p>
+              {summary.damageLoss > 0 ? (
+                <p className="mt-0.5 text-[11px] text-orange-300 print:text-orange-700">
+                  এর মধ্যে ক্ষতি {formatTaka(summary.damageLoss)}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-center print:border-gray-300 print:bg-white">
               <p className="text-sm text-slate-300 print:text-gray-600">{unitLabel(mode, "বাকি")}</p>
@@ -116,6 +131,12 @@ export function MonthlySummary({
           </>
         )}
       </div>
+      {summary && summary.refund > 0 ? (
+        <p className="mt-2 text-center text-[11px] text-amber-300 print:text-amber-800">
+          ↩️ ফেরত {formatTaka(summary.refund)} ({summary.returnedCount}টি কাজ)
+          — বিল থেকে বাদ, তাই লাভ থেকে আলাদা বাদ হয়নি।
+        </p>
+      ) : null}
     </section>
   );
 }

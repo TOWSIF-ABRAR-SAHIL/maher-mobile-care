@@ -21,14 +21,25 @@ export async function GET(req: NextRequest) {
 
     const rows = await prisma.service.findMany({
       where: { archived: false, serviceDate: { gte: start, lte: end } },
-      select: { technician: true, totalBill: true, due: true, expenseAmount: true, shopExpense: true },
+      select: {
+        technician: true,
+        totalBill: true,
+        due: true,
+        status: true,
+        expenseAmount: true,
+        damageLoss: true,
+        refundAmount: true,
+        shopExpense: true,
+      },
     });
+    const activeRows = rows.filter((r) => r.status !== "Returned");
+    const returnedRows = rows.filter((r) => r.status === "Returned");
 
-    const specs = await cardRows(rows.map((r) => r.technician));
+    const specs = await cardRows(activeRows.map((r) => r.technician));
     const techStats = specs.map(({ technician, isActive }) => {
       // Case-insensitive so a card total can never drift from the day total
       // just because a historical row was typed in a different case.
-      const mine = rows.filter(
+      const mine = activeRows.filter(
         (r) => r.technician.toUpperCase() === technician.toUpperCase()
       );
       return {
@@ -43,10 +54,13 @@ export async function GET(req: NextRequest) {
       date,
       techStats,
       today: {
-        count: rows.length,
-        bill: rows.reduce((s, r) => s + r.totalBill, 0),
-        due: rows.reduce((s, r) => s + r.due, 0),
+        count: activeRows.length,
+        bill: activeRows.reduce((s, r) => s + r.totalBill, 0),
+        due: activeRows.reduce((s, r) => s + r.due, 0),
         expense: rows.reduce((s, r) => s + r.expenseAmount, 0),
+        damageLoss: rows.reduce((s, r) => s + r.damageLoss, 0),
+        refund: returnedRows.reduce((s, r) => s + r.refundAmount, 0),
+        returnedCount: returnedRows.length,
         codeCount: rows.filter(
           (r) => (r.shopExpense ?? "").trim() !== "" && parseBnNumber(r.shopExpense) === null
         ).length,

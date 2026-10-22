@@ -1,14 +1,16 @@
 import { dhakaDateKey, isDateKey, serviceDateFromKey } from "./dhaka";
+import { decodeShopExpense } from "./expense-code";
 import {
-  STATUSES,
+  FLOW_STATUSES,
   FALLBACK_TECHNICIANS,
+  RETURNED_STATUS,
   computeDue,
   parseBnNumber,
 } from "./utils";
 
 /** Matches every user-facing validation error thrown by this module. */
 export const SERVICE_VALIDATION_PATTERN =
-  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|সঠিক তারিখ|ভুল ডেটা|must be|Invalid date/;
+  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|সঠিক তারিখ|ভুল ডেটা|গোপন কোড|পার্টস কেনার দোকান|বদলানো|must be|Invalid date/;
 
 /** Advance (জমা) may never exceed the bill — anything above the bill is
  *  overpay, not a valid ledger value. */
@@ -30,6 +32,11 @@ export interface ServiceFormValues {
   advance: string;
   status: string;
   shopExpense: string;
+  /** Internal only: where the parts were bought. Never on a receipt. */
+  partsShop?: string;
+  /** Internal only: shop-borne damage repair/compensation. */
+  damageLoss?: string;
+  damageNote?: string;
   serviceDate?: string;
 }
 
@@ -44,6 +51,12 @@ export interface ServiceFormValues {
  */
 export interface ValidationContext {
   allowedTechnicians?: readonly string[];
+  /**
+   * UI-only hint: the product-sale mode reuses `model`/`problem`, so the
+   * required-field messages should use the product wording. No data shape
+   * changes — API routes simply omit this flag and keep the service wording.
+   */
+  productSale?: boolean;
 }
 
 export interface ValidatedServicePayload {
@@ -58,6 +71,9 @@ export interface ValidatedServicePayload {
   status: string;
   shopExpense: string | null;
   expenseAmount: number;
+  partsShop: string | null;
+  damageLoss: number;
+  damageNote: string | null;
   serviceDateKey: string;
   serviceDate: Date;
 }
@@ -73,6 +89,29 @@ function readBody(body: unknown): Record<string, unknown> {
     throw new Error("ভুল ডেটা পাঠানো হয়েছে");
   }
   return body as Record<string, unknown>;
+}
+
+const MAX_PARTS_SHOP_LENGTH = 100;
+const MAX_NOTE_LENGTH = 300;
+
+/** Optional internal field: blanks become NULL, long names are rejected. */
+function optionalPartsShop(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > MAX_PARTS_SHOP_LENGTH) {
+    throw new Error("পার্টস কেনার দোকানের নাম ১০০ অক্ষরের বেশি হতে পারবে না");
+  }
+  return text;
+}
+
+/** Optional free-text note (refund/damage). Blank becomes NULL. */
+export function optionalNote(value: unknown, field: string): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > MAX_NOTE_LENGTH) {
+    throw new Error(`${field} ৩০০ অক্ষরের বেশি হতে পারবে না`);
+  }
+  return text;
 }
 
 function validateTechnician(
@@ -92,7 +131,9 @@ function validateTechnician(
 
 function validateStatus(value: unknown): string {
   const status = String(value ?? "").trim();
-  if (!(STATUSES as readonly string[]).includes(status)) {
+  // "Returned" is set only through the dedicated refund endpoint, never by a
+  // generic create/edit form (which would skip the refund bookkeeping).
+  if (!(FLOW_STATUSES as readonly string[]).includes(status)) {
     throw new Error("সঠিক অবস্থা বাছুন");
   }
   return status;
@@ -123,9 +164,15 @@ export function validateServicePayload(
 ): ValidatedServicePayload {
   const customerName = requiredText(values.customerName, "কাস্টমারের নাম দিন");
   const phone = requiredText(values.phone, "মোবাইল নম্বর দিন");
-  const model = requiredText(values.model, "মোবাইলের মডেল দিন");
+  const model = requiredText(
+    values.model,
+    ctx?.productSale ? "প্রোডাক্টের নাম দিন" : "মোবাইলের মডেল দিন"
+  );
   const technician = validateTechnician(values.technician, ctx);
-  const problem = requiredText(values.problem, "সমস্যা লিখুন");
+  const problem = requiredText(
+    values.problem,
+    ctx?.productSale ? "বিবরণ লিখুন" : "সমস্যা লিখুন"
+  );
   const status = validateStatus(values.status);
   const totalBill = parseServiceAmount(values.totalBill, "মোট বিল");
   const advanceRaw = String(values.advance ?? "").trim();
@@ -135,9 +182,17 @@ export function validateServicePayload(
     throw new Error(OVERPAY_MESSAGE);
   }
 
-  const shopExpenseRaw = String(values.shopExpense ?? "").trim();
-  const shopExpense = shopExpenseRaw ? shopExpenseRaw : null;
-  const expenseAmount = parseBnNumber(shopExpenseRaw) ?? 0;
+  const decodedExpense = decodeShopExpense(values.shopExpense);
+  if (decodedExpense.kind === "invalid") {
+    throw new Error(decodedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন");
+  }
+  const shopExpense = decodedExpense.kind === "empty" ? null : decodedExpense.raw;
+  const expenseAmount = decodedExpense.amount ?? 0;
+  const partsShop = optionalPartsShop(values.partsShop);
+  const damageLossRaw = String(values.damageLoss ?? "").trim();
+  const damageLoss =
+    damageLossRaw === "" ? 0 : parseServiceAmount(values.damageLoss, "ড্যামেজ ক্ষতি");
+  const damageNote = optionalNote(values.damageNote, "ড্যামেজ নোট");
   const serviceDateKey =
     values.serviceDate && values.serviceDate.trim() !== ""
       ? values.serviceDate.trim()
@@ -158,6 +213,9 @@ export function validateServicePayload(
     status,
     shopExpense,
     expenseAmount,
+    partsShop,
+    damageLoss,
+    damageNote,
     serviceDateKey,
     serviceDate: serviceDateFromKey(serviceDateKey),
   };
@@ -183,6 +241,9 @@ export function validateServiceCreate(
           ? "In-Progress"
           : String(raw.status),
       shopExpense: String(raw.shopExpense ?? ""),
+      partsShop: String(raw.partsShop ?? ""),
+      damageLoss: String(raw.damageLoss ?? ""),
+      damageNote: String(raw.damageNote ?? ""),
       serviceDate:
         raw.serviceDate == null || raw.serviceDate === ""
           ? undefined
@@ -199,26 +260,35 @@ export interface ValidatedServiceUpdate {
   technician?: string;
   problem?: string;
   status?: string;
-  totalBill: number;
-  advance: number;
-  due: number;
+  totalBill?: number;
+  advance?: number;
+  due?: number;
   shopExpense?: string | null;
   expenseAmount?: number;
+  partsShop?: string | null;
+  damageLoss?: number;
+  damageNote?: string | null;
   serviceDate?: Date;
 }
 
 /** Partial-update validation for PUT /api/services/[id]. */
 export function validateServiceUpdate(
   body: unknown,
-  existing: { totalBill: number; advance: number },
+  existing: { totalBill: number; advance: number; status?: string },
   ctx?: ValidationContext
 ): ValidatedServiceUpdate {
   const raw = readBody(body);
-  const data: ValidatedServiceUpdate = {
-    totalBill: existing.totalBill,
-    advance: existing.advance,
-    due: computeDue(existing.totalBill, existing.advance),
-  };
+  const returned = existing.status === RETURNED_STATUS;
+  const data: ValidatedServiceUpdate = {};
+
+  if (returned && (raw.totalBill !== undefined || raw.advance !== undefined)) {
+    throw new Error("ফেরত দেওয়া কাজের বিল বা জমা বদলানো যাবে না");
+  }
+  // Returned is terminal. A mistaken return is corrected by archiving/restore
+  // or a future explicit reversal tool — never by a silent form save.
+  if (returned && raw.status !== undefined) {
+    throw new Error("ফেরত দেওয়া কাজের অবস্থা বদলানো যাবে না");
+  }
 
   if (raw.customerName !== undefined) {
     data.customerName = requiredText(
@@ -230,13 +300,19 @@ export function validateServiceUpdate(
     data.phone = requiredText(raw.phone, "মোবাইল নম্বর আবশ্যক");
   }
   if (raw.model !== undefined) {
-    data.model = requiredText(raw.model, "মোবাইলের মডেল আবশ্যক");
+    data.model = requiredText(
+      raw.model,
+      ctx?.productSale ? "প্রোডাক্টের নাম আবশ্যক" : "মোবাইলের মডেল আবশ্যক"
+    );
   }
   if (raw.technician !== undefined) {
     data.technician = validateTechnician(raw.technician, ctx);
   }
   if (raw.problem !== undefined) {
-    data.problem = requiredText(raw.problem, "সমস্যা লিখুন");
+    data.problem = requiredText(
+      raw.problem,
+      ctx?.productSale ? "বিবরণ আবশ্যক" : "সমস্যা লিখুন"
+    );
   }
   if (raw.status !== undefined) {
     data.status = validateStatus(raw.status);
@@ -245,21 +321,44 @@ export function validateServiceUpdate(
     data.serviceDate = serviceDateFromKey(String(raw.serviceDate));
   }
 
-  if (raw.totalBill !== undefined) {
-    data.totalBill = parseServiceAmount(raw.totalBill, "মোট বিল");
+  if (raw.totalBill !== undefined || raw.advance !== undefined) {
+    const totalBill =
+      raw.totalBill !== undefined
+        ? parseServiceAmount(raw.totalBill, "মোট বিল")
+        : existing.totalBill;
+    const advance =
+      raw.advance !== undefined
+        ? parseServiceAmount(raw.advance, "জমা")
+        : existing.advance;
+    if (advance > totalBill) {
+      throw new Error(OVERPAY_MESSAGE);
+    }
+    data.totalBill = totalBill;
+    data.advance = advance;
+    data.due = computeDue(totalBill, advance);
   }
-  if (raw.advance !== undefined) {
-    data.advance = parseServiceAmount(raw.advance, "জমা");
-  }
-  data.due = computeDue(data.totalBill, data.advance);
-  if (data.advance > data.totalBill) {
-    throw new Error(OVERPAY_MESSAGE);
+
+  if (raw.partsShop !== undefined) {
+    data.partsShop = optionalPartsShop(raw.partsShop);
   }
 
   if (raw.shopExpense !== undefined) {
-    const shopExpenseRaw = String(raw.shopExpense ?? "").trim();
-    data.shopExpense = shopExpenseRaw ? shopExpenseRaw : null;
-    data.expenseAmount = parseBnNumber(shopExpenseRaw) ?? 0;
+    const decodedExpense = decodeShopExpense(raw.shopExpense);
+    if (decodedExpense.kind === "invalid") {
+      throw new Error(
+        decodedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
+      );
+    }
+    data.shopExpense =
+      decodedExpense.kind === "empty" ? null : decodedExpense.raw;
+    data.expenseAmount = decodedExpense.amount ?? 0;
+  }
+
+  if (raw.damageLoss !== undefined) {
+    data.damageLoss = parseServiceAmount(raw.damageLoss, "ড্যামেজ ক্ষতি");
+  }
+  if (raw.damageNote !== undefined) {
+    data.damageNote = optionalNote(raw.damageNote, "ড্যামেজ নোট");
   }
 
   return data;

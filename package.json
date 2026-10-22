@@ -1,6 +1,6 @@
 {
   "name": "maher-mobile-care",
-  "version": "1.0.3",
+  "version": "1.1.2",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
@@ -10,6 +10,7 @@
     "test:first-run": "node scripts/first-run.mjs",
     "build:portable": "node scripts/build-portable.mjs",
     "seed": "tsx scripts/seed-maher.ts",
+    "backfill:expense-codes": "tsx scripts/backfill-expense-codes.ts",
     "cleanup:test-data": "tsx scripts/cleanup-test-data.ts",
     "postinstall": "prisma generate"
   },

@@ -17,12 +17,19 @@ export function cn(...inputs: ClassValue[]) {
 export const FALLBACK_TECHNICIANS = ["NURUL", "RONI", "ASRAFUL", "NAYEM"] as const;
 export type Technician = string;
 
-export const STATUSES = [
+/** The normal job flow. "Returned" is deliberately not here: the table's
+ *  status badge advances through these four stages only. */
+export const FLOW_STATUSES = [
   "Pending",
   "In-Progress",
   "Completed",
   "Delivered",
 ] as const;
+
+export const RETURNED_STATUS = "Returned" as const;
+
+/** Every status the UI can display/filter, including the terminal return. */
+export const STATUSES = [...FLOW_STATUSES, RETURNED_STATUS] as const;
 export type ServiceStatus = (typeof STATUSES)[number];
 
 export const STATUS_BN: Record<ServiceStatus, string> = {
@@ -30,7 +37,12 @@ export const STATUS_BN: Record<ServiceStatus, string> = {
   "In-Progress": "চলছে",
   Completed: "সম্পন্ন",
   Delivered: "ডেলিভারি",
+  Returned: "ফেরত",
 };
+
+export function isReturned(status: string): boolean {
+  return status === RETURNED_STATUS;
+}
 
 /* ------------------------------------------------------------------ */
 /* Numbers: Bengali digits in, integers out                             */
@@ -76,4 +88,17 @@ export function formatTaka(n: number | null | undefined): string {
 
 export function formatNum(n: number | null | undefined): string {
   return Math.round(Number(n) || 0).toLocaleString("en-IN");
+}
+
+const BN_OUT_DIGITS = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
+
+/** Bengali digits for the live code badge, e.g. 1500 -> "১৫০০". */
+export function toBnDigits(value: string | number): string {
+  return String(value).replace(/\d/g, (d) => BN_OUT_DIGITS[Number(d)]);
+}
+
+/** Badge-only formatter. The rest of the app keeps its Western digits. */
+export function formatTakaBn(n: number | null | undefined): string {
+  const v = Math.round(Number(n) || 0);
+  return `৳${toBnDigits(v)}`;
 }

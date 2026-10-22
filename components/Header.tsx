@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
+import type { ServiceDTO } from "@/lib/types";
 
 export function Header({
   date,
@@ -26,6 +28,9 @@ export function Header({
   onRestore,
   onManageTechnicians,
   onPrint,
+  searchRefreshKey,
+  onSearchEdit,
+  onSearchReceipt,
 }: {
   date: string;
   onPrev: () => void;
@@ -40,22 +45,32 @@ export function Header({
   onRestore: () => void;
   onManageTechnicians: () => void;
   onPrint: () => void;
+  searchRefreshKey: number;
+  onSearchEdit: (service: ServiceDTO) => void;
+  onSearchReceipt: (service: ServiceDTO) => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 px-4 py-3 text-white shadow-md print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm sm:text-2xl print:text-black">
-            MAHER MOBILE CARE
-          </h1>
-          <p className="text-xs text-blue-100 sm:text-sm print:text-gray-600">
-            দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
-          </p>
-          <p className="text-[11px] text-blue-200 print:hidden">
-            {lastBackup
-              ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
-              : "এখনো ব্যাকআপ হয়নি"}
-          </p>
+    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 px-3 py-2.5 text-white shadow-md print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm sm:text-2xl print:text-black">
+              MAHER MOBILE CARE
+            </h1>
+            <p className="text-xs text-blue-100 sm:text-sm print:text-gray-600">
+              দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
+            </p>
+            <p className="text-[11px] text-blue-200 print:hidden">
+              {lastBackup
+                ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
+                : "এখনো ব্যাকআপ হয়নি"}
+            </p>
+          </div>
+          <MobileSearch
+            refreshKey={searchRefreshKey}
+            onEdit={onSearchEdit}
+            onReceipt={onSearchReceipt}
+          />
         </div>
         <div className="flex flex-col gap-2 print:hidden lg:w-auto lg:flex-row lg:flex-wrap lg:items-center">
           {/* Date nav — always one neat row */}
@@ -86,7 +101,10 @@ export function Header({
             </Button>
           </div>
           {/* Actions — 2x2 grid on mobile, one row on desktop */}
-          <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:items-center lg:gap-2">
+          <div
+            data-testid="header-actions"
+            className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:items-center lg:gap-2"
+          >
           <Button
             variant="secondary"
             size="sm"
@@ -153,6 +171,11 @@ export function Header({
             <Printer className="mr-1 h-4 w-4" />
             প্রিন্ট
           </Button>
+          <HeaderSearch
+            refreshKey={searchRefreshKey}
+            onEdit={onSearchEdit}
+            onReceipt={onSearchReceipt}
+          />
           </div>
         </div>
       </div>

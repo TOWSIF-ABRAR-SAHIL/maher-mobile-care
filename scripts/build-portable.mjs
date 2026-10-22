@@ -133,9 +133,18 @@ async function verifyPackageRuns(sandbox) {
     const probeDb = path.join(probeRoot, "verify.db");
     const probePort = 3055;
 
+  // On Windows the package must be verified with its own bundled Node 22, not
+  // whatever Node happens to be on the build machine. The shipped native
+  // better-sqlite3 binary is ABI 127 (Node 22), so using Node 24 here would
+  // falsely fail the build on a perfectly valid package.
+  const runtimeNode = path.join(sandbox, "runtime", "node.exe");
+  const canUseBundledRuntime =
+    process.platform === "win32" && fs.existsSync(runtimeNode);
+  const verifyNode = canUseBundledRuntime ? runtimeNode : process.execPath;
+
   log(`verifying the package actually runs, outside the repository ...`);
 
-  const server = spawn(process.execPath, [path.join(sandbox, "app", "server.js")], {
+  const server = spawn(verifyNode, [path.join(sandbox, "app", "server.js")], {
     cwd: path.join(sandbox, "app"),
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -155,14 +164,17 @@ async function verifyPackageRuns(sandbox) {
   server.stderr?.on("data", (d) => (output += d));
 
   try {
-    // The Windows native module cannot load here, so swap in the local one for
-    // the duration of the test. The shipped folder gets the Windows binary back
-    // immediately afterwards.
-    const binary = path.join(sandbox, "app", "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
-    const localBinary = path.join(repoRoot, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
-    if (fs.existsSync(binary) && fs.existsSync(localBinary)) fs.copyFileSync(localBinary, binary);
+    // Cross-building on Linux cannot execute Windows node.exe. In that one case
+    // swap in the local native module for the duration of the probe. On Windows
+    // the real bundled runtime plus the shipped ABI 127 binary are tested, so
+    // nothing is swapped and the package is verified exactly as delivered.
+    if (!canUseBundledRuntime) {
+      const binary = path.join(sandbox, "app", "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
+      const localBinary = path.join(repoRoot, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
+      if (fs.existsSync(binary) && fs.existsSync(localBinary)) fs.copyFileSync(localBinary, binary);
+    }
 
-    execFileSync(process.execPath, [path.join(sandbox, "app", "scripts", "first-run.mjs")], {
+    execFileSync(verifyNode, [path.join(sandbox, "app", "scripts", "first-run.mjs")], {
       cwd: path.join(sandbox, "app"),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
