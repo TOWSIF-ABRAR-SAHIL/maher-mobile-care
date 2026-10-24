@@ -49,7 +49,11 @@ export default function Home() {
   const [services, setServices] = useState<ServiceDTO[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [monthly, setMonthly] = useState<MonthlyResponse | null>(null);
+  // `loading` is the first-paint skeleton only. Day-to-day refreshes keep the
+  // previous data on screen and use `refreshing` for a subtle top bar, so
+  // navigating days never blanks the dashboard or shifts the page.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [editing, setEditing] = useState<ServiceDTO | null>(null);
@@ -80,6 +84,10 @@ export default function Home() {
   const reqId = useRef(0);
   const monthlyReq = useRef(0);
   const duesReq = useRef(0);
+  // Set after the first successful load; later date changes update in place.
+  const loadedOnce = useRef(false);
+  // Delayed so a fast local API never flashes a progress bar.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Summary window. Presets are anchored to the navbar date ("আজকের দিনের
   // সাথে connection"), custom range stays fixed until a preset is picked.
@@ -170,7 +178,17 @@ export default function Home() {
 
   const load = useCallback(async (day: string, showSkeleton: boolean) => {
     const my = ++reqId.current;
-    if (showSkeleton) setLoading(true);
+    if (showSkeleton) {
+      setLoading(true);
+    } else {
+      // Only show the refresh bar if the request is slow enough to notice;
+      // a fast local response must not produce its own flicker.
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => {
+        refreshTimer.current = null;
+        setRefreshing(true);
+      }, 150);
+    }
     try {
       const [svc, st] = await Promise.all([
         getJSON<{ services: ServiceDTO[] }>(
@@ -186,6 +204,12 @@ export default function Home() {
       toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
     } finally {
       if (reqId.current === my) {
+        loadedOnce.current = true;
+        if (refreshTimer.current) {
+          clearTimeout(refreshTimer.current);
+          refreshTimer.current = null;
+        }
+        setRefreshing(false);
         setLoading(false);
         setSyncing(false);
       }
@@ -224,11 +248,19 @@ export default function Home() {
   }, [range, fetchMonthly]);
 
   useEffect(() => {
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
     void fetchDues();
   }, [fetchDues, dataVersion]);
 
   useEffect(() => {
-    void load(date, true);
+    // Skeleton only on the very first paint. Date changes keep the previous
+    // list visible while the new day loads.
+    void load(date, !loadedOnce.current);
   }, [date, load]);
 
   useEffect(() => {
@@ -266,7 +298,7 @@ export default function Home() {
   const print = () => {
     // Printing before CSS/data finish loading produces a blank unstyled
     // page — block it with a clear message instead.
-    if (loading || !stats || !monthly) {
+    if (loading || refreshing || !stats || !monthly) {
       toast.error("পুরো পেজ লোড হওয়ার পর প্রিন্ট করুন");
       return;
     }
@@ -454,6 +486,14 @@ export default function Home() {
 
   return (
     <div className="min-h-dvh bg-gray-100">
+      {/* Fixed so a slow refresh never changes the layout height. */}
+      <div
+        data-testid="day-refreshing"
+        aria-hidden={!refreshing}
+        className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-blue-600 transition-opacity duration-150 print:hidden ${
+          refreshing ? "animate-pulse opacity-100" : "opacity-0"
+        }`}
+      />
       {/* Paper: ONLY the customer receipt prints — never the dashboard. */}
       {receipt ? (
         <div className="hidden print:block">
@@ -461,6 +501,7 @@ export default function Home() {
         </div>
       ) : null}
       <main
+        data-refreshing={refreshing ? "true" : "false"}
         className={`mx-auto w-full max-w-7xl space-y-2.5 px-3 py-2.5 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
           receipt ? "print:hidden" : ""
         }`}

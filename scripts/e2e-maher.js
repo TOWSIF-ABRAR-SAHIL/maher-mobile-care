@@ -129,6 +129,12 @@ let browser = null;
   // order can't break this (suites share one throwaway DB).
   const yesterdayApiCount = (await api(page, `/api/services?date=${YESTERDAY}`)).body
     .services.length;
+  const prevDayResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/services?date=${YESTERDAY}`) &&
+      response.request().method() === "GET",
+    { timeout: 15000 }
+  );
   await page.evaluate(() =>
     [...document.querySelectorAll("header button")].find((b) => b.textContent.includes("আগের দিন")).click()
   );
@@ -137,11 +143,21 @@ let browser = null;
     { timeout: 8000 },
     YESTERDAY
   );
-  // Title updates instantly on date change, but rows arrive after fetch —
-  // wait for loading skeletons to disappear before counting the daily list.
+  // Title updates instantly on date change, but the previous day's rows stay on
+  // screen until the new fetch lands (no skeleton flash). Wait for the response
+  // and for the list to match the API, not for skeletons to disappear.
+  await prevDayResponse;
   await page.waitForFunction(
-    () => document.querySelectorAll('[class*="animate-pulse"]').length === 0,
-    { timeout: 10000 }
+    (selector, count) => {
+      const section = document.querySelector(selector);
+      if (!section) return false;
+      const rows = section.querySelectorAll("tbody tr");
+      const rendered = rows.length || section.querySelectorAll('[data-testid^="service-card-"]').length;
+      return rendered === count;
+    },
+    { timeout: 10000 },
+    '[data-testid="daily-services"]',
+    yesterdayApiCount
   );
   const prevCount = (await dailyRows(page)).length;
   check(

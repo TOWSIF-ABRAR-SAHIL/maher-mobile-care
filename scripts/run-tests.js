@@ -28,6 +28,7 @@ const DEFAULT_SUITES = [
   "scripts/api-check.js",
   "scripts/technician-mgmt.js",
   "scripts/responsive-check.js",
+  "scripts/date-nav-flicker.js",
 ];
 
 function resolveLiveDatabaseFile() {

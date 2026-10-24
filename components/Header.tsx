@@ -50,18 +50,22 @@ export function Header({
   onSearchReceipt: (service: ServiceDTO) => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 px-3 py-2.5 text-white shadow-md print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
-      <div className="flex flex-col gap-2">
+    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 px-3 py-2.5 text-white shadow-md xl:py-1.5 print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
+      <div className="flex flex-col gap-2 xl:gap-1.5">
         {/* Row 1: title + search. Below xl this is the phone/tablet header. */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 xl:items-center">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm sm:text-2xl print:text-black">
-              MAHER MOBILE CARE
-            </h1>
-            <p className="text-xs text-blue-100 sm:text-sm print:text-gray-600">
-              দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
-            </p>
-            <p className="text-[11px] text-blue-200 print:hidden">
+            <div className="xl:flex xl:items-baseline xl:gap-2">
+              <h1 className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm sm:text-2xl xl:text-xl print:text-black">
+                MAHER MOBILE CARE
+              </h1>
+              <p className="text-xs text-blue-100 sm:text-sm xl:text-xs print:text-gray-600">
+                দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
+              </p>
+            </div>
+            {/* Desktop keeps the header to two lines: the backup time moves
+                into the Backup button's tooltip instead of a third line. */}
+            <p className="text-[11px] text-blue-200 xl:hidden print:hidden">
               {lastBackup
                 ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
                 : "এখনো ব্যাকআপ হয়নি"}
@@ -81,7 +85,7 @@ export function Header({
         </div>
 
         {/* Date + actions. Stacked through 1279px, one row from xl. */}
-        <div className="flex flex-col gap-2 print:hidden xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-2 print:hidden xl:flex-row xl:items-center xl:justify-between xl:[&_button]:h-8 xl:[&_button]:px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="secondary"
@@ -143,6 +147,11 @@ export function Header({
               className="border border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
               onClick={onBackup}
               disabled={backingUp}
+              title={
+                lastBackup
+                  ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
+                  : "এখনো ব্যাকআপ হয়নি"
+              }
             >
               {backingUp ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
