@@ -1,3 +1,4 @@
+import { Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTaka } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -42,17 +43,18 @@ export function TechnicianStats({
   return (
     <section
       data-testid="technician-stats"
-      className="rounded-xl border bg-white p-3 shadow-md sm:p-4"
+      className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold tracking-tight text-gray-800">
-          👤 টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
+          <Users className="h-4 w-4 text-gray-500" />
+          টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
         </h2>
         <p className="text-xs text-gray-500">
           কার্ডে ক্লিক করে শুধু ওই টেকনিশিয়ানের কাজ দেখুন
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
         {loading
           ? [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)
           : stats.map((t) => {
@@ -74,7 +76,7 @@ export function TechnicianStats({
                       : `${t.technician}-এর কাজ দেখুন`
                   }
                   className={cn(
-                    "rounded-xl border bg-gray-50 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    "rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-left transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white motion-reduce:transition-none motion-reduce:hover:transform-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                     // A technician who left the shop stays visible (greyed) when
                     // they still have work on this date, so the day's totals add up.
                     !t.isActive && "border-dashed bg-gray-100 opacity-70",
@@ -84,17 +86,21 @@ export function TechnicianStats({
                   <p
                     className={cn(
                       "flex flex-wrap items-center gap-1 break-words font-bold",
-                      t.isActive ? nameColor(t.technician) : "text-gray-500"
+                      t.isActive
+                        ? t.count > 0
+                          ? nameColor(t.technician)
+                          : "text-gray-700"
+                        : "text-gray-500"
                     )}
                   >
                     {t.technician}
                     {!t.isActive ? (
-                      <span className="rounded bg-gray-200 px-1 py-0.5 text-[10px] font-medium text-gray-600">
+                      <span className="rounded bg-gray-200 px-1 py-0.5 text-xs font-medium text-gray-600">
                         নিষ্ক্রিয়
                       </span>
                     ) : null}
                     {isSelected ? (
-                      <span className="text-[11px] font-semibold text-blue-700">
+                      <span className="text-xs font-semibold text-blue-700">
                         ✓ নির্বাচিত
                       </span>
                     ) : null}

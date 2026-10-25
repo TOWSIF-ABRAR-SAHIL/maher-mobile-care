@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { MapPin, Phone, ShieldCheck } from "lucide-react";
+import { BarChart3, MapPin, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { MonthlySummary } from "@/components/MonthlySummary";
@@ -468,7 +468,7 @@ export default function Home() {
           /* ignore */
         }
         stampBackup();
-        toast.success("Auto backup hoyeche");
+        toast.success("অটো ব্যাকআপ হয়েছে");
       } catch {
         /* server busy — user can backup manually */
       }
@@ -529,22 +529,26 @@ export default function Home() {
             table stay above the fold. */}
         <div
           data-testid="action-row"
-          className="flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap"
+          className="flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
         >
           <Button
             type="button"
+            variant="outline"
+            size="sm"
             data-testid="open-report"
             onClick={() => setShowReport(true)}
-            className="w-full bg-slate-800 text-white hover:bg-slate-900 sm:w-auto"
+            className="w-full bg-white text-slate-700 hover:bg-slate-50 sm:w-auto"
           >
-            📊 ওভারঅল রিপোর্ট
+            <BarChart3 className="mr-1 h-4 w-4" />
+            ওভারঅল রিপোর্ট
           </Button>
           <Button
             type="button"
             variant="outline"
+            size="sm"
             data-testid="open-dues"
             onClick={() => setShowDues(true)}
-            className="w-full border-red-300 bg-red-50 text-red-800 hover:bg-red-100 sm:w-auto"
+            className="w-full border-red-200 bg-white text-red-700 hover:bg-red-50 sm:w-auto"
           >
             {duesButtonLabel}
           </Button>
@@ -668,7 +672,7 @@ export default function Home() {
       >
         <div className="overflow-hidden rounded-lg bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow print:bg-white print:text-black">
           <div className="px-4 py-4 text-center">
-            <p className="text-base font-extrabold tracking-wide sm:text-lg">
+            <p className="text-base font-bold sm:text-lg">
               {SHOP.name}
             </p>
             <div className="mt-2 flex flex-col items-center justify-center gap-1.5 text-xs text-slate-300 sm:flex-row sm:gap-6 print:text-gray-700">
@@ -686,7 +690,7 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <div className="border-t border-white/10 px-4 py-2 text-center text-[11px] text-slate-400 print:border-gray-300 print:text-gray-500">
+          <div className="border-t border-white/10 px-4 py-2 text-center text-xs text-slate-400 print:border-gray-300 print:text-gray-500">
             দৈনিক সার্ভিস ট্র্যাকার — ডেটা আপনার পিসিতেই থাকে
           </div>
         </div>

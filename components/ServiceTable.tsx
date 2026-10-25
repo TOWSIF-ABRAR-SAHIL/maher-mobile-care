@@ -243,6 +243,7 @@ export function ServiceTable({
     <div>
       <button
         onClick={() => void advanceStatus(s)}
+        aria-label={`অবস্থা বদলান: ${STATUS_BN[s.status as ServiceStatus] ?? s.status}`}
         title={
           s.status === "Delivered"
             ? "ডেলিভারি সম্পন্ন"
@@ -372,7 +373,8 @@ export function ServiceTable({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-green-700"
+          aria-label="ফিরিয়ে আনুন"
+          className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -384,7 +386,8 @@ export function ServiceTable({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-blue-700"
+            aria-label="বিল প্রিন্ট"
+            className="h-10 w-10 text-blue-700 lg:h-8 lg:w-8"
             title="বিল প্রিন্ট"
             onClick={() => onReceipt(s)}
           >
@@ -395,7 +398,7 @@ export function ServiceTable({
               asChild
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-green-700"
+              className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
               title="WhatsApp (chat/call)"
             >
               <a
@@ -411,7 +414,8 @@ export function ServiceTable({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-green-700"
+              aria-label="ফোন নম্বর নেই"
+              className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
               title="ফোন নম্বর নেই"
               disabled
             >
@@ -421,7 +425,8 @@ export function ServiceTable({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-green-700"
+            aria-label="PDF শেয়ার"
+            className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
             title="PDF শেয়ার"
             disabled={!s.phone.trim() || sharingId !== null}
             onClick={() => void sharePdf(s)}
@@ -435,7 +440,12 @@ export function ServiceTable({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-amber-700"
+            aria-label={
+              isReturned(s.status)
+                ? "ড্যামেজ ক্ষতি"
+                : "ফেরত / ড্যামেজ ক্ষতি"
+            }
+            className="h-10 w-10 text-amber-700 lg:h-8 lg:w-8"
             title={
               isReturned(s.status)
                 ? "ড্যামেজ ক্ষতি"
@@ -449,7 +459,8 @@ export function ServiceTable({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              aria-label="এডিট"
+              className="h-10 w-10 lg:h-8 lg:w-8"
               title="এডিট"
               onClick={() => onEdit(s)}
             >
@@ -459,7 +470,8 @@ export function ServiceTable({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-red-600"
+            aria-label="ডিলিট"
+            className="h-10 w-10 text-red-600 lg:h-8 lg:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -474,14 +486,20 @@ export function ServiceTable({
     <section
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
-      className="rounded-xl border bg-white p-4 shadow-md"
+      className="rounded-xl border border-slate-200 bg-white p-4"
     >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-base font-semibold tracking-tight text-gray-800">
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
           {showArchived ? (
-            <>🗃️ আর্কাইভ (মুছে ফেলা এন্ট্রি)</>
+            <>
+              <Archive className="h-4 w-4 text-gray-500" />
+              আর্কাইভ (মুছে ফেলা এন্ট্রি)
+            </>
           ) : (
-            <>📋 সার্ভিস তালিকা ({date})</>
+            <>
+              <ClipboardList className="h-4 w-4 text-gray-500" />
+              সার্ভিস তালিকা ({date})
+            </>
           )}
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -498,7 +516,7 @@ export function ServiceTable({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <Input
               id="svc-search"
-              placeholder="🔍 নাম, আইডি, ফোন বা মডেল খুঁজুন..."
+              placeholder="নাম, আইডি, ফোন বা মডেল খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -515,11 +533,12 @@ export function ServiceTable({
           data-testid="tech-filter-notice"
           className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900 print:hidden"
         >
-          <span>
-            🔍 শুধু <strong>{technicianFilter}</strong> এর কাজ দেখানো হচ্ছে
+          <span className="flex items-center gap-1.5">
+            <Search className="h-4 w-4 shrink-0" />
+            শুধু <strong>{technicianFilter}</strong> এর কাজ দেখানো হচ্ছে
           </span>
           <Button size="sm" variant="outline" onClick={onClearTechnician}>
-            ✕ ফিল্টার সরান
+            ফিল্টার সরান
           </Button>
         </div>
       ) : null}
@@ -565,7 +584,7 @@ export function ServiceTable({
       ) : isDesktop ? (
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-50 hover:bg-gray-50 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wider">
+            <TableRow className="bg-gray-50 hover:bg-gray-50 [&_th]:text-xs [&_th]:font-semibold">
               <TableHead>ID</TableHead>
               {showArchived ? <TableHead>তারিখ</TableHead> : null}
               <TableHead>কাস্টমার</TableHead>
@@ -633,7 +652,7 @@ export function ServiceTable({
               key={s.id}
               data-testid={`service-card-${s.id}`}
               data-customer={s.customerName}
-              className={`rounded-xl border p-3 shadow-sm ${
+              className={`rounded-xl border p-3 ${
                 isReturned(s.status)
                   ? "border-amber-300 bg-amber-50/50"
                   : s.due > 0

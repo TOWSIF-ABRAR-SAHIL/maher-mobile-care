@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { KeyRound, Loader2 } from "lucide-react";
+import { KeyRound, Loader2, Lock, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -268,9 +268,10 @@ export function ServiceForm({
   };
 
   return (
-    <section className="rounded-xl border bg-white p-2.5 shadow-md print:hidden">
-      <h2 className="mb-1.5 text-base font-semibold tracking-tight text-gray-800">
-        ➕ নতুন সার্ভিস এন্ট্রি
+    <section className="rounded-xl border border-slate-200 bg-white p-2.5 print:hidden">
+      <h2 className="mb-1.5 flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
+        <Plus className="h-4 w-4 text-blue-700" />
+        নতুন সার্ভিস এন্ট্রি
       </h2>
       <form onSubmit={submit} className="space-y-2">
         {/* Mode toggle — lives at the very top of the form. */}
@@ -315,7 +316,7 @@ export function ServiceForm({
             </Button>
           </div>
           {isProductSale ? (
-            <p className="mt-1 text-[11px] leading-snug text-blue-800">
+            <p className="mt-1 text-xs leading-snug text-blue-800">
               প্রোডাক্টের নাম ও বিবরণ লিখুন; কাজের অবস্থা অটো “ডেলিভারি” হবে।
             </p>
           ) : null}
@@ -383,13 +384,13 @@ export function ServiceForm({
             </Select>
             {isProductSale ? (
               <p
-                className={`mt-1 text-[11px] leading-snug ${
+                className={`mt-1 text-xs leading-snug ${
                   hasSalesTechnician ? "text-gray-500" : "text-amber-700"
                 }`}
               >
                 {hasSalesTechnician
                   ? "প্রোডাক্ট সেলের জন্য SALES/দোকান টেকনিশিয়ান বেছে নিন।"
-                  : "SALES/দোকান টেকনিশিয়ান দরকার হলে ⚙️ টেকনিশিয়ান থেকে যোগ করুন।"}
+                  : "SALES/দোকান টেকনিশিয়ান দরকার হলে টেকনিশিয়ান ম্যানেজার থেকে যোগ করুন।"}
               </p>
             ) : null}
           </div>
@@ -467,17 +468,17 @@ export function ServiceForm({
               </SelectContent>
             </Select>
             {isProductSale ? (
-              <p className="mt-1 text-[11px] text-gray-500">
+              <p className="mt-1 text-xs text-gray-500">
                 অটো: ডেলিভারি (প্রোডাক্ট হাতে দেওয়া হয়েছে)
               </p>
             ) : null}
           </div>
         </div>
 
-        <div className="space-y-1.5 rounded-lg border border-orange-200 bg-orange-50/40 p-2">
+        <div className="space-y-1.5 rounded-lg border border-orange-200 bg-orange-50/60 p-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
-              <Label htmlFor="svc-expense" className="flex items-center gap-1.5">
+              <Label htmlFor="svc-expense" className="flex items-center gap-1.5 text-orange-950">
                 <KeyRound className="h-3.5 w-3.5 text-orange-700" />
                 দোকান খরচ (কোড বা সংখ্যা)
               </Label>
@@ -500,7 +501,7 @@ export function ServiceForm({
               <div
                 id="svc-expense-help"
                 aria-live="polite"
-                className="mt-1 min-h-[16px] text-[11px]"
+                className="mt-1 min-h-[18px] text-xs"
               >
                 {normalizedExpense.kind === "code" &&
                 normalizedExpense.amount !== null ? (
@@ -519,7 +520,7 @@ export function ServiceForm({
                     {normalizedExpense.error}
                   </span>
                 ) : (
-                  <span className="text-gray-500">
+                  <span className="text-orange-900/70">
                     খালি রাখলে দোকান খরচ ০ ধরা হবে।
                   </span>
                 )}
@@ -544,9 +545,12 @@ export function ServiceForm({
               </datalist>
             </div>
           </div>
-          <p className="text-[10px] leading-tight text-gray-500">
-            🔒 এই খরচ ও দোকানের নাম শুধু দোকানের হিসাবের জন্য — কাস্টমার
-            রিসিট/PDF-এ যাবে না।
+          <p className="flex items-start gap-1.5 text-xs leading-snug text-orange-900/80">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              এই খরচ ও দোকানের নাম শুধু দোকানের হিসাবের জন্য — কাস্টমার
+              রিসিট/PDF-এ যাবে না।
+            </span>
           </p>
         </div>
 
@@ -562,24 +566,26 @@ export function ServiceForm({
             />
           </div>
         ) : null}
-        {editing ? (
-          <div className="flex gap-2">
-            <Button type="submit" className="flex-1 bg-blue-700 hover:bg-blue-800" disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "আপডেট করুন"}
+        <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 border-t border-slate-200 bg-white/95 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+          {editing ? (
+            <div className="flex gap-2">
+              <Button type="submit" className="flex-1 bg-blue-700 hover:bg-blue-800" disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "আপডেট করুন"}
+              </Button>
+              <Button type="button" variant="outline" onClick={onCancelEdit}>
+                বাতিল
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="submit"
+              className="w-full bg-blue-700 text-base hover:bg-blue-800"
+              disabled={saving}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "সেভ করুন"}
             </Button>
-            <Button type="button" variant="outline" onClick={onCancelEdit}>
-              বাতিল
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="submit"
-            className="w-full bg-blue-700 text-base hover:bg-blue-800"
-            disabled={saving}
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "সেভ করুন"}
-          </Button>
-        )}
+          )}
+        </div>
       </form>
     </section>
   );

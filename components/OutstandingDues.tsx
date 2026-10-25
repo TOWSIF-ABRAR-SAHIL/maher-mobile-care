@@ -35,7 +35,7 @@ export function OutstandingDues({
     <section
       data-testid="outstanding-dues"
       data-view={isDesktop ? "table" : "cards"}
-      className="rounded-xl border border-red-200 bg-white p-4 shadow-md print:hidden"
+      className="rounded-xl border border-red-200 bg-white p-4 print:hidden"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold tracking-tight text-gray-800">
@@ -69,7 +69,7 @@ export function OutstandingDues({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-600">
+              <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-600">
                 <th className="p-2">তারিখ</th>
                 <th className="p-2">কাস্টমার</th>
                 <th className="p-2">মডেল / অবস্থা</th>

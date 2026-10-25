@@ -115,7 +115,7 @@ export function RestoreDialog({
                     <p className="truncate text-sm font-medium">
                       {fmtDate(s.mtime)}
                       {s.kind === "safety" ? (
-                        <span className="ml-1 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] text-gray-700">
+                        <span className="ml-1 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700">
                           safety
                         </span>
                       ) : null}

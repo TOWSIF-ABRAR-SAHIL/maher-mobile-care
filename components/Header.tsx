@@ -2,6 +2,8 @@
 
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Download,
   History,
   Loader2,
@@ -12,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
+import { bengaliDateLabel } from "@/lib/dhaka";
 import type { ServiceDTO } from "@/lib/types";
 
 export function Header({
@@ -50,13 +53,13 @@ export function Header({
   onSearchReceipt: (service: ServiceDTO) => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 px-3 py-2.5 text-white shadow-md xl:py-1.5 print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
+    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/60 bg-[#0b2a4a] px-3 py-2.5 text-white shadow-sm xl:py-1.5 print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
       <div className="flex flex-col gap-2 xl:gap-1.5">
         {/* Row 1: title + search. Below xl this is the phone/tablet header. */}
         <div className="flex items-start justify-between gap-3 xl:items-center">
           <div className="min-w-0 flex-1">
             <div className="xl:flex xl:items-baseline xl:gap-2">
-              <h1 className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm sm:text-2xl xl:text-xl print:text-black">
+              <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl xl:text-xl print:text-black">
                 MAHER MOBILE CARE
               </h1>
               <p className="text-xs text-blue-100 sm:text-sm xl:text-xs print:text-gray-600">
@@ -65,7 +68,7 @@ export function Header({
             </div>
             {/* Desktop keeps the header to two lines: the backup time moves
                 into the Backup button's tooltip instead of a third line. */}
-            <p className="text-[11px] text-blue-200 xl:hidden print:hidden">
+            <p className="text-xs text-blue-200 xl:hidden print:hidden">
               {lastBackup
                 ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
                 : "এখনো ব্যাকআপ হয়নি"}
@@ -90,26 +93,36 @@ export function Header({
             <Button
               variant="secondary"
               size="sm"
+              aria-label="আগের দিন"
               className="shrink-0 bg-white text-gray-800 hover:bg-blue-50"
               onClick={onPrev}
             >
-              ◄ আগের দিন
+              <ChevronLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">আগের দিন</span>
             </Button>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                if (e.target.value) onDateChange(e.target.value);
-              }}
-              className="h-8 min-w-0 flex-1 bg-white text-gray-800 md:w-[180px] md:flex-none"
-            />
+            <div className="min-w-0 flex-1 md:w-[210px] md:flex-none">
+              <Input
+                type="date"
+                value={date}
+                aria-label="তারিখ বাছুন"
+                onChange={(e) => {
+                  if (e.target.value) onDateChange(e.target.value);
+                }}
+                className="h-8 w-full bg-white text-gray-800"
+              />
+              <p className="mt-0.5 hidden truncate text-center text-xs text-blue-100 sm:block">
+                {bengaliDateLabel(date)}
+              </p>
+            </div>
             <Button
               variant="secondary"
               size="sm"
+              aria-label="পরের দিন"
               className="shrink-0 bg-white text-gray-800 hover:bg-blue-50"
               onClick={onNext}
             >
-              পরের দিন ►
+              <span className="hidden sm:inline">পরের দিন</span>
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
 
@@ -132,15 +145,16 @@ export function Header({
               className="border border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
               onClick={onSync}
               disabled={syncing}
-              title="এখনই রিফ্রেশ (Sync Now)"
+              title="এখনই রিফ্রেশ করুন"
+              aria-label="এখনই রিফ্রেশ করুন"
             >
               {syncing ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
               ) : (
                 <RefreshCw className="h-4 w-4 sm:mr-1" />
               )}
-              <span className="sm:hidden">Sync</span>
-              <span className="hidden sm:inline">Sync Now</span>
+              <span className="sm:hidden">সিঙ্ক</span>
+              <span className="hidden sm:inline">রিফ্রেশ</span>
             </Button>
             <Button
               size="sm"
@@ -178,11 +192,11 @@ export function Header({
               title="ব্যাকআপ থেকে ফিরিয়ে আনুন"
             >
               <History className="mr-1 h-4 w-4" />
-              Restore
+              রিস্টোর
             </Button>
             <Button
               size="sm"
-              className="bg-green-600 text-white hover:bg-green-700"
+              className="bg-white text-gray-800 hover:bg-blue-50"
               onClick={onPrint}
             >
               <Printer className="mr-1 h-4 w-4" />

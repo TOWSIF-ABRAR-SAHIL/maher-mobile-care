@@ -65,6 +65,27 @@ export function dayLabel(key: string): string {
   return `${d} ${months[(m ?? 1) - 1] ?? ""}`;
 }
 
+const BN_MONTHS = [
+  "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
+  "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
+];
+const BN_WEEKDAYS = [
+  "রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার",
+];
+const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+
+function bnDigits(value: number): string {
+  return String(value).replace(/\d/g, (d) => BN_DIGITS[Number(d)]);
+}
+
+/** Full Bengali date for a "YYYY-MM-DD" key, e.g. "শনিবার, ২৪ অক্টোবর ২০২৬". */
+export function bengaliDateLabel(key: string): string {
+  if (!isDateKey(key)) return key;
+  const [y, m, d] = key.split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${BN_WEEKDAYS[weekday]}, ${bnDigits(d)} ${BN_MONTHS[m - 1]} ${bnDigits(y)}`;
+}
+
 /** Shift a "YYYY-MM-DD" key by ±n days (pure UTC math, DST-safe). */
 export function shiftDateKey(key: string, days: number): string {
   const [y, m, d] = key.split("-").map(Number);

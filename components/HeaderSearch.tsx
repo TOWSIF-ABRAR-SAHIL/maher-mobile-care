@@ -127,7 +127,7 @@ function SearchResults({
 
   return (
     <div>
-      <div className="flex items-center justify-between px-3 py-2 text-[11px] text-gray-500">
+      <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500">
         <span>{result.count}টি ফলাফল</span>
         <span className="hidden sm:inline">বিল দেখতে ক্লিক করুন</span>
       </div>
@@ -153,7 +153,7 @@ function SearchResults({
                     {formatTaka(s.due)}
                   </span>
                 </span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
                   <span className="font-mono">#{s.id}</span>
                   <span>{dayLabel(dhakaDateKey(s.serviceDate))}</span>
                   <span className="truncate">{s.phone}</span>
@@ -202,7 +202,8 @@ function SearchResults({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  aria-label={`${s.customerName} এডিট করুন`}
+                  className="h-9 w-9 sm:h-7 sm:w-7"
                   title="এডিট"
                   onClick={() => onEdit(s)}
                 >
@@ -363,7 +364,7 @@ export function MobileSearch({
       </SheetTrigger>
       <SheetContent
         side="top"
-        className="border-blue-950/40 bg-gradient-to-r from-blue-900 via-[#1d4ed8] to-blue-900 p-0 text-white"
+        className="border-blue-950/40 bg-[#0b2a4a] p-0 text-white"
       >
         <SheetHeader className="border-white/15">
           <SheetTitle className="text-white">🔍 সব তারিখে খুঁজুন</SheetTitle>
