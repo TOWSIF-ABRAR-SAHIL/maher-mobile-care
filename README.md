@@ -38,7 +38,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint and typecheck pass on it). The v1.1.4 298-check regression was also
+(build, lint and typecheck pass on it). The v1.2.0 312-check regression was also
 run on **Node 24.15.0 / npm 11.12.1** on the current Windows build host.
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
@@ -116,8 +116,8 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip is built as `out/MAHER-Windows-Client.zip` (v1.1.4, test-data
-free) and should be published as release `v1.1.4-windows` - the repo is
+The client zip is built as `out/MAHER-Windows-Client.zip` (v1.2.0, test-data
+free) and should be published as release `v1.2.0-windows` - the repo is
 **private**, so the release URL needs a GitHub login and the file itself is what
 goes to the client (pen drive, chat, email). The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
@@ -248,8 +248,9 @@ app/
     technicians/route.ts   → GET (?all=true) roster, POST add
     technicians/[id]/route.ts → PUT rename (2-step cascade), DELETE deactivate,
                                 POST reactivate
-    services/route.ts      → GET ?date= / ?archived=true, POST create
-    services/[id]/route.ts → PUT update (incl. serviceDate/damageLoss), DELETE = archive
+    services/route.ts      → GET ?date= / ?archived=true / ?groupId=, POST create
+    services/batch/route.ts → POST one grouped visit (up to 8 devices, one transaction)
+    services/[id]/route.ts → PUT update (incl. serviceDate/damageLoss/deliveryDate), DELETE = archive
     services/[id]/restore/route.ts → POST un-archive
     services/[id]/refund/route.ts → POST full-advance refund → status Returned
     services/dues/route.ts → GET = all-dates বাকি list + SQL-aggregate total
@@ -266,13 +267,15 @@ components/
   TechnicianStats.tsx      → one card per roster technician (5-col desktop grid)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ) + refund/damage hints
   MonthlySummary.tsx       → range report cards/presets (dialog + hidden print copy)
-  ServiceForm.tsx          → entry form (4/12): service/product toggle, live due
-  ServiceTable.tsx         → service list (8/12): search, chips, eye, 1-click status
-  ServiceAdjustDialog.tsx  → ⚖️ return/refund + internal damage-loss ledger
+  ServiceForm.tsx          → entry form (4/12): service/product toggle, live due,
+                             multi-device rows, expected delivery date
+  ServiceTable.tsx         → service list (8/12): search, chips, universal/row eye,
+                             1-click status, group badge, delivery dates
+  ServiceAdjustDialog.tsx  → ⚖️ return/refund + parts-cost write-off + damage ledger
   OutstandingDues.tsx      → বাকি table rendered inside the dues dialog
   ContactButtons.tsx       → phone / WhatsApp links (message text from lib/contact.ts)
   StatusBadge.tsx          → colored Bengali status badges
-  Receipt.tsx              → customer bill (preview dialog + print-only bill)
+  Receipt.tsx              → customer bill (single + combined group slip, print/PDF)
   RestoreDialog.tsx        → snapshot list + 2-step restore confirm
   TechnicianManager.tsx    → roster dialog: add / rename / deactivate / reactivate
   ui/                      → shadcn primitives (button, input, table, dialog…)
@@ -291,11 +294,13 @@ lib/
   shop.ts                  → shop name/address/phone (receipt + footer source)
   generated/               → Prisma client output (generated, do not edit)
 prisma/
-  schema.prisma            → Service model (22 columns, incl. return/refund/damage
-                              + archived soft-delete) + Technician model (v1.1 roster)
+  schema.prisma            → Service model (26 columns, incl. return/refund/damage,
+                              write-off, grouped visits, delivery dates + archived
+                              soft-delete) + Technician model (v1.1 roster)
   dev.db                   → THE database (all shop records — back this up!)
   migrations/              → init + add_archived + add_technician + add_parts_shop
                               + add_return_refund_damage_loss
+                              + add_group_delivery_expense_flag
 backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
@@ -315,11 +320,14 @@ scripts/
   laneA.js                 → Lane A audit (26 checks)
   laneBC.js                → Lanes B+C audit (24 checks)
   laneD.js                 → redesign/search/product-sale audit (28 checks)
-  laneE.js                 → return/refund + damage-loss audit (16 checks)
+  laneE.js                 → return/refund + damage-loss/write-off audit (18 checks)
+  laneF.js                 → v1.2.0 grouped visits, delivery dates, returned-row
+                             edit + write-off audit (8 checks)
   api-check.js             → API contract + validation + restore-guard + roster (59)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (25 checks)
   responsive-check.js      → 10 widths, 360–1920px: header, search, card/table,
                              grid, sticky actions + dialogs (74 checks)
+  date-nav-flicker.js      → changing day keeps the list on screen, no skeletons (4)
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
 out/                        → build output: MAHER/ package + zip (git-ignored)
@@ -368,6 +376,20 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   badge previews the code and decoded amount (`গোপন কোড: *J# ➔ ৳১৫০০`). There is
   also a free-text **পার্টস কেনার দোকান** field with previous-name suggestions.
   Edit reuses the same form (incl. date correction — no delete+recreate).
+- **👥 এক কাস্টমারের একাধিক ডিভাইস (v1.2.0)** — a new visit can carry up to
+  **8 devices** (the primary row + 7 extra rows). Customer, phone, technician,
+  service date and expected delivery date are shared; every device keeps its
+  own model, problem, bill, advance, status, expense and parts shop. A grouped
+  save is one transaction with a shared `groupId`, and each row gets a **👥 গ্রুপ**
+  badge. Opening the bill or PDF from any row renders **one combined receipt**
+  with every device, per-device money and grand totals. Editing remains
+  per-device.
+- **ডেলিভারির সম্ভাব্য তারিখ (v1.2.0)** — an optional date on the entry form
+  (shared by a grouped visit). The list shows `ডেলিভারি: YYYY-MM-DD` and turns
+  it red with ⚠️ once the day has passed. The moment status becomes
+  **ডেলিভারি**, the server stamps the actual `deliveredAt` and the list/receipt
+  shows `✅ ডেলিভারি: YYYY-MM-DD`; reopening the job or returning it clears
+  that stamp, so a stale handover date can never print.
 - **🛍️ প্রোডাক্ট সেল** — a toggle at the top of the form switches between
   🛠️ সার্ভিসিং (default) and product sale. Product mode renames the fields to
   **প্রোডাক্টের নাম (যেমন: Charger, Cable)** and **বিবরণ (যেমন: 18W Type-C)**,
@@ -379,11 +401,20 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   with “জমা মোট বিলের বেশি হতে পারে না”.
 - **⚖️ ফেরত / ড্যামেজ ক্ষতি** on an active row opens one dialog with two tabs.
   **ফেরত / রিফান্ড** closes an unfinished job as **ফেরত**, returns the full
-  recorded জমা and clears বাকি. **ড্যামেজ ক্ষতি** records an internal
-  technician-damage cost; it never alters the customer's bill.
-- A returned row is terminal: the pencil is hidden, and the API rejects any
-  attempt to change its bill, জমা or status. Its damage-loss fields stay
-  editable so a loss can be recorded or corrected later.
+  recorded জমা and clears বাকি. When the row has a parts cost, the tab asks
+  whether that cost was **written off** (parts unused/returned) or **kept** as a
+  shop loss; old API callers that omit the choice keep the cost, so nothing
+  silently disappears. **ড্যামেজ ক্ষতি** records an internal technician-damage
+  cost; it never alters the customer's bill.
+- **A returned row stays safely editable (v1.2.0).** The pencil is available
+  again for customer, phone, model, problem, technician, service date, shop
+  expense/parts shop, delivery date and damage loss/note. Bill, জমা, বাকি and
+  status remain locked (read-only in the form; the API rejects any attempt with
+  400), and the refund amount/date never change. Correcting a typo no longer
+  requires a full restore.
+- A written-off parts cost stays on the row for audit (code + amount + a grey
+  **বাতিল** badge) but is excluded from খরচ/profit; `damageLoss` is always
+  reported and never written off.
 - **💰 বাকি তালিকা** — the button itself shows the live count and total
   (`১টি • ৳৭০০`) and opens a dialog containing every active record with money
   outstanding, independent of the selected day. Desktop keeps
@@ -404,10 +435,13 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   every action is reachable without sideways scrolling. The table's action
   column stays pinned to the right when the table scrolls. Client-side filter
   within the selected day (name / ID / phone / model / problem), status chips
-  with counts. The **খরচ** column is always visible and shows the stored code;
-  each row's eye reveals **only that row's** decoded amount. A legacy
-  plain-number value is masked as `৳••••` until it is converted. The parts-shop
-  name sits under the code.
+  with counts. The **খরচ** column is always visible and shows the stored code.
+  A header **খরচ দেখান** button reveals every row at once (and **খরচ লুকান**
+  hides them again), while each row's own eye reveals **only that row's** amount
+  for 10 seconds. A legacy plain-number value is masked as `৳••••` until it is
+  converted, and a written-off cost carries a grey **বাতিল** badge. The
+  parts-shop name sits under the code. Grouped devices show a **👥 গ্রুপ** badge,
+  and the expected/actual delivery date sits under the status badge.
   **1-click status advance**
   (badge click → next stage; ফেরত is terminal and skips this cycle),
   edit/delete(→archive), **⚖️ return/damage**, plus per-row **bill print**,
@@ -420,14 +454,16 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - Delete = archive (soft). Archive view (all dates) + 1-click restore.
 - Backup button = server snapshot (`backups/maher-*.db`, newest **30** kept) +
   full CSV download (Excel-safe Bengali) + “সর্বশেষ ব্যাকআপ” label. The CSV and
-  snapshots carry the return/refund/damage columns.
+  snapshots carry the return/refund/damage, write-off, group and delivery
+  columns.
 - Auto snapshot on first load of the day (staff can forget safely).
 - Restore dialog = snapshot list + 2-step confirm. A restore first writes
   `backups/safety-*.db` (newest **5** kept) holding your *current* data, so a
   wrong restore is itself restorable. The swap is atomic and
   snapshot-column-validated — a bad snapshot is rejected *before* anything is
-  touched. Older snapshots without the new optional columns still restore;
-  those fields default to `NULL`/`0`. A restored pre-v1.1.3 numeric shop expense
+  touched. Older snapshots without the optional columns still restore; those
+  fields default to `NULL`/`0`/`false` (including `groupId`, `deliveryDate`,
+  `deliveredAt` and `expenseWrittenOff`). A restored pre-v1.1.3 numeric shop expense
   is converted to a code immediately; the same repair also runs on every start.
 - Archiving a returned job warns that its refund, expense and damage loss also
   leave every report and the profit calculation.
@@ -446,6 +482,13 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - A returned job's customer copy explains that the work was not completed and
   the full জমা was refunded, and prints the refund line. It never prints the
   damage loss or its internal note.
+- **Grouped visit → one combined customer copy (v1.2.0).** Opening the bill/PDF
+  from any device in a group loads every non-archived row for that `groupId`
+  and prints one slip: all devices on separate lines, per-device bill/জমা/বাকি,
+  a grand total, one PAID seal only when the whole visit is paid, and the
+  expected (or actual) delivery date. A single row keeps the classic receipt.
+- The receipt prints `ডেলিভারির সম্ভাব্য তারিখ` when only an expected date
+  exists, and switches to `ডেলিভারি সম্পন্ন` once the actual handover is stamped.
 - The daily-row **PDF শেয়ার** button captures this same receipt into an A4 PDF
   (`jspdf` + `html2canvas`, both lazy-loaded) and opens the OS share sheet.
   WhatsApp is a share target; the user picks the customer and presses **Send**.
@@ -455,8 +498,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   contact; true zero-click auto-send would require the online WhatsApp
   Business Cloud API, which is intentionally not part of this offline app.
 - **Shop cost, the parts-shop name and the damage loss never appear on the
-  customer copy** — enforced in `Receipt.tsx` and covered by laneA/laneBC/laneE
-  regression checks.
+  customer copy** — enforced in `Receipt.tsx` and covered by laneA/laneBC/laneE/
+  laneF regression checks.
 
 ---
 
@@ -474,7 +517,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   is actually collected.
 - `shopExpense` stores a **canonical keypad code**. A typed number is converted
   on save (`1500` → `*J#`); a typed code stays as typed. Both are decoded by the
-  shared server decoder into `expenseAmount` (1500). Both count in খরচ/profit.
+  shared server decoder into `expenseAmount` (1500). Both count in খরচ/profit
+  unless the row is returned with `expenseWrittenOff = true`.
 - **Secret-code mapping:** `*`=1, `+`=0, `#`=00, ABC=2, DEF=3, GHI=4,
   JKL=5, MNO=6, PQRS=7, TUV=8, WXYZ=9; digits stay as typed and lowercase is
   accepted. Canonical encoding uses the first letter of each group:
@@ -487,22 +531,42 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   and never touches the customer's bill or receipt.
 - **Return/refund is full-advance only, never partial.** `POST
   /api/services/[id]/refund` sets `status = Returned`, `returnedAt`,
-  `refundAmount = advance`, `due = 0`, and keeps the original bill/advance for
-  audit. Only that endpoint may set `Returned`; the normal create/edit form
-  cannot.
+  `refundAmount = advance`, `due = 0`, `deliveredAt = null`, and keeps the
+  original bill/advance for audit. When the row has a cost, the body may send
+  `expenseAction: "writeoff"` (parts unused/returned) or `"keep"` (shop keeps
+  the loss); omitting it preserves the previous behaviour (keep). Only that
+  endpoint may set `Returned`; the normal create/edit form cannot.
+- **Returned rows accept safe edits, not ledger edits.** `PUT /api/services/[id]`
+  allows customer/phone/model/problem/technician/service date/expense/parts
+  shop/delivery date/damage fields, but rejects any `totalBill`, `advance` or
+  `status` change with 400. The bill/advance/due/status fields are read-only in
+  the form, and `refundAmount`/`returnedAt` are never rewritten by an edit.
 - **Refund is a cash memo, not a second profit deduction.** Returned rows are
   excluded from count, bill, due, revenue and technician performance, so their
-  bill never becomes profit. Their normal `expenseAmount` and `damageLoss` still
-  belong to the shop. Refund reports group by the job's **service date**, not
-  the later `returnedAt` timestamp, so the cash memo stays with the day the job
-  belonged to.
-- `profit = active bill − expenseAmount (all non-archived rows) − damageLoss
-  (all non-archived rows)`. Returned bills contribute zero; refunds are not
-  subtracted again. Shop overhead like rent is NOT in the system — “লাভ” is
-  gross margin.
+  bill never becomes profit. Their `damageLoss` always remains a shop loss; their
+  `expenseAmount` remains a loss unless it was explicitly written off. Refund
+  reports group by the job's **service date**, not the later `returnedAt`
+  timestamp, so the cash memo stays with the day the job belonged to.
+- `profit = active bill − expenseAmount (all non-archived rows not written off)
+  − damageLoss (all non-archived rows)`. Returned bills contribute zero; refunds
+  are not subtracted again and a written-off cost is not subtracted either.
+  Shop overhead like rent is NOT in the system — “লাভ” is gross margin.
 - **Worked examples:** completed bill ৳1500 with ৳500 technician damage →
   customer pays ৳1500, profit ৳1000. Unfinished job → return/refund, customer
-  pays ৳0, but the ৳500 damage remains a shop loss (profit −৳500 for that job).
+  pays ৳0; a kept ৳800 parts cost plus ৳500 damage remains a shop loss (profit
+  −৳1300 for that job), while writing the same ৳800 cost off leaves only the
+  ৳500 damage (profit −৳500).
+- **Grouped visits are an audit convenience, not a new ledger.** `POST
+  /api/services/batch` creates up to **8** device rows in one transaction with a
+  shared opaque `groupId`. Each row still owns its bill, advance, due, status,
+  cost and technician performance, so daily/monthly totals remain per device.
+  `groupId` is nullable free text (no foreign key), which keeps old snapshots
+  restorable; `GET /api/services?groupId=` powers the combined receipt and never
+  returns archived rows.
+- **Delivery dates:** `deliveryDate` is a Dhaka calendar key stored at ~midday,
+  so it buckets and prints unambiguously. `deliveredAt` is a real timestamp set
+  only when status becomes `Delivered` (cleared on reopen/return), so reports
+  never confuse an expected date with an actual handover.
 - Dates are Asia/Dhaka day boundaries; new entries stored ~midday +06:00.
 - Archived rows are excluded from every list/stat. Returned rows are not
   archived: they stay visible with a ফেরত badge, but are excluded from
@@ -523,15 +587,20 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   reassign the job to somebody else.
 - Statuses: `Pending → In-Progress → Completed → Delivered` (badge click order),
   plus the terminal **Returned** set only by the refund endpoint. A returned row
-  cannot be advanced, edited through the form, or moved back to another status.
-  New entries default to **In-Progress (চলমান)**; editing a row keeps that row's
-  existing status until it is changed.
+  cannot be advanced or moved back to another status, but safe non-ledger fields
+  stay editable. New entries default to **In-Progress (চলমান)**; editing a row
+  keeps that row's existing status until it is changed.
+- **Delivery dates follow the status.** Moving a row into `Delivered` stamps
+  `deliveredAt` once on the server; moving it back to any flow status clears it.
+  The expected `deliveryDate` is independent and stays editable (including after
+  delivery, for the record). A grouped visit shares one expected date at create
+  time, then each device's status/actual date moves independently.
 - **Cost-code privacy lives only in the service table.** The খরচ column is
   always visible and shows only the stored code (e.g. `*B#`); a legacy
-  plain-number cost is rendered as `৳••••`. Each row has its own eye that
-  reveals only that row's decoded amount; there is no global reveal. The
-  parts-shop name sits under the code. The decoded amount is never printed in
-  the table until that row's eye is clicked.
+  plain-number cost is rendered as `৳••••`. The header's **খরচ দেখান** button
+  reveals every row at once (no timer), and each row's own eye reveals only that
+  row's decoded amount for 10 seconds. The parts-shop name sits under the code;
+  the decoded total never appears on a customer copy.
 - Everything else stays open: the entry form shows the decoded amount, the
   daily খরচ card shows the real total (including damage loss), and the monthly
   report shows real খরচ/লাভ. The customer receipt/PDF never prints cost, code,
@@ -539,7 +608,7 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 ### Data model (`prisma/schema.prisma`)
 
-One table, `Service`, 22 columns (grouped below by role):
+One table, `Service`, 26 columns (grouped below by role):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -557,6 +626,10 @@ One table, `Service`, 22 columns (grouped below by role):
 | `refundNote` | String? | internal return note; never printed for the customer |
 | `damageLoss` | Int | internal technician-damage cost; never printed |
 | `damageNote` | String? | internal damage description; never printed |
+| `expenseWrittenOff` | Boolean | returned job's parts cost cancelled from reports; code/amount stay for audit |
+| `groupId` | String? | opaque id shared by every device row of one customer visit |
+| `deliveryDate` | DateTime? | expected handover day (Dhaka key at ~midday) |
+| `deliveredAt` | DateTime? | actual handover timestamp, server-owned from the `Delivered` status |
 | `serviceDate` | DateTime | stored ~midday +06:00 so day bucketing is unambiguous |
 | `archived` | Boolean | soft-delete flag; hides the row from every list and stat |
 | `createdAt`, `updatedAt` | DateTime | audit trail (used by the CSV export) |
@@ -589,9 +662,9 @@ table, so restore's column validation is unaffected.
   unsaved open form is lost.
 - A restore never leaves you without a way back: it writes a `safety-*.db` copy
   of your current data first, then swaps atomically, and a snapshot that does
-  not match the expected schema is refused before any row is touched. The new
-  return/refund/damage columns are optional on restore, so pre-v1.1.2 snapshots
-  still work and those fields become `NULL`/`0`.
+  not match the expected schema is refused before any row is touched. The
+  return/refund/damage/write-off/group/delivery columns are optional on restore,
+  so pre-v1.1.2 snapshots still work and those fields become `NULL`/`0`/`false`.
 - Same-disk backup does NOT protect against disk death/theft — copy the CSV
   (or `backups/`) to a pen drive periodically. Browser code cannot write to
   pen drives automatically (security rule) — this one step stays manual.
@@ -609,12 +682,12 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (11 suites, 298 checks) entirely on
+`npm test` runs the full regression (13 suites, 312 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (139 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (151 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -630,16 +703,18 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- v1.1.4 full run: **11/11 suites, 298/298 checks** — Launcher 14 · Expense
-  upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 16 ·
-  API 59 · Technician 25 · Responsive 74, 0 FAIL, 0 JS errors; the live shop DB
-  hash stayed unchanged.
+- v1.2.0 full run: **13/13 suites, 312/312 checks** — Launcher 14 · Expense
+  upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 18 ·
+  Lane F 8 · API 59 · Technician 25 · Responsive 74 · Date-nav 4, 0 FAIL,
+  0 JS errors; the live shop DB hash stayed unchanged.
+- v1.1.4 historical run: **11/11 suites, 298/298 checks** — same suites before
+  Lane F and the date-nav regression were added.
 - v1.1.3 historical run: **11/11 suites, 230/230 checks** — same suites with
   Responsive 6, before the phone/tablet card views and breakpoint expansion.
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  139 steps, including a real PDF print/read-back; run it on the target PC after
+  151 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
@@ -661,10 +736,11 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   dry-run by default; `--confirm` applies only due/expense/returned-refund
   repairs. Overpay, invalid codes, stale `returnedAt`, and negative/oversized
   amount-only expenses are reported for a human and left untouched.
-- **Per-row cost reveal.** The service table always shows the cost column, but
-  only the saved code; each row's eye reveals that row's amount alone. Bill,
-  joma, due and every report still show their real totals. Receipt/PDF privacy
-  is unchanged.
+- **Cost reveal has two scopes.** The service table always shows the cost
+  column, but only the saved code. The header **খরচ দেখান** button reveals every
+  row at once; each row's own eye reveals that row's amount alone for 10
+  seconds. Bill, joma, due and every report still show their real totals.
+  Receipt/PDF privacy is unchanged.
 - **Reports agree on dates and advances.** Daily/monthly `advance` is summed
   only from active rows; refunds are grouped by the job's service date. The
   dashboard hints (জমা, ফেরত, লাভ = বিল − খরচ − ক্ষতি) now match the API math.
@@ -672,13 +748,15 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   checks the snapshot's `Service` columns *before* touching anything, then
   swaps rows inside a single `BEGIN IMMEDIATE … COMMIT` transaction. Old or
   incomplete snapshots get a 400 naming the missing columns; a bad snapshot or
-  a power cut can no longer empty the live database. The v1.1.2 return/refund/
-  damage columns are optional on restore, with `NULL`/`0` defaults.
+  a power cut can no longer empty the live database. The return/refund/damage,
+  write-off, group and delivery columns are optional on restore, with
+  `NULL`/`0`/`false` defaults.
 - **Returned is terminal and accounting-safe.** Only the refund endpoint can set
   it; the generic validator rejects bill/advance/status edits on a returned row,
-  so a later form save cannot silently resurrect an old bill. Revenue, count,
-  dues and technician performance exclude returned rows, while damage loss and
-  normal expense remain shop costs.
+  so a later form save cannot silently resurrect an old bill. Safe descriptive
+  edits remain allowed. Revenue, count, dues and technician performance exclude
+  returned rows; damage loss always remains a shop cost, and a parts cost remains
+  one unless the refund explicitly wrote it off.
 - **Real calendar-date validation.** Impossible dates (`2026-02-30`) are
   rejected with 400 on `?date=`, create/update bodies and report ranges. The
   Bengali validation classifier now maps form errors to 400 instead of 500.
@@ -725,6 +803,56 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 ---
 
 ## 9. Changelog
+
+### v1.2.0 — grouped visits, delivery dates & safer returns
+
+**Added**
+- **One visit, many devices.** The entry form can add up to 7 extra rows (8
+  devices total). Customer, phone, technician, service date and expected
+  delivery date are shared; each device keeps its own model, problem, bill,
+  advance, status, shop expense and parts shop. The set is saved in one
+  transaction with a shared `groupId`, marked **👥 গ্রুপ** in the list, and the
+  bill/PDF from any row prints one combined customer slip with per-device money
+  and grand totals.
+- **Expected and actual delivery dates.** `deliveryDate` is an optional form
+  field (shared by a group); the list shows it and marks an overdue day in red.
+  Moving a row to **ডেলিভারি** stamps the server-owned `deliveredAt`; reopening
+  or returning clears it. The receipt prints the expected date or the actual
+  handover, and the CSV exports both.
+- **Returned rows stay editable.** The pencil now opens a returned row for safe
+  descriptive edits (customer/phone/model/problem/technician/service date,
+  expense/parts shop, delivery date, damage loss/note). Bill, জমা, বাকি and
+  status are locked in the form and rejected by `PUT /api/services/[id]` with
+  400; refund amount/date never change.
+- **Parts-cost decision on refund.** When the row has a shop cost, the refund
+  dialog asks whether that cost was **written off** (parts unused/returned) or
+  **kept** as a loss. Written-off rows keep the code and amount plus a grey
+  **বাতিল** badge for audit but are excluded from খরচ/profit; `damageLoss` is
+  never written off. Old API callers that omit the choice keep the cost.
+- **Header cost reveal.** A new **খরচ দেখান / খরচ লুকান** button shows or hides
+  every row's decoded cost at once; the per-row eye still reveals only its own
+  amount for 10 seconds.
+- Schema `Service` grew to **26 columns** via
+  `20261025130000_add_group_delivery_expense_flag` (`expenseWrittenOff`,
+  `groupId`, `deliveryDate`, `deliveredAt`, plus a `groupId` index). All four are
+  optional on restore, so old snapshots still work.
+- `POST /api/services/batch` for grouped creation and
+  `GET /api/services?groupId=` for the combined slip.
+
+**Fixed**
+- The service-list header no longer overflows its section at 640px; the title
+  and action buttons wrap with `sm:flex-wrap`.
+- A returned product row keeps its **ফেরত** status visible while the automatic
+  delivery hint stays hidden.
+
+**Verified**
+- New `scripts/laneF.js` covers grouped API/UI saves, group fetch, delivery-date
+  stamping/clearing, returned-row safe edits and locked ledger fields, combined
+  receipt privacy, and the editable returned row (8 checks).
+- laneE gained write-off keep/cancel checks (18 checks); a new
+  `date-nav-flicker.js` pins the no-skeleton day change (4 checks).
+- Full v1.2.0 run: **13/13 suites, 312/312 checks**, 0 FAIL, 0 JS errors; the
+  live shop DB hash stayed unchanged until the release migration.
 
 ### v1.1.4 — responsive phone, tablet & desktop dashboard
 
@@ -977,7 +1105,7 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **298** automated checks pass, and the live database is byte-identical.
+- All **312** automated checks pass, and the live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
@@ -999,6 +1127,6 @@ screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
-`prisma/dev.db` byte-identical. The current v1.1.4 run is **11/11 suites,
-298/298 checks**; the earlier v1.1.2 packaged window was also driven by hand
+`prisma/dev.db` byte-identical. The current v1.2.0 run is **13/13 suites,
+312/312 checks**; the earlier v1.1.2 packaged window was also driven by hand
 for the shop test above. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.

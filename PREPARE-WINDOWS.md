@@ -8,18 +8,34 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 ## Tumi Ja Pabe
 
 Ekta zip file: `MAHER-Windows-Client.zip` — local build
-`out\MAHER-Windows-Client.zip` (v1.1.4). Eta GitHub release `v1.1.4-windows`-e
+`out\MAHER-Windows-Client.zip` (v1.2.0). Eta GitHub release `v1.2.0-windows`-e
 publish korte hobe. Entry form-e code (`*J#`) likhle raw code ar decoded taka
 (`৳১৫০০`) duitai dekha jay; shudhu number (`1500`) likhleo save-er shomoy seta
 **canonical code** (`*J#`) hoye jay. Privacy shudhu **service talika-r খরচ
-column**-e: column-ta **shob shomoy dekha jay** ar shudhu code dekhay; protyek
-row-er nijer eye click korle **oi row-er** decoded taka dekhay, onno row lukiye
-thake. Daily khoroch card ar monthly khoroch/labh age-r motoi khola. Customer
-receipt ba PDF-e cost, code, parts-shop ba profit kokhono jay na. Cash/change
-calculator, receipt address, PAID stamp, WhatsApp + **PDF শেয়ার** sob age-r
-motoi ache.
+column**-e: column-ta **shob shomoy dekha jay** ar shudhu code dekhay; header-er
+**খরচ দেখান** button-e sob row-er taka ekshathe dekha jay, ar protyek row-er
+nijer eye click korle **oi row-er** decoded taka 10 second dekhay, onno row
+lukiye thake. Daily khoroch card ar monthly khoroch/labh age-r motoi khola.
+Customer receipt ba PDF-e cost, code, parts-shop ba profit kokhono jay na.
+Cash/change calculator, receipt address, PAID stamp, WhatsApp + **PDF শেয়ার** sob
+age-r motoi ache.
 
-Notun v1.1.4:
+Notun v1.2.0:
+- **ek kastomerer ekadhik device**: ek visit-e 8 ta porjonto device (primary +
+  7 extra) ek sathe save; customer/phone/technician/date/delivery date shared,
+  protyek device-er nijer bill/joma/status/expense. List-e **👥 গ্রুপ** badge,
+  ar je kono row theke bill/PDF khulle **sokol device ek combined receipt**-e;
+- **delivery date**: form-e সম্ভাব্য তারিখ (optional), list/receipt-e expected
+  date; status **ডেলিভারি** hole actual date automatic, reopen/return korle
+  actual date muchhe jay;
+- **ফেরত row edit**: pencil diye customer/model/problem/technician/date/
+  expense/parts/delivery/damage thik kora jay; bill/joma/baki/status lock;
+- **refund-e parts cost choice**: “খরচ হয়নি — বাদ দিন” ba “খরচ হয়েছে — ক্ষতি
+  হিসেবে রাখুন”; bade dile code/amount row-e thake (**বাতিল** badge) kintu
+  report/labh theke bad, damage loss shob shomoy report-e thake;
+- **header cost button**: ekshathe sob row-er taka dekhano/lukano.
+
+Ager notun (v1.1.4):
 - phone/tablet-e puro app responsive: header chhoto (phone-e 3 row, 1280px+
   theke 2 row), sob action button dekha jay;
 - 1024px-er niche service talika ar **বাকি তালিকা** card hoy; 1024px+ theke
@@ -32,7 +48,8 @@ Ager notun (v1.1.3):
 - number likhle auto code; code likhle jemon likhben temoni thake;
 - purono numeric cost upgrade/restore-e automatic code hoye jay — taka
   kokhono hariye jay na ba plain number hisebe expose hoy na;
-- table-er protyek row-e alada eye, global eye nei;
+- table-er protyek row-e alada eye (v1.1.3-e global eye chhilo na; v1.2.0-e
+  header-e sob row dekhano/lukano button eseche);
 - **বিল** card-er niche **জমা** hint, ar report-e-o joma;
 - returned kaj archive korar age warning: refund/expense/damage report theke
   bad jabe;
@@ -45,8 +62,9 @@ dite parben — status **ফেরত** hobe, বাকি 0 hobe, ar oi kajে�
 performance theke bad jabe. **ড্যামেজ ক্ষতি** tab-e technician-er kharap kore
 bhanga parts-er internal loss likhben; eta customer-er bill ba receipt-e
 kokhono jabe na, shudhu dokaner khata/লাভ calculation-e bad jabe. Completed
-kaj-e customer puro bill dey, damage loss alada dokaner loss. Returned row
-form diye edit kora jabe na, kintu damage loss add/correct kora jabe.
+kaj-e customer puro bill dey, damage loss alada dokaner loss. Returned row-er
+bill/joma/status lock thake, kintu customer/model/problem/date/expense/damage
+erge safe edit kora jay (v1.2.0).
 
 Ager notun (v1.0.7): navbar-er dan dike search box (placeholder
 `🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)`, live result, mobile-e 🔍 icon),
@@ -69,7 +87,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **11 suites, 298 checks**, live data er hash-o same ache.
+suite pass koreche — **13 suites, 312 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -120,7 +138,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **298/298 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **312/312 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -295,7 +313,13 @@ Prothom bar notun version chalanor shomoy migration **automatic** hoy; apni
 shudhu `data` folder-ta niye chinta korben na. Purono snapshot restore korleo
 notun column-gulo `0`/blank hoye safe thake.
 
-v1.1.4-e kono notun database column nei — shudhu UI/layout change. Tai
+v1.2.0-e database-e **4 ta notun column** add hoy (`expenseWrittenOff`,
+`groupId`, `deliveryDate`, `deliveredAt`) ar `groupId`-er index. Prothom bar
+notun version chalanor shomoy migration **automatic** hoy; `data` folder same
+thake ar purono snapshot restore korleo notun column-gulo blank/`0`/`false`
+hoye safe thake. Upgrade-er age ekhon-o ekta backup niye rakha bhalo.
+
+v1.1.4-e kono notun database column chilo na — shudhu UI/layout change. Tai
 v1.1.3 theke upgrade korle `data` folder same thake.
 
 v1.1.3-e-o kono notun database column chilo na. Kintu purono **numeric shop cost**
@@ -320,7 +344,7 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    ```powershell
    tar -xOf out\MAHER-Windows-Client.zip MAHER/build-info.json
    ```
-   `version` hobe `1.1.4`, `sourceCommit` HEAD-er sathe milbe (release-er
+   `version` hobe `1.2.0`, `sourceCommit` HEAD-er sathe milbe (release-er
    age sob change commit kore nio), `target` hobe `windows-x64`.
 
 3. **Client package-ta notun (test zip na):** test-er jonno
@@ -332,15 +356,25 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
 
 5. Notun entry-e shop cost `*J#` likhe dekho: form-e `গোপন কোড: *J# ➔ ৳১৫০০`
    dekha jabe. Service talika-r **খরচ** column **shob shomoy** dekha jabe,
-   sekhane shudhu `*J#` thakbe — taka na. Oi row-er **eye** click korle shudhu
-   oi row-er `৳1,500` dekhbe; onno row na. Abar ekta row-e `1200` (number)
-   likhe save koro: seta `*A#` hoye jabe ar eye-e `৳1,200` dekhbe. Customer
-   bill/preview-e cost ba parts-shop name thakbe na.
+   sekhane shudhu `*J#` thakbe — taka na. Header-er **খরচ দেখান** click korle
+   sob row-er taka ekshathe dekhbe; abar click korle lukiye jabe. Oi row-er
+   **eye** click korle shudhu oi row-er `৳1,500` 10 second dekhbe; onno row na.
+   Abar ekta row-e `1200` (number) likhe save koro: seta `*A#` hoye jabe ar
+   eye-e `৳1,200` dekhbe. Customer bill/preview-e cost ba parts-shop name
+   thakbe na.
 
 6. Ekta test entry bill `1500`, joma `500`, status **চলছে** diye save koro.
-   Oi row-er **⚖️** → **ফেরত / রিফান্ড** → confirm koro. Status **ফেরত**,
-   বাকি **৳0**, daily কাজ/বিল theke bad, ar receipt-e PAID stamp nei — ei
-   gulo dekho. Tarpor **⚖️** → **ড্যামেজ ক্ষতি**-te `500` likhe save koro;
+   Oi row-er **⚖️** → **ফেরত / রিফান্ড** → `খরচ হয়নি — বাদ দিন` (parts cost
+   thakle) → confirm koro. Status **ফেরত**, বাকি **৳0**, daily কাজ/বিল theke
+   bad, ar receipt-e PAID stamp nei — ei gulo dekho. Tarpor ✏️ diye returned
+   row-er model/problem bodle save koro: bill/joma/status lock thakbe, kintu
+   safe edit save hobe. **⚖️** → **ড্যামেজ ক্ষতি**-te `500` likhe save koro;
    customer receipt/PDF-e “ড্যামেজ” ba 500-er kono mention thakbe na.
+
+7. Form-er **👥 এক কাস্টমারের একাধিক ডিভাইস** → **আরেকটি ডিভাইস** diye duita
+   device save koro (alada bill/status). List-e duita row **👥 গ্রুপ** badge
+   dekhabe; je kono row-er bill/PDF khulle **একসাথে সব ডিভাইসের বিল** combined
+   slip ashbe. Ekta row-e delivery date din, status **ডেলিভারি** korun: list-e
+   actual date ashbe, abar **চলছে** korle actual date muchhe jabe.
 
 ---

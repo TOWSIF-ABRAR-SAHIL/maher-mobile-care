@@ -1,12 +1,13 @@
-# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.1.4
+# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.2.0
 
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 11 suites, 298 checks (see README §7).
-  E13–E20 below cover the v1.1.2 return/refund and damage-loss ledger; B7/B7b,
-  E1, E14b and L2 pin the v1.1.3 automatic expense codes and per-row eye;
-  K1–K10 cover the v1.1.4 responsive header, cards/table and dialogs.
+- **Automated coverage:** `npm test` → 13 suites, 312 checks (see README §7).
+  E13–E20 below cover the return/refund and damage-loss ledger; B7/B7b, E1 and
+  L2 pin the automatic expense codes and the two cost-reveal scopes; K1–K10
+  cover the responsive header, cards/table and dialogs; **M1–M12 cover the
+  v1.2.0 grouped visits, delivery dates, returned-row edits and write-off**.
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -52,7 +53,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **B5** Press **সেভ করুন**. Expect: toast "সেভ হয়েছে", form clears, new row appears, and কাজের অবস্থা resets to **চলমান** (the new-entry default) — *risk: মাঝারি*
 - [ ] **B6** Read the daily cards. Expect: কাজ ১ · বিল 1,600 · বাকি 1,100 · খরচ **৳1,500** with a **“+ 1টি কোড”** hint. No eye/mask on this card (digits are always shown Western, even though Bengali input is accepted) — *risk: নেই*
 - [ ] **B7** ✏️ edit the row, change shop cost to `১২০০` (a number), save. Expect: a live preview `সেভ করলে কোড হবে: *A# ➔ ৳১২০০`; after save the খরচ card still shows `৳1,200`, the **+ 1টি কোড** hint stays, and the table stores **`*A#`** (not a plain number); `ZTEST Parts` is still saved — *risk: মাঝারি*
-- [ ] **B7b** Look at the **খরচ** column. Expect: it is always visible and shows codes only (`*A#`, `*J#`, …); each row has its **own eye**. Click one row's eye: only that row's amount appears (`৳1,200`), the other rows stay hidden. There is no global eye toggle. The customer receipt must not show the amount, code or parts shop — *risk: নেই*
+- [ ] **B7b** Look at the **খরচ** column. Expect: it is always visible and shows codes only (`*A#`, `*J#`, …). The header **খরচ দেখান** button reveals every row at once (then says **খরচ লুকান**); each row also has its **own eye**. Click one row's eye: only that row's amount appears (`৳1,200`) for 10 seconds, the other rows stay hidden. The customer receipt must not show the amount, code or parts shop — *risk: নেই*
 - [ ] **B8** Set bill `1000`, advance `1500`, press save. Expect: toast **"জমা মোট বিলের বেশি হতে পারে না"** and **no row is added** — *risk: মাঝারি*
 - [ ] **B9** Set bill `1000`, advance `1000`, save. Expect: saved, বাকি = **0** — *risk: মাঝারি*
 - [ ] **B10** Press save on an empty form. Expect: toast "কাস্টমারের নাম দিন" — *risk: নেই*
@@ -108,7 +109,7 @@ of this checklist **byte-identical** — see step L3.
 
 ## E. Service table — *risk: মাঝারি*
 
-- [ ] **E1** Look at the **খরচ** column. Expect: it is always visible and shows codes only (`*J#`, `*A#`, …), never the decoded amount. Each row's eye reveals only that row's amount; the eye does not affect any other row. A legacy plain-number value (only before upgrade/repair) is masked as `৳••••` — *risk: নেই*
+- [ ] **E1** Look at the **খরচ** column. Expect: it is always visible and shows codes only (`*J#`, `*A#`, …), never the decoded amount. The header **খরচ দেখান** button reveals all rows; each row's own eye reveals only that row's amount for 10 seconds. A legacy plain-number value (only before upgrade/repair) is masked as `৳••••` — *risk: নেই*
 - [ ] **E2** Click a status badge 3 times. Expect: পেন্ডিং → চলছে → সম্পন্ন → ডেলিভারি — *risk: মাঝারি*
 - [ ] **E3** Click once more on ডেলিভারি. Expect: toast "এটা ডেলিভারি হয়ে গেছে" — *risk: নেই*
 - [ ] **E4** Search by name / phone / model. Expect: each filters to one row. Note: the box is a **substring** match, so a bare ID like `1` also matches `10`, `11`, `12` — use a longer, unambiguous term — *risk: নেই*
@@ -121,13 +122,13 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **E11** Click **তালিকায় ফিরুন**. Expect: archive view closes, the day's list returns — *risk: নেই*
 - [ ] **E12** ✏️ edit a row and change **তারিখ**, save. Expect: the row moves to that day; navigate there to confirm — *risk: মাঝারি*
 - [ ] **E13** Create an unfinished `ZTEST` row: bill `1500`, advance `500`, status **চলছে**, save. Click **⚖️ ফেরত / ড্যামেজ ক্ষতি** on it. Expect: a dialog with **ফেরত / রিফান্ড** and **ড্যামেজ ক্ষতি** tabs; the refund tab says the job will be closed and the full **৳500** returned — *risk: মাঝারি*
-- [ ] **E14** Type a short refund note and click **ফেরত দিন (৳500)**. Expect: toast, status **ফেরত**, বাকি **৳0**, row money shows **ফেরত: ৳500**; daily কাজ ও বিল no longer include it, a **+1টি ফেরত** hint appears under কাজ, and its technician card count excludes it — *risk: মাঝারি*
+- [ ] **E14** Type a short refund note and click **ফেরত দিন (৳500)**. Expect: toast, status **ফেরত**, বাকি **৳0**, row money shows **ফেরত: ৳500**; daily কাজ ও বিল no longer include it, a **+1টি ফেরত** hint appears under কাজ, and its technician card count excludes it. If the row has a shop cost, the dialog asks **লেখা বাদ** vs **খরচ রাখুন** first; no cost means no extra question — *risk: মাঝারি*
 - [ ] **E15** Open **⚖️** again on the returned row. Expect: the refund tab says it is already returned (with amount/date/note) and the button is gone. Switch to **ড্যামেজ ক্ষতি**, enter `500`, note `ZTEST damage`, save. Expect: the row shows **⚠️ ড্যামেজ ক্ষতি**, the খরচ column shows **ক্ষতি: ৳500**, the daily খরচ card includes ৳500, and the customer receipt still never shows it — *risk: মাঝারি*
 - [ ] **E15b** Press 🗑️ **ডিলিট** on that returned row. Expect: the confirmation adds a red warning: its **রিফান্ড, খরচ ও ড্যামেজ ক্ষতিও** will leave every report/profit until restored. Press **বাতিল**; the row must stay — *risk: নেই*
 - [ ] **E16** Create a completed `ZTEST` row: bill `1500`, advance `1500`; add damage loss `500` through ⚖️. Expect: its customer bill still shows ৳1500 / ৳1500 / ৳0 with the **PAID** seal; the damage loss appears only in the internal খরচ/লাভ report — *risk: মাঝারি*
 - [ ] **E17** Open 🧾 **বিল প্রিন্ট** on the returned row. Expect: the amber banner **“কাজটি সম্পন্ন হয়নি — মোবাইল ফেরত দেওয়া হয়েছে”**, a **ফেরত দেওয়া হয়েছে** line for ৳500, and **no PAID seal**. Search the paper for the damage note/amount: neither appears — *risk: নেই*
-- [ ] **E18** Try to edit the returned row. Expect: its ✏️ pencil is gone; using the navbar search's edit action shows an info toast and does **not** load it into the form. The ⚖️ damage tab still saves a correction — *risk: নেই*
-- [ ] **E19** Press **ব্যাকআপ**, open the CSV in Excel, and check the header. Expect: `damageLoss`, `damageNote`, `returnedAt`, `refundAmount`, `refundNote` are present and the returned row has its refund/damage values — *risk: মাঝারি*
+- [ ] **E18** Click ✏️ on the returned row. Expect: the form opens, but **বিল / জমা / বাকি / অবস্থা** are read-only. Change the model or problem and save; expect a success toast while the bill, জমা, status **ফেরত** and refund stay unchanged. The ⚖️ damage tab still saves a correction — *risk: নেই*
+- [ ] **E19** Press **ব্যাকআপ**, open the CSV in Excel, and check the header. Expect: `damageLoss`, `damageNote`, `returnedAt`, `refundAmount`, `refundNote`, `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` are present, and the returned row has its refund/damage/write-off values — *risk: মাঝারি*
 - [ ] **E20** Restore the snapshot from E19. Expect: the returned status, refund amount and damage loss all come back; a pre-v1.1.2 snapshot (if available) still restores, with those fields `0`/blank. If the snapshot has a **plain-number** shop expense, the restored row must show a code and keep the same amount; restore must never expose or erase the number. *risk: সবচেয়ে বেশি*
 
 ---
@@ -140,7 +141,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **F4** Set শুরু later than শেষ. Expect: toast "শুরুর তারিখ শেষের তারিখের পরে" and the range is unchanged — *risk: নেই*
 - [ ] **F5** Close the dialog with **X**, reopen it and press **Escape**. Expect: both close cleanly — *risk: নেই*
 - [ ] **F6** With a preset active, close the dialog, change the navbar date, and reopen the report. Expect: the preset follows that date — *risk: নেই*
-- [ ] **F7** Check লাভ by hand. Expect: `লাভ = বিল − খরচ − ড্যামেজ ক্ষতি`, visible immediately. Returned bills are excluded; the refund is a memo and is not subtracted again — *risk: নেই*
+- [ ] **F7** Check লাভ by hand. Expect: `লাভ = বিল − খরচ − ড্যামেজ ক্ষতি`, visible immediately. Returned bills are excluded; the refund is a memo and is not subtracted again. A **written-off** parts cost is excluded too, while damage loss is always subtracted — *risk: নেই*
 - [ ] **F8** On a day containing a part code (`*M#`). Expect: daily খরচ shows the decoded **৳1,600** directly and the hint shows **+ 1টি কোড** — *risk: নেই*
 
 ---
@@ -180,7 +181,7 @@ of this checklist **byte-identical** — see step L3.
 > Run this only after 0.1–0.3 succeeded. You are about to replace live data.
 
 - [ ] **I1** Press **ব্যাকআপ**. Expect: server snapshot + CSV download + toast — *risk: মাঝারি*
-- [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present (including `damageLoss`, `returnedAt`, `refundAmount`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
+- [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
 - [ ] **I3** Click **Restore**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
 - [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
 - [ ] **I5** Close the dialog instead of clicking **নিশ্চিত?** again (there is no cancel button — the second click is what executes). Expect: nothing changes — *risk: নেই*
@@ -229,6 +230,23 @@ of this checklist **byte-identical** — see step L3.
 
 ---
 
+## M. Grouped visits, delivery dates & returned edits (v1.2.0) — *risk: মাঝারি*
+
+- [ ] **M1** In the entry form, find **👥 এক কাস্টমারের একাধিক ডিভাইস** and press **＋ আরেকটি ডিভাইস**. Expect: device 2 appears with its own model/problem/bill/জমা/status/expense fields, while customer, phone, technician and delivery date stay shared. Add 7 extras; expect the add button disables at **8 devices total** — *risk: নেই*
+- [ ] **M2** Create a visit with two devices (`ZTEST Group A`, bill `1500`, জমা `500`; `ZTEST Group B`, bill `800`, জমা `800`) and a delivery date. Save. Expect: toast names **2টি ডিভাইস**, two rows appear on the same day, both show **👥 গ্রুপ**, and each keeps its own bill/status — *risk: মাঝারি*
+- [ ] **M3** Open 🧾 on either grouped row. Expect: one dialog headed **একসাথে সব ডিভাইসের বিল** with both models on separate lines, per-device বিল/জমা/বাকি, a grand total, and the expected delivery date. No shop cost, code, parts shop or damage amount appears — *risk: নেই*
+- [ ] **M4** Press **PDF শেয়ার** on one grouped row. Expect: the generated PDF is the same combined slip with both devices and totals (not just that one row) — *risk: মাঝারি*
+- [ ] **M5** Look at the service list after setting a delivery date. Expect: `ডেলিভারি: YYYY-MM-DD` under the status. Set a past date on an unfinished row: expect **⚠️** and red text; open its receipt and expect the expected date to print — *risk: নেই*
+- [ ] **M6** Advance one grouped device to **ডেলিভারি**. Expect: `✅ ডেলিভারি: YYYY-MM-DD` replaces the expected hint in the list and the receipt prints **ডেলিভারি সম্পন্ন**. Reopen the job (set it back to **চলছে**): the actual date disappears, while the expected date stays — *risk: মাঝারি*
+- [ ] **M7** Click ✏️ on a **ফেরত** row. Expect: the form opens; বিল, জমা, বাকি and অবস্থা are read-only. Change the model and save; expect success with the bill/refund/status unchanged. (The API also rejects a ledger change with 400.) — *risk: মাঝারি*
+- [ ] **M8** Refund an unfinished row that has a shop cost and damage loss. Expect: the refund tab asks **খরচ হয়নি — বাদ দিন** vs **খরচ হয়েছে — ক্ষতি হিসেবে রাখুন**, and **ফেরত দিন** stays disabled until you choose. Choose **খরচ হয়নি — বাদ দিন** — *risk: মাঝারি*
+- [ ] **M9** Inspect that returned row and the daily/monthly খরচ/লাভ. Expect: the code and amount are still on the row with a grey **বাতিল** badge, but the parts cost is excluded from reports/profit; the damage loss is still included. Switching the choice back to **রাখুন** (or refunding another row that way) keeps the cost as a loss — *risk: মাঝারি*
+- [ ] **M10** Press the header **খরচ দেখান**. Expect: every row's decoded amount appears at once and the button becomes **খরচ লুকান**. Hide them, then click one row's own eye: only that row appears, for about 10 seconds. Customer bill/PDF still shows none of it — *risk: নেই*
+- [ ] **M11** Press **ব্যাকআপ** and open the CSV. Expect: `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` columns exist; the grouped rows share a `groupId`, the delivered row has a `deliveredAt`, and the written-off row says `YES` — *risk: মাঝারি*
+- [ ] **M12** Restore that snapshot and reopen the grouped/returned rows. Expect: group badge, expected/actual dates and write-off badge all return; an older pre-v1.2.0 snapshot still restores, with those fields blank/`0`/`false` — *risk: সবচেয়ে বেশি*
+
+---
+
 ## 🛑 Stop conditions
 
 If you see **any** of these, stop immediately, take a backup and report it —
@@ -242,8 +260,11 @@ do not keep clicking:
 6. An overpayment saved successfully (B8 added a row)
 7. A returned job still appears in বিল, কাজ or বাকি তালিকা (E14)
 8. A numeric shop expense lost its amount or stayed exposed after upgrade/restore (E20)
-9. A dialog will not close
-10. Text is clipped on mobile (K1)
+9. A written-off parts cost still reduces profit, or a damage loss disappears (M9)
+10. A grouped customer copy omits a device or prints shop cost/code/parts/damage (M3)
+11. A returned row's bill, জমা or status changes after an edit (M7)
+12. A dialog will not close
+13. Text is clipped on mobile (K1)
 
 ---
 

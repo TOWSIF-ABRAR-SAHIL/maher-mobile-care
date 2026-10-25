@@ -12,8 +12,27 @@ CHALANO
 3. Prothombar 4 jon technician dekhabe:
    ASRAFUL, NAYEM, NURUL, RONI.
 
-NOTUN (v1.1.4)
+NOTUN (v1.2.0)
 --------------
+- Ek kastomerer ekadhik device: ek visit-e 8 ta porjonto device (primary +
+  7 extra) ek sathe save. Customer/phone/technician/date/delivery date
+  shared; protyek device-er nijer bill/joma/status/expense. List-e
+  "👥 গ্রুপ" badge, ar je kono row theke bill/PDF khulle sob device ek
+  combined receipt-e ashe.
+- Delivery date: form-e "ডেলিভারির সম্ভাব্য তারিখ" (optional). List/receipt-e
+  expected date dekhay; status "ডেলিভারি" hole actual date automatic, abar
+  "চলছে" ba ferot korle actual date muchhe jay.
+- Ferot row pencil diye edit kora jay: customer/model/problem/technician/
+  date/expense/parts/delivery/damage thik korun. Bill, joma, baki ar status
+  lock thake — save korle o bad jabe na.
+- Refund-e parts cost choice: "খরচ হয়নি — বাদ দিন" ba "খরচ হয়েছে — ক্ষতি
+  হিসেবে রাখুন". Bade dile code/amount row-e thake ("বাতিল" badge) kintu
+  report/labh theke bad; damage loss shob shomoy report-e thake.
+- Header-e "খরচ দেখান" button: ekshathe sob row-er taka dekhay/lukay.
+  Protyek row-er nijer eye age-r motoi 10 second oi row-er taka dekhay.
+
+AGER NOTUN (v1.1.4)
+-------------------
 - Phone/tablet-e puro app chhoto hoy: header 3 row (1280px+ theke 2 row),
   ar Sync/Backup/Restore/Technician/Print/Aaj — shob button dekha jay.
 - 1024px-er niche service talika ar "বাকি তালিকা" card hoy; 1024px+ theke
@@ -29,7 +48,8 @@ AGER NOTUN (v1.1.3)
   korar shomoy automatic code hoye jay — taka same thake.
 - Service talika-r "খরচ" column shob shomoy dekha jay ar shudhu code
   dekhay. Protyek row-er nijer eye click korle shudhu oi row-er taka
-  dekhay; onno row lukiye thake. Global eye nei.
+  dekhay; onno row lukiye thake. (v1.2.0-e header-e sob row dekhano/lukano
+  button eseche.)
 - "বিল" card-er niche "জমা" hint, ar report-eo joma dekhay.
 - Ferot kora kaj archive korar age warning dey: oi row-er refund,
   khoroch ar damage loss report/labh theke bad jabe.
@@ -48,8 +68,8 @@ AGER NOTUN (v1.1.2)
 - Completed kaj-e customer puro bill dey; damage loss alada dokaner loss.
   Kaj unfinished hole ferot/refund hobe, kintu damage loss dokaner
   loss-i thake.
-- Ferot deya row form diye edit kora jabe na; damage loss add/correct
-  kora jabe.
+- Ferot deya row-er bill/joma/status lock thake; customer/model/problem/
+  date/expense/damage erge safe edit kora jay (v1.2.0).
 
 AGER NOTUN (v1.0.7)
 -------------------
@@ -93,19 +113,22 @@ GOPON KHORCH (privacy)
 - Entry form-e code (`*J#`) ba number (`1500`) likhle raw/decode kora
   taka (`৳১৫০০`) form-e dekha jabe — form-e kichu lukiye nei.
 - Service talika-r **খরচ** column shob shomoy dekha jay; sekhane shudhu
-  code (`*J#`, `*A#`) dekhay, decoded taka na. Protyek row-er nijer
-  **eye** click korle shudhu oi row-er taka dekhay; onno row lukiye
-  thake. Kono global eye button nei.
+  code (`*J#`, `*A#`) dekhay, decoded taka na. Header-er **খরচ দেখান**
+  button-e sob row-er taka ekshathe dekhay/lukay. Protyek row-er nijer
+  **eye** click korle shudhu oi row-er taka 10 second dekhay; onno row
+  lukiye thake.
 - Purono plain-number cost (upgrade/restore-er age) `৳••••` dekha jay
   jodi kono karon e normalize na hoy; app chalanor shomoy seta
   automatic code hoye jay.
 - Daily khoroch card ar monthly khoroch/labh age-r motoi khola thake.
 - Customer bill ba PDF-e cost, code, parts-shop ba profit kokhono
   thake na. Ferot/refund er kotha thake, damage loss/note thake na.
+  Ek visit-er ekadhik device hole sob device ek combined bill/PDF-e ashe,
+  kintu cost/parts/damage tokhono thake na.
 
 SOMOSSA HOLE
 ------------
 1. "MAHER STOP.bat" chaliye abar "MAHER MOBILE CARE.bat" chalan.
 2. Tao na hole "logs" folder-er "maher.log" file-ta support-ke pathan.
 
-Vershon: 1.1.4 (Windows 64-bit, offline)
+Vershon: 1.2.0 (Windows 64-bit, offline)
