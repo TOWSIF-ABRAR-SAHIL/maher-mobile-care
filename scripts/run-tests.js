@@ -30,6 +30,7 @@ const DEFAULT_SUITES = [
   "scripts/technician-mgmt.js",
   "scripts/responsive-check.js",
   "scripts/date-nav-flicker.js",
+  "scripts/header-calendar.js",
 ];
 
 function resolveLiveDatabaseFile() {

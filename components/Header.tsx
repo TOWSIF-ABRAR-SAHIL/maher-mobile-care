@@ -12,9 +12,8 @@ import {
   Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { HeaderDatePicker } from "@/components/HeaderDatePicker";
 import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
-import { bengaliDateLabel } from "@/lib/dhaka";
 import type { ServiceDTO } from "@/lib/types";
 
 export function Header({
@@ -101,18 +100,7 @@ export function Header({
               <span className="hidden sm:inline">আগের দিন</span>
             </Button>
             <div className="min-w-0 flex-1 md:w-[210px] md:flex-none">
-              <Input
-                type="date"
-                value={date}
-                aria-label="তারিখ বাছুন"
-                onChange={(e) => {
-                  if (e.target.value) onDateChange(e.target.value);
-                }}
-                className="h-8 w-full bg-white text-gray-800"
-              />
-              <p className="mt-0.5 hidden truncate text-center text-xs text-blue-100 sm:block">
-                {bengaliDateLabel(date)}
-              </p>
+              <HeaderDatePicker date={date} onDateChange={onDateChange} />
             </div>
             <Button
               variant="secondary"
