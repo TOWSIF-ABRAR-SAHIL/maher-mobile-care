@@ -269,16 +269,29 @@ async function closeDialog(page) {
   await typeInto(page, "svc-model", "UI Primary");
   await typeInto(page, "svc-problem", "প্রথম ডিভাইস");
   await typeInto(page, "svc-bill", "1500");
-  await typeInto(page, "svc-adv", "500");
-  await typeInto(page, "svc-expense", "*J#");
   await typeInto(page, "svc-delivery-date", shiftDay(TODAY, 4));
+  // The form has a sticky bottom save bar. A minimal scroll would leave the
+  // add button under it, so centre the button before the real mouse click.
+  await page.$eval('[data-testid="add-device"]', (el) =>
+    el.scrollIntoView({ block: "center" })
+  );
   await page.click('[data-testid="add-device"]');
   await page.waitForSelector("#svc-device-1-model", { timeout: 5000 });
   await typeInto(page, "svc-device-1-model", "UI Secondary");
   await typeInto(page, "svc-device-1-problem", "দ্বিতীয় ডিভাইস");
   await typeInto(page, "svc-device-1-bill", "800");
-  await typeInto(page, "svc-device-1-adv", "800");
-  await typeInto(page, "svc-device-1-expense", "*B#");
+  // Money, status and shop cost are entered once for the whole visit.
+  await typeInto(page, "svc-adv", "500");
+  await typeInto(page, "svc-expense", "*J#");
+  await typeInto(page, "svc-parts-shop", "Group Parts");
+  const uiMoney = await page.evaluate(() => ({
+    total: document.querySelector("#svc-total-bill")?.value,
+    due: document.querySelector("#svc-due")?.value,
+    perDeviceMoney:
+      !!document.querySelector("#svc-device-1-adv") ||
+      !!document.querySelector("#svc-device-1-expense") ||
+      !!document.querySelector("#svc-device-1-status"),
+  }));
   await page.evaluate(() => {
     const button = [...document.querySelectorAll("form button[type='submit']")].find(
       (b) => b.textContent.includes("সেভ করুন")
@@ -292,20 +305,36 @@ async function closeDialog(page) {
   );
   check(
     "F5",
-    "UI form saves two devices in one group with per-device bills",
+    "UI form saves numbered devices with one shared advance and auto total",
     uiRows.length === 2 &&
       uiRows[0].groupId === uiRows[1].groupId &&
       uiRows[0].model === "UI Primary" &&
       uiRows[1].model === "UI Secondary" &&
       uiRows[0].totalBill === 1500 &&
       uiRows[1].totalBill === 800 &&
+      uiRows.every((r) => r.status === "In-Progress") &&
       uiRows[0].advance === 500 &&
-      uiRows[1].advance === 800,
+      uiRows[1].advance === 0 &&
+      uiRows[0].due === 1000 &&
+      uiRows[1].due === 800 &&
+      uiRows.reduce((sum, r) => sum + r.due, 0) === 1800 &&
+      uiRows[0].expenseAmount === 1500 &&
+      uiRows[1].expenseAmount === 0 &&
+      uiRows[0].partsShop === "Group Parts" &&
+      uiRows[1].partsShop === null &&
+      uiMoney.total === "2300" &&
+      uiMoney.due === "1,800" &&
+      !uiMoney.perDeviceMoney,
     JSON.stringify({
       count: uiRows.length,
       models: uiRows.map((r) => r.model),
       bills: uiRows.map((r) => r.totalBill),
+      advances: uiRows.map((r) => r.advance),
+      dues: uiRows.map((r) => r.due),
+      expenses: uiRows.map((r) => r.expenseAmount),
+      shops: uiRows.map((r) => r.partsShop),
       group: uiRows[0]?.groupId === uiRows[1]?.groupId,
+      uiMoney,
     })
   );
 

@@ -21,10 +21,15 @@ import {
   formatTaka,
   formatTakaBn,
   parseBnNumber,
+  toBnDigits,
 } from "@/lib/utils";
 import { normalizeShopExpense } from "@/lib/expense-code";
 import { dhakaDateKey } from "@/lib/dhaka";
-import { validateServicePayload } from "@/lib/service-validation";
+import {
+  OVERPAY_MESSAGE,
+  parseServiceAmount,
+  validateServicePayload,
+} from "@/lib/service-validation";
 import type { ServiceDTO } from "@/lib/types";
 
 const empty = {
@@ -44,29 +49,41 @@ const empty = {
   serviceDate: "",
 };
 
-/** One extra device in a shared-customer multi-device entry. */
-interface ExtraDevice {
+/** One device in a shared-customer visit. Money/status live on the visit. */
+interface VisitDevice {
   key: number;
   model: string;
   problem: string;
   totalBill: string;
-  advance: string;
-  status: string;
-  shopExpense: string;
-  partsShop: string;
 }
 
-function blankDevice(key: number): ExtraDevice {
+function blankDevice(key: number): VisitDevice {
   return {
     key,
     model: "",
     problem: "",
     totalBill: "",
-    advance: "",
-    status: "In-Progress",
-    shopExpense: "",
-    partsShop: "",
   };
+}
+
+/** Blank optional money fields mean zero; anything else must be a valid amount. */
+function parseEntryAmount(raw: string, field: string): number {
+  const text = String(raw ?? "").trim();
+  return text === "" ? 0 : parseServiceAmount(text, field);
+}
+
+/**
+ * A single visit advance is split across device bills in order. Each row gets
+ * at most its own bill, so no row is ever overpaid and the group due is simply
+ * the visit bill minus the visit advance.
+ */
+function allocateAdvance(bills: number[], advance: number): number[] {
+  let remaining = advance;
+  return bills.map((bill) => {
+    const share = Math.min(bill, Math.max(0, remaining));
+    remaining -= share;
+    return share;
+  });
 }
 
 /**
@@ -145,18 +162,24 @@ export function ServiceForm({
   const editing = initial !== null;
   /** Returned rows can be edited, but the ledger fields stay frozen. */
   const isReturnedRow = editing && initial?.status === "Returned";
-  const [devices, setDevices] = useState<ExtraDevice[]>([]);
-  const deviceSeq = useRef(0);
+  // The first device is always present; extras are added one at a time.
+  const [devices, setDevices] = useState<VisitDevice[]>(() => [blankDevice(0)]);
+  const [visitTotalBill, setVisitTotalBill] = useState("");
+  const deviceSeq = useRef(1);
   const addDevice = () => {
+    if (devices.length >= 8) return;
+    const key = deviceSeq.current;
     deviceSeq.current += 1;
     setDevices((prev) =>
-      prev.length >= 7 ? prev : [...prev, blankDevice(deviceSeq.current)]
+      prev.length >= 8 ? prev : [...prev, blankDevice(key)]
     );
   };
   const removeDevice = (key: number) =>
-    setDevices((prev) => prev.filter((d) => d.key !== key));
+    setDevices((prev) =>
+      prev.length > 1 ? prev.filter((d) => d.key !== key) : prev
+    );
   const setDevice =
-    (key: number, field: keyof Omit<ExtraDevice, "key">) =>
+    (key: number, field: keyof Omit<VisitDevice, "key">) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setDevices((prev) =>
         prev.map((d) => (d.key === key ? { ...d, [field]: e.target.value } : d))
@@ -218,6 +241,20 @@ export function ServiceForm({
   const due = computeDue(billNum, advNum);
   const normalizedExpense = normalizeShopExpense(f.shopExpense);
 
+  // New service entry: device bills add up to the visit bill. If no device
+  // bill is filled, the visit total is entered once and lands on device 1.
+  const hasDeviceBills = devices.some((d) => d.totalBill.trim() !== "");
+  const deviceBillsTotal = devices.reduce(
+    (sum, d) => sum + (parseBnNumber(d.totalBill) ?? 0),
+    0
+  );
+  const visitBillText = hasDeviceBills
+    ? String(deviceBillsTotal)
+    : visitTotalBill;
+  const visitBillNum = parseBnNumber(visitBillText) ?? 0;
+  const visitAdvanceNum = parseBnNumber(f.advance) ?? 0;
+  const visitDue = computeDue(visitBillNum, visitAdvanceNum);
+
   const chooseService = () => {
     if (!isProductSale) return;
     setIsProductSale(false);
@@ -239,44 +276,28 @@ export function ServiceForm({
     e.preventDefault();
     if (savingRef.current) return;
 
-    // Extra rows are optional. Ignore a blank row the user added but never
-    // filled, so it cannot block the main entry.
-    const filledDevices = devices.filter((d) =>
-      [d.model, d.problem, d.totalBill, d.advance, d.shopExpense, d.partsShop]
-        .map((v) => v.trim())
-        .some(Boolean)
-    );
-
     let payload: ReturnType<typeof validateServicePayload>;
     const extraPayloads: ReturnType<typeof validateServicePayload>[] = [];
     try {
-      payload = validateServicePayload(
-        {
-          customerName: f.customerName,
-          phone: f.phone,
-          model: f.model,
-          technician: f.technician,
-          problem: f.problem,
-          totalBill: f.totalBill,
-          advance: f.advance,
-          // Returned is terminal and accepted only by the refund endpoint, so
-          // validate with a neutral flow status; the field is omitted below.
-          status: isReturnedRow
-            ? "Pending"
-            : isProductSale
-              ? "Delivered"
-              : f.status,
-          shopExpense: f.shopExpense,
-          partsShop: f.partsShop,
-          deliveryDate: f.deliveryDate,
-          serviceDate: editing ? f.serviceDate : serviceDate,
-        },
-        // An inactive technician's own historical job stays editable, so the
-        // option list (not the active-only roster) is what we validate against.
-        { allowedTechnicians: techOptions, productSale: isProductSale }
-      );
-      for (const d of filledDevices) {
-        extraPayloads.push(
+      if (!editing && !isProductSale) {
+        // New service entry: every numbered device card is one row. A blank
+        // extra card is ignored; the first card is always validated.
+        const entryDevices = devices.filter(
+          (d, index) =>
+            index === 0 ||
+            [d.model, d.problem, d.totalBill].some((v) => v.trim())
+        );
+        const bills = entryDevices.map((d, index) =>
+          parseEntryAmount(
+            hasDeviceBills ? d.totalBill : index === 0 ? visitTotalBill : "",
+            "মোট বিল"
+          )
+        );
+        const visitBill = bills.reduce((sum, amount) => sum + amount, 0);
+        const visitAdvance = parseEntryAmount(f.advance, "জমা");
+        if (visitAdvance > visitBill) throw new Error(OVERPAY_MESSAGE);
+        const advances = allocateAdvance(bills, visitAdvance);
+        const validated = entryDevices.map((d, index) =>
           validateServicePayload(
             {
               customerName: f.customerName,
@@ -284,16 +305,46 @@ export function ServiceForm({
               model: d.model,
               technician: f.technician,
               problem: d.problem,
-              totalBill: d.totalBill,
-              advance: d.advance,
-              status: d.status,
-              shopExpense: d.shopExpense,
-              partsShop: d.partsShop,
+              totalBill: String(bills[index]),
+              advance: String(advances[index]),
+              status: f.status,
+              // Shop cost belongs to the visit, so keep it on device 1 only;
+              // repeating it would multiply the shop's expense reports.
+              shopExpense: index === 0 ? f.shopExpense : "",
+              partsShop: index === 0 ? f.partsShop : "",
               deliveryDate: f.deliveryDate,
               serviceDate,
             },
             { allowedTechnicians: techOptions }
           )
+        );
+        payload = validated[0];
+        extraPayloads.push(...validated.slice(1));
+      } else {
+        payload = validateServicePayload(
+          {
+            customerName: f.customerName,
+            phone: f.phone,
+            model: f.model,
+            technician: f.technician,
+            problem: f.problem,
+            totalBill: f.totalBill,
+            advance: f.advance,
+            // Returned is terminal and accepted only by the refund endpoint,
+            // so validate with a neutral flow status; omitted below.
+            status: isReturnedRow
+              ? "Pending"
+              : isProductSale
+                ? "Delivered"
+                : f.status,
+            shopExpense: f.shopExpense,
+            partsShop: f.partsShop,
+            deliveryDate: f.deliveryDate,
+            serviceDate: editing ? f.serviceDate : serviceDate,
+          },
+          // An inactive technician's own historical job stays editable, so the
+          // option list (not the active-only roster) is what we validate against.
+          { allowedTechnicians: techOptions, productSale: isProductSale }
         );
       }
     } catch (err) {
@@ -373,7 +424,9 @@ export function ServiceForm({
             ? technicians[0]
             : FALLBACK_TECHNICIANS[0];
         setF({ ...empty, technician: defaultTech ?? "" });
-        setDevices([]);
+        setDevices([blankDevice(0)]);
+        deviceSeq.current = 1;
+        setVisitTotalBill("");
         setIsProductSale(false);
         statusBeforeProduct.current = "In-Progress";
       }
@@ -385,6 +438,108 @@ export function ServiceForm({
       setSaving(false);
     }
   };
+
+  // Shared controls appear once per form. The two branches below never render
+  // them at the same time, so ids stay unique.
+  const technicianField = (
+    <>
+      <Label>টেকনিশিয়ান</Label>
+      <Select
+        value={f.technician}
+        onValueChange={(v) => {
+          // Belt-and-braces: Radix can emit "" for a controlled value
+          // whose item never mounted — never accept a blank.
+          if (!v) return;
+          setF((p) => ({ ...p, technician: v }));
+        }}
+      >
+        <SelectTrigger id="svc-tech" className="h-9 xl:h-8">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {techOptions.map((t) => (
+            <SelectItem key={t} value={t}>
+              {t}
+              {isInactiveOption && t === initial?.technician
+                ? " (নিষ্ক্রিয়)"
+                : ""}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {isProductSale ? (
+        <p
+          className={`mt-1 text-xs leading-snug ${
+            hasSalesTechnician ? "text-gray-500" : "text-amber-700"
+          }`}
+        >
+          {hasSalesTechnician
+            ? "প্রোডাক্ট সেলের জন্য SALES/দোকান টেকনিশিয়ান বেছে নিন।"
+            : "SALES/দোকান টেকনিশিয়ান দরকার হলে টেকনিশিয়ান ম্যানেজার থেকে যোগ করুন।"}
+        </p>
+      ) : null}
+    </>
+  );
+
+  const statusField = (
+    <>
+      <Label>কাজের অবস্থা</Label>
+      <Select
+        value={isProductSale && !isReturnedRow ? "Delivered" : f.status}
+        disabled={isProductSale || isReturnedRow}
+        onValueChange={(v) => {
+          if (!v) return;
+          setF((p) => ({ ...p, status: v }));
+        }}
+      >
+        <SelectTrigger
+          id="svc-status"
+          disabled={isProductSale || isReturnedRow}
+          className="h-9 xl:h-8"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {FLOW_STATUSES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {STATUS_BN[s]}
+            </SelectItem>
+          ))}
+          {/* Display-only: lets the locked trigger show ফেরত instead of
+              a blank value. The select is disabled for returned rows,
+              and the API/validation still reject a manual Returned. */}
+          {isReturnedRow ? (
+            <SelectItem value="Returned">{STATUS_BN.Returned}</SelectItem>
+          ) : null}
+        </SelectContent>
+      </Select>
+      {isProductSale && !isReturnedRow ? (
+        <p className="mt-1 text-xs text-gray-500">
+          অটো: ডেলিভারি (প্রোডাক্ট হাতে দেওয়া হয়েছে)
+        </p>
+      ) : null}
+    </>
+  );
+
+  const deliveryDateField = (
+    <div>
+      <Label htmlFor="svc-delivery-date">
+        ডেলিভারির সম্ভাব্য তারিখ (ঐচ্ছিক)
+      </Label>
+      <Input
+        id="svc-delivery-date"
+        type="date"
+        value={f.deliveryDate}
+        onChange={set("deliveryDate")}
+        className="h-9 xl:h-8"
+      />
+      {initial?.deliveredAt ? (
+        <p className="mt-1 text-xs text-emerald-700">
+          ✅ ডেলিভারি সম্পন্ন: {dhakaDateKey(initial.deliveredAt)}
+        </p>
+      ) : null}
+    </div>
+  );
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-2.5 print:hidden">
@@ -469,152 +624,232 @@ export function ServiceForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="svc-model">
-              {isProductSale
-                ? "প্রোডাক্টের নাম (যেমন: Charger, Cable)"
-                : "মোবাইলের মডেল"}
-            </Label>
-            <Input
-              id="svc-model"
-              value={f.model}
-              onChange={set("model")}
-              placeholder={
-                isProductSale ? "যেমন: 18W Charger" : "যেমন: Redmi Note 10"
-              }
-              className="h-9 xl:h-8"
-            />
-          </div>
-          <div>
-            <Label>টেকনিশিয়ান</Label>
-            <Select
-              value={f.technician}
-              onValueChange={(v) => {
-                // Belt-and-braces: Radix can emit "" for a controlled value
-                // whose item never mounted — never accept a blank.
-                if (!v) return;
-                setF((p) => ({ ...p, technician: v }));
-              }}
-            >
-              <SelectTrigger id="svc-tech" className="h-9 xl:h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {techOptions.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                    {isInactiveOption && t === initial?.technician
-                      ? " (নিষ্ক্রিয়)"
-                      : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isProductSale ? (
-              <p
-                className={`mt-1 text-xs leading-snug ${
-                  hasSalesTechnician ? "text-gray-500" : "text-amber-700"
-                }`}
-              >
-                {hasSalesTechnician
-                  ? "প্রোডাক্ট সেলের জন্য SALES/দোকান টেকনিশিয়ান বেছে নিন।"
-                  : "SALES/দোকান টেকনিশিয়ান দরকার হলে টেকনিশিয়ান ম্যানেজার থেকে যোগ করুন।"}
-              </p>
-            ) : null}
-          </div>
-        </div>
+        {editing || isProductSale ? (
+          <>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="svc-model">
+                  {isProductSale
+                    ? "প্রোডাক্টের নাম (যেমন: Charger, Cable)"
+                    : "মোবাইলের মডেল"}
+                </Label>
+                <Input
+                  id="svc-model"
+                  value={f.model}
+                  onChange={set("model")}
+                  placeholder={
+                    isProductSale ? "যেমন: 18W Charger" : "যেমন: Redmi Note 10"
+                  }
+                  className="h-9 xl:h-8"
+                />
+              </div>
+              <div>{technicianField}</div>
+            </div>
 
-        <div>
-          <Label htmlFor="svc-problem">
-            {isProductSale ? "বিবরণ (যেমন: 18W Type-C)" : "সমস্যা"}
-          </Label>
-          <Input
-            id="svc-problem"
-            value={f.problem}
-            onChange={set("problem")}
-            placeholder={
-              isProductSale ? "যেমন: Type-C, 1 মিটার" : "যেমন: ডিসপ্লে পরিবর্তন"
-            }
-            className="h-9 xl:h-8"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="svc-bill">মোট বিল (৳)</Label>
-            <Input
-              id="svc-bill"
-              value={f.totalBill}
-              onChange={set("totalBill")}
-              placeholder="0"
-              inputMode="numeric"
-              readOnly={isReturnedRow}
-              className="h-9 xl:h-8 read-only:bg-gray-50"
-            />
-          </div>
-          <div>
-            <Label htmlFor="svc-adv">জমা (৳)</Label>
-            <Input
-              id="svc-adv"
-              value={f.advance}
-              onChange={set("advance")}
-              placeholder="0"
-              inputMode="numeric"
-              readOnly={isReturnedRow}
-              className="h-9 xl:h-8 read-only:bg-gray-50"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="svc-due">বাকি (৳)</Label>
-            <Input
-              id="svc-due"
-              value={formatTaka(due).replace("৳", "").trim()}
-              readOnly
-              className="h-9 bg-gray-50 font-semibold xl:h-8"
-            />
-          </div>
-          <div>
-            <Label>কাজের অবস্থা</Label>
-            <Select
-              value={isProductSale && !isReturnedRow ? "Delivered" : f.status}
-              disabled={isProductSale || isReturnedRow}
-              onValueChange={(v) => {
-                if (!v) return;
-                setF((p) => ({ ...p, status: v }));
-              }}
-            >
-              <SelectTrigger
-                id="svc-status"
-                disabled={isProductSale || isReturnedRow}
+            <div>
+              <Label htmlFor="svc-problem">
+                {isProductSale ? "বিবরণ (যেমন: 18W Type-C)" : "সমস্যা"}
+              </Label>
+              <Input
+                id="svc-problem"
+                value={f.problem}
+                onChange={set("problem")}
+                placeholder={
+                  isProductSale
+                    ? "যেমন: Type-C, 1 মিটার"
+                    : "যেমন: ডিসপ্লে পরিবর্তন"
+                }
                 className="h-9 xl:h-8"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FLOW_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {STATUS_BN[s]}
-                  </SelectItem>
-                ))}
-                {/* Display-only: lets the locked trigger show ফেরত instead of
-                    a blank value. The select is disabled for returned rows,
-                    and the API/validation still reject a manual Returned. */}
-                {isReturnedRow ? (
-                  <SelectItem value="Returned">{STATUS_BN.Returned}</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
-            {isProductSale && !isReturnedRow ? (
-              <p className="mt-1 text-xs text-gray-500">
-                অটো: ডেলিভারি (প্রোডাক্ট হাতে দেওয়া হয়েছে)
-              </p>
-            ) : null}
-          </div>
-        </div>
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="svc-bill">মোট বিল (৳)</Label>
+                <Input
+                  id="svc-bill"
+                  value={f.totalBill}
+                  onChange={set("totalBill")}
+                  placeholder="0"
+                  inputMode="numeric"
+                  readOnly={isReturnedRow}
+                  className="h-9 xl:h-8 read-only:bg-gray-50"
+                />
+              </div>
+              <div>
+                <Label htmlFor="svc-adv">জমা (৳)</Label>
+                <Input
+                  id="svc-adv"
+                  value={f.advance}
+                  onChange={set("advance")}
+                  placeholder="0"
+                  inputMode="numeric"
+                  readOnly={isReturnedRow}
+                  className="h-9 xl:h-8 read-only:bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="svc-due">বাকি (৳)</Label>
+                <Input
+                  id="svc-due"
+                  value={formatTaka(due).replace("৳", "").trim()}
+                  readOnly
+                  className="h-9 bg-gray-50 font-semibold xl:h-8"
+                />
+              </div>
+              <div>{statusField}</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>{technicianField}</div>
+              {deliveryDateField}
+            </div>
+
+            <div data-testid="extra-devices" className="space-y-2">
+              {devices.map((d, index) => {
+                const isFirst = index === 0;
+                const prefix = isFirst ? "svc" : `svc-device-${d.key}`;
+                return (
+                  <div
+                    key={d.key}
+                    data-testid={
+                      isFirst ? "device-1" : `extra-device-${index}`
+                    }
+                    className="rounded-lg border border-blue-200 bg-white p-2"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-700 px-1 text-[11px] font-bold text-white">
+                          {toBnDigits(index + 1)}
+                        </span>
+                        ডিভাইস {toBnDigits(index + 1)}
+                      </p>
+                      {!isFirst ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => removeDevice(d.key)}
+                        >
+                          সরান
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <Label htmlFor={`${prefix}-model`}>
+                          মোবাইলের মডেল
+                        </Label>
+                        <Input
+                          id={`${prefix}-model`}
+                          value={d.model}
+                          onChange={setDevice(d.key, "model")}
+                          placeholder="যেমন: Redmi Note 10"
+                          className="h-9 xl:h-8"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <Label htmlFor={`${prefix}-problem`}>সমস্যা</Label>
+                          <Input
+                            id={`${prefix}-problem`}
+                            value={d.problem}
+                            onChange={setDevice(d.key, "problem")}
+                            placeholder="যেমন: ডিসপ্লে পরিবর্তন"
+                            className="h-9 xl:h-8"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`${prefix}-bill`}>বিল (৳)</Label>
+                          <Input
+                            id={`${prefix}-bill`}
+                            value={d.totalBill}
+                            onChange={setDevice(d.key, "totalBill")}
+                            inputMode="numeric"
+                            placeholder="ঐচ্ছিক"
+                            className="h-9 xl:h-8"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="space-y-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="add-device"
+                  onClick={addDevice}
+                  disabled={devices.length >= 8}
+                  className="h-9 w-full border-dashed border-blue-300 bg-white text-blue-800 hover:bg-blue-50 disabled:opacity-60"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  {devices.length >= 8
+                    ? "সর্বোচ্চ ৮টি ডিভাইস"
+                    : "আরেকটি ডিভাইস যোগ করুন"}
+                </Button>
+                <p className="px-1 text-xs leading-snug text-gray-500">
+                  নাম, ফোন, টেকনিশিয়ান ও ডেলিভারি তারিখ সব ডিভাইসের জন্য একই
+                  থাকবে।
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="svc-total-bill">মোট বিল (৳)</Label>
+                  <Input
+                    id="svc-total-bill"
+                    value={visitBillText}
+                    onChange={(e) => setVisitTotalBill(e.target.value)}
+                    placeholder="0"
+                    inputMode="numeric"
+                    readOnly={hasDeviceBills}
+                    className="h-9 xl:h-8 read-only:bg-white read-only:font-semibold"
+                  />
+                  <p className="mt-1 text-[11px] leading-snug text-gray-500">
+                    {hasDeviceBills
+                      ? "ডিভাইসগুলোর বিলের যোগফল"
+                      : "ডিভাইসে বিল না দিলে এখানে লিখুন"}
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="svc-adv">জমা (৳)</Label>
+                  <Input
+                    id="svc-adv"
+                    value={f.advance}
+                    onChange={set("advance")}
+                    placeholder="0"
+                    inputMode="numeric"
+                    className="h-9 xl:h-8"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="svc-due">বাকি (৳)</Label>
+                  <Input
+                    id="svc-due"
+                    value={formatTaka(visitDue).replace("৳", "").trim()}
+                    readOnly
+                    className="h-9 bg-white font-semibold xl:h-8"
+                  />
+                </div>
+                <div>{statusField}</div>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="space-y-1.5 rounded-lg border border-orange-200 bg-orange-50/60 p-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -695,212 +930,23 @@ export function ServiceForm({
           </p>
         </div>
 
-        {!editing && !isProductSale ? (
-          <div data-testid="extra-devices" className="space-y-2">
-            {devices.map((d, index) => {
-              const dBill = parseBnNumber(d.totalBill) ?? 0;
-              const dAdv = parseBnNumber(d.advance) ?? 0;
-              return (
-                <div
-                  key={d.key}
-                  data-testid={`extra-device-${index + 1}`}
-                  className="space-y-2 rounded-lg border border-blue-200 bg-white p-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-800">
-                      📱 ডিভাইস {index + 2}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
-                      onClick={() => removeDevice(d.key)}
-                    >
-                      সরান
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-model`}>
-                        মোবাইলের মডেল
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-model`}
-                        value={d.model}
-                        onChange={setDevice(d.key, "model")}
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-problem`}>
-                        সমস্যা
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-problem`}
-                        value={d.problem}
-                        onChange={setDevice(d.key, "problem")}
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-bill`}>
-                        মোট বিল (৳)
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-bill`}
-                        value={d.totalBill}
-                        onChange={setDevice(d.key, "totalBill")}
-                        inputMode="numeric"
-                        placeholder="0"
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-adv`}>
-                        জমা (৳)
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-adv`}
-                        value={d.advance}
-                        onChange={setDevice(d.key, "advance")}
-                        inputMode="numeric"
-                        placeholder="0"
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-due`}>
-                        বাকি (৳)
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-due`}
-                        value={formatTaka(computeDue(dBill, dAdv)).replace(
-                          "৳",
-                          ""
-                        ).trim()}
-                        readOnly
-                        className="h-9 bg-gray-50 font-semibold xl:h-8"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-status`}>
-                        কাজের অবস্থা
-                      </Label>
-                      <select
-                        id={`svc-device-${d.key}-status`}
-                        value={d.status}
-                        onChange={(e) =>
-                          setDevices((prev) =>
-                            prev.map((row) =>
-                              row.key === d.key
-                                ? { ...row, status: e.target.value }
-                                : row
-                            )
-                          )
-                        }
-                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm xl:h-8"
-                      >
-                        {FLOW_STATUSES.map((st) => (
-                          <option key={st} value={st}>
-                            {STATUS_BN[st]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-expense`}>
-                        দোকান খরচ (কোড)
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-expense`}
-                        value={d.shopExpense}
-                        onChange={setDevice(d.key, "shopExpense")}
-                        placeholder="যেমন: *J#"
-                        maxLength={24}
-                        autoComplete="off"
-                        spellCheck={false}
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`svc-device-${d.key}-parts-shop`}>
-                        পার্টসের দোকান
-                      </Label>
-                      <Input
-                        id={`svc-device-${d.key}-parts-shop`}
-                        value={d.partsShop}
-                        onChange={setDevice(d.key, "partsShop")}
-                        list="parts-shop-options"
-                        maxLength={100}
-                        autoComplete="off"
-                        placeholder="ঐচ্ছিক"
-                        className="h-9 xl:h-8"
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            <div className="space-y-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                data-testid="add-device"
-                onClick={addDevice}
-                disabled={devices.length >= 7}
-                className="h-9 w-full border-dashed border-blue-300 bg-white text-blue-800 hover:bg-blue-50 disabled:opacity-60"
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                {devices.length >= 7
-                  ? "সর্বোচ্চ ৮টি ডিভাইস"
-                  : "আরেকটি ডিভাইস যোগ করুন"}
-              </Button>
-              <p className="px-1 text-xs leading-snug text-gray-500">
-                নাম, ফোন, টেকনিশিয়ান ও ডেলিভারি তারিখ সব ডিভাইসের জন্য একই
-                থাকবে।
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="svc-delivery-date">
-              ডেলিভারির সম্ভাব্য তারিখ (ঐচ্ছিক)
-            </Label>
-            <Input
-              id="svc-delivery-date"
-              type="date"
-              value={f.deliveryDate}
-              onChange={set("deliveryDate")}
-              className="h-9 xl:h-8"
-            />
-            {initial?.deliveredAt ? (
-              <p className="mt-1 text-xs text-emerald-700">
-                ✅ ডেলিভারি সম্পন্ন: {dhakaDateKey(initial.deliveredAt)}
-              </p>
+        {editing || isProductSale ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {deliveryDateField}
+            {editing ? (
+              <div>
+                <Label htmlFor="svc-date">তারিখ (ভুল দিনে হলে বদলান)</Label>
+                <Input
+                  id="svc-date"
+                  type="date"
+                  value={f.serviceDate}
+                  onChange={set("serviceDate")}
+                  className="h-9 xl:h-8"
+                />
+              </div>
             ) : null}
           </div>
-          {editing ? (
-            <div>
-              <Label htmlFor="svc-date">তারিখ (ভুল দিনে হলে বদলান)</Label>
-              <Input
-                id="svc-date"
-                type="date"
-                value={f.serviceDate}
-                onChange={set("serviceDate")}
-                className="h-9 xl:h-8"
-              />
-            </div>
-          ) : null}
-        </div>
+        ) : null}
 
         <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 border-t border-slate-200 bg-white/95 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           {editing ? (
