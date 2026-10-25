@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
         totalBill: true,
         advance: true,
         expenseAmount: true,
+        expenseWrittenOff: true,
         due: true,
         status: true,
         damageLoss: true,
@@ -85,7 +86,11 @@ export async function GET(req: NextRequest) {
     const returnedRows = rows.filter((r) => r.status === "Returned");
     const bill = activeRows.reduce((s, r) => s + r.totalBill, 0);
     const advance = activeRows.reduce((s, r) => s + r.advance, 0);
-    const expense = rows.reduce((s, r) => s + r.expenseAmount, 0);
+    // Written-off return costs stay on the row for audit but never hit reports.
+    const expense = rows.reduce(
+      (s, r) => s + (r.expenseWrittenOff ? 0 : r.expenseAmount),
+      0
+    );
     const due = activeRows.reduce((s, r) => s + r.due, 0);
     const damageLoss = rows.reduce((s, r) => s + r.damageLoss, 0);
     const refund = returnedRows.reduce((s, r) => s + r.refundAmount, 0);

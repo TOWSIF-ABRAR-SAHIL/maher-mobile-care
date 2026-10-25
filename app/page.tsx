@@ -9,7 +9,7 @@ import { Header } from "@/components/Header";
 import { MonthlySummary } from "@/components/MonthlySummary";
 import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
 import { TechnicianManager } from "@/components/TechnicianManager";
-import { Receipt, ReceiptDialog } from "@/components/Receipt";
+import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
 import { SHOP } from "@/lib/shop";
@@ -58,6 +58,10 @@ export default function Home() {
   const [backingUp, setBackingUp] = useState(false);
   const [editing, setEditing] = useState<ServiceDTO | null>(null);
   const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
+  // Every device row from the same visit, for the combined receipt/payment
+  // slip. null/1 falls back to the existing single-device receipt.
+  const [receiptGroup, setReceiptGroup] = useState<ServiceDTO[] | null>(null);
+  const receiptGroupReq = useRef(0);
   const [showRestore, setShowRestore] = useState(false);
   const [showTechManager, setShowTechManager] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -306,12 +310,56 @@ export default function Home() {
   };
 
   /**
+   * Open the customer copy. A per-device receipt stays exactly as before; a
+   * shared visit loads every device row once and shows the combined slip.
+   */
+  const openReceipt = (service: ServiceDTO) => {
+    const req = ++receiptGroupReq.current;
+    setReceipt(service);
+    setReceiptGroup(null);
+    if (!service.groupId) return;
+    void (async () => {
+      try {
+        const data = await getJSON<{ services: ServiceDTO[] }>(
+          `/api/services?groupId=${encodeURIComponent(service.groupId!)}`
+        );
+        if (req !== receiptGroupReq.current) return;
+        if (Array.isArray(data.services) && data.services.length > 1) {
+          setReceiptGroup(data.services);
+        }
+      } catch {
+        /* keep the single-device receipt */
+      }
+    })();
+  };
+
+  const closeReceipt = () => {
+    // Invalidate an in-flight group fetch so it cannot reopen a stale bundle.
+    receiptGroupReq.current += 1;
+    setReceipt(null);
+    setReceiptGroup(null);
+  };
+
+  /**
    * Render the same Receipt off-screen, capture it with html2canvas, and hand
    * the resulting PDF to the OS share sheet. The document is never uploaded;
    * every byte stays on the shop PC. The fallback downloads the PDF and opens
    * the customer's own WhatsApp chat (wa.me cannot attach files itself).
    */
   const shareReceiptPdf = async (service: ServiceDTO) => {
+    let group: ServiceDTO[] | null = null;
+    if (service.groupId) {
+      try {
+        const data = await getJSON<{ services: ServiceDTO[] }>(
+          `/api/services?groupId=${encodeURIComponent(service.groupId)}`
+        );
+        if (Array.isArray(data.services) && data.services.length > 1) {
+          group = data.services;
+        }
+      } catch {
+        /* fall back to the single-device PDF */
+      }
+    }
     const host = document.createElement("div");
     host.setAttribute("aria-hidden", "true");
     host.style.cssText =
@@ -321,7 +369,13 @@ export default function Home() {
 
     try {
       flushSync(() => {
-        root.render(<Receipt service={service} />);
+        root.render(
+          group ? (
+            <ReceiptBundle services={group} />
+          ) : (
+            <Receipt service={service} />
+          )
+        );
       });
       if (document.fonts?.ready) {
         await document.fonts.ready;
@@ -404,12 +458,6 @@ export default function Home() {
   };
 
   const edit = (s: ServiceDTO) => {
-    if (s.status === "Returned") {
-      toast.info(
-        "ফেরত দেওয়া কাজ এডিট করা যায় না। ড্যামেজ ক্ষতি যোগ করতে টেবিলের ⚖️ বাটন ব্যবহার করুন।"
-      );
-      return;
-    }
     setEditing(s);
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -422,7 +470,7 @@ export default function Home() {
   };
   const receiptFromDues = (s: ServiceDTO) => {
     setShowDues(false);
-    setReceipt(s);
+    openReceipt(s);
   };
 
   // Tab-e fire ele chupchap refresh — Sync mone rakhte hoy na.
@@ -497,7 +545,11 @@ export default function Home() {
       {/* Paper: ONLY the customer receipt prints — never the dashboard. */}
       {receipt ? (
         <div className="hidden print:block">
-          <Receipt service={receipt} />
+          {receiptGroup && receiptGroup.length > 1 ? (
+            <ReceiptBundle services={receiptGroup} />
+          ) : (
+            <Receipt service={receipt} />
+          )}
         </div>
       ) : null}
       <main
@@ -522,7 +574,7 @@ export default function Home() {
           onPrint={print}
           searchRefreshKey={dataVersion}
           onSearchEdit={edit}
-          onSearchReceipt={setReceipt}
+          onSearchReceipt={openReceipt}
         />
 
         {/* Action row: report + dues are dialogs now, so the daily form and
@@ -605,7 +657,7 @@ export default function Home() {
               loading={loading}
               date={date}
               onEdit={edit}
-              onReceipt={setReceipt}
+              onReceipt={openReceipt}
               onSharePdf={shareReceiptPdf}
               technicianFilter={techFilter}
               onClearTechnician={() => setTechFilter(null)}
@@ -697,7 +749,8 @@ export default function Home() {
       </footer>
       <ReceiptDialog
         service={receipt}
-        onClose={() => setReceipt(null)}
+        services={receiptGroup}
+        onClose={closeReceipt}
         onPrint={print}
       />
       {/* Mounted last so `document.querySelector('[role="dialog"]')` in the

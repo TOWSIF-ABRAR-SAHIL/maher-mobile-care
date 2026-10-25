@@ -23,6 +23,14 @@ export interface ServiceDTO {
   /** Internal only: shop-borne repair/compensation for technician damage. */
   damageLoss: number;
   damageNote: string | null;
+  /** Set when a return also cancels the shop's parts cost (reports skip it). */
+  expenseWrittenOff: boolean;
+  /** Shared by every device row from one customer visit, or null. */
+  groupId: string | null;
+  /** Expected handover date (YYYY-MM-DD), or null. */
+  deliveryDate: string | null;
+  /** Actual handover time, set automatically when status becomes Delivered. */
+  deliveredAt: string | null;
   serviceDate: string;
   archived: boolean;
   createdAt: string;
@@ -55,7 +63,8 @@ export interface DayStats {
   due: number;
   /** Advances (জমা) on non-returned jobs whose service date is this day. */
   advance: number;
-  /** Normal shop expense (parts etc.), including returned jobs. */
+  /** Normal shop expense (parts etc.) that still hit the shop; written-off
+   *  return costs are excluded. */
   expense: number;
   /** Internal damage loss, including returned jobs. */
   damageLoss: number;
@@ -79,7 +88,8 @@ export interface MonthlySummary {
   bill: number;
   /** Advances (জমা) on non-returned jobs in this range. */
   advance: number;
-  /** Normal shop expense (parts etc.), including returned jobs. */
+  /** Normal shop expense (parts etc.) that still hit the shop; written-off
+   *  return costs are excluded. */
   expense: number;
   /** Non-returned jobs only. */
   due: number;

@@ -36,6 +36,13 @@ export function ServiceAdjustDialog({
   const returned = service.status === "Returned";
   const [refundNote, setRefundNote] = useState("");
   const [refunding, setRefunding] = useState(false);
+  // A returned job with a parts cost must say what happened to that cost:
+  // unused/returned parts are written off, used/broken parts stay a loss.
+  const [expenseChoice, setExpenseChoice] = useState<"writeoff" | "keep" | "">(
+    ""
+  );
+  const hasExpense = service.expenseAmount > 0;
+  const needsExpenseChoice = hasExpense && !returned;
   const [loss, setLoss] = useState(
     service.damageLoss > 0 ? String(service.damageLoss) : ""
   );
@@ -44,12 +51,19 @@ export function ServiceAdjustDialog({
 
   const refund = async () => {
     if (refunding) return;
+    if (needsExpenseChoice && !expenseChoice) {
+      toast.error("দোকান খরচের সিদ্ধান্ত বেছে নিন");
+      return;
+    }
     setRefunding(true);
     try {
       const res = await fetch(`/api/services/${service.id}/refund`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: refundNote }),
+        body: JSON.stringify({
+          note: refundNote,
+          ...(needsExpenseChoice ? { expenseAction: expenseChoice } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ফেরত দেওয়া যায়নি");
@@ -150,6 +164,18 @@ export function ServiceAdjustDialog({
                     নোট: {service.refundNote}
                   </p>
                 ) : null}
+                {hasExpense ? (
+                  <p
+                    data-testid="adjust-expense-written-off"
+                    className="mt-1 text-xs text-amber-800"
+                  >
+                    দোকান খরচ:{" "}
+                    <strong>{formatTaka(service.expenseAmount)}</strong> —{" "}
+                    {service.expenseWrittenOff
+                      ? "বাদ দেওয়া হয়েছে (রিপোর্টে যোগ হবে না)"
+                      : "ক্ষতি হিসেবে রাখা হয়েছে"}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <>
@@ -163,6 +189,71 @@ export function ServiceAdjustDialog({
                     ফেরত দেওয়া হবে। বিল ও বাকি হিসাব থেকে বাদ যাবে।
                   </p>
                 </div>
+
+                {hasExpense ? (
+                  <div
+                    data-testid="adjust-expense-choice"
+                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                  >
+                    <p className="font-semibold">
+                      দোকান খরচ: {formatTaka(service.expenseAmount)}{" "}
+                      <span className="font-mono text-xs">
+                        ({service.shopExpense})
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs leading-snug">
+                      পার্টস ব্যবহার হয়েছে বা নষ্ট হয়েছে? একটি বেছে নিন —
+                      এটা ছাড়া ফেরত সম্পন্ন হবে না।
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label="দোকান খরচের সিদ্ধান্ত"
+                      className="mt-2 grid gap-2"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={expenseChoice === "writeoff"}
+                        data-testid="adjust-expense-writeoff"
+                        onClick={() => setExpenseChoice("writeoff")}
+                        className={`rounded-md border px-3 py-2 text-left transition ${
+                          expenseChoice === "writeoff"
+                            ? "border-emerald-600 bg-emerald-100 ring-1 ring-emerald-600"
+                            : "border-amber-300 bg-white hover:bg-amber-100"
+                        }`}
+                      >
+                        <span className="block font-semibold">
+                          খরচ হয়নি — বাদ দিন
+                        </span>
+                        <span className="block text-xs text-gray-600">
+                          পার্টস ফেরত পাওয়া গেছে / ব্যবহার হয়নি। রিপোর্টে কোনো
+                          খরচ বা ক্ষতি থাকবে না।
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={expenseChoice === "keep"}
+                        data-testid="adjust-expense-keep"
+                        onClick={() => setExpenseChoice("keep")}
+                        className={`rounded-md border px-3 py-2 text-left transition ${
+                          expenseChoice === "keep"
+                            ? "border-red-600 bg-red-100 ring-1 ring-red-600"
+                            : "border-amber-300 bg-white hover:bg-amber-100"
+                        }`}
+                      >
+                        <span className="block font-semibold">
+                          খরচ হয়েছে — ক্ষতি হিসেবে রাখুন
+                        </span>
+                        <span className="block text-xs text-gray-600">
+                          পার্টস ব্যবহার/নষ্ট হয়েছে। {formatTaka(service.expenseAmount)}{" "}
+                          দোকানের ক্ষতি হিসাবে রিপোর্টে থাকবে।
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div>
                   <Label htmlFor="adjust-refund-note">
                     ফেরতের নোট (ঐচ্ছিক)
@@ -180,9 +271,9 @@ export function ServiceAdjustDialog({
                 <Button
                   type="button"
                   data-testid="adjust-refund-confirm"
-                  disabled={refunding}
+                  disabled={refunding || (needsExpenseChoice && !expenseChoice)}
                   onClick={() => void refund()}
-                  className="w-full bg-amber-600 text-white hover:bg-amber-700"
+                  className="w-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
                 >
                   {refunding ? (
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -191,6 +282,11 @@ export function ServiceAdjustDialog({
                     ? `ফেরত দিন (${formatTaka(service.advance)})`
                     : "ফেরত হিসাবে বন্ধ করুন"}
                 </Button>
+                {needsExpenseChoice && !expenseChoice ? (
+                  <p className="text-center text-xs text-amber-700">
+                    আগে দোকান খরচের সিদ্ধান্ত বেছে নিন।
+                  </p>
+                ) : null}
               </>
             )}
           </TabsContent>

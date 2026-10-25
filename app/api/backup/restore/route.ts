@@ -37,6 +37,10 @@ const OPTIONAL_COLS = [
   "refundNote",
   "damageLoss",
   "damageNote",
+  "expenseWrittenOff",
+  "groupId",
+  "deliveryDate",
+  "deliveredAt",
 ];
 
 /**

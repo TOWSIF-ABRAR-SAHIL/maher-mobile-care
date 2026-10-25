@@ -37,6 +37,8 @@ export interface ServiceFormValues {
   /** Internal only: shop-borne damage repair/compensation. */
   damageLoss?: string;
   damageNote?: string;
+  /** Expected handover date (YYYY-MM-DD), optional. */
+  deliveryDate?: string;
   serviceDate?: string;
 }
 
@@ -74,6 +76,7 @@ export interface ValidatedServicePayload {
   partsShop: string | null;
   damageLoss: number;
   damageNote: string | null;
+  deliveryDate: Date | null;
   serviceDateKey: string;
   serviceDate: Date;
 }
@@ -202,6 +205,13 @@ export function validateServicePayload(
   const damageLoss =
     damageLossRaw === "" ? 0 : parseServiceAmount(values.damageLoss, "ড্যামেজ ক্ষতি");
   const damageNote = optionalNote(values.damageNote, "ড্যামেজ নোট");
+  const deliveryDateRaw = String(values.deliveryDate ?? "").trim();
+  if (deliveryDateRaw && !isDateKey(deliveryDateRaw)) {
+    throw new Error("সঠিক ডেলিভারি তারিখ দিন");
+  }
+  const deliveryDate = deliveryDateRaw
+    ? serviceDateFromKey(deliveryDateRaw)
+    : null;
   const serviceDateKey =
     values.serviceDate && values.serviceDate.trim() !== ""
       ? values.serviceDate.trim()
@@ -225,6 +235,7 @@ export function validateServicePayload(
     partsShop,
     damageLoss,
     damageNote,
+    deliveryDate,
     serviceDateKey,
     serviceDate: serviceDateFromKey(serviceDateKey),
   };
@@ -253,6 +264,10 @@ export function validateServiceCreate(
       partsShop: String(raw.partsShop ?? ""),
       damageLoss: String(raw.damageLoss ?? ""),
       damageNote: String(raw.damageNote ?? ""),
+      deliveryDate:
+        raw.deliveryDate == null || raw.deliveryDate === ""
+          ? undefined
+          : String(raw.deliveryDate),
       serviceDate:
         raw.serviceDate == null || raw.serviceDate === ""
           ? undefined
@@ -277,6 +292,8 @@ export interface ValidatedServiceUpdate {
   partsShop?: string | null;
   damageLoss?: number;
   damageNote?: string | null;
+  deliveryDate?: Date | null;
+  deliveredAt?: Date | null;
   serviceDate?: Date;
 }
 
@@ -367,6 +384,14 @@ export function validateServiceUpdate(
   }
   if (raw.damageNote !== undefined) {
     data.damageNote = optionalNote(raw.damageNote, "ড্যামেজ নোট");
+  }
+
+  if (raw.deliveryDate !== undefined) {
+    const text = String(raw.deliveryDate ?? "").trim();
+    if (text && !isDateKey(text)) {
+      throw new Error("সঠিক ডেলিভারি তারিখ দিন");
+    }
+    data.deliveryDate = text ? serviceDateFromKey(text) : null;
   }
 
   return data;

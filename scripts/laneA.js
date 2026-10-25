@@ -350,12 +350,56 @@ let browser = null;
     createdId,
     seedId
   );
+
+  // Universal eye: one click shows every row, the next click hides every row.
+  await page.click('[data-testid="expense-toggle"]');
+  await page.waitForFunction(
+    (a, b) =>
+      !!document.querySelector(`[data-testid="expense-amount-${a}"]`) &&
+      !!document.querySelector(`[data-testid="expense-amount-${b}"]`),
+    { polling: 100, timeout: 3000 },
+    createdId,
+    seedId
+  );
+  const universalOn = await page.evaluate(
+    (id, refId) => ({
+      created:
+        document.querySelector(`[data-testid="expense-amount-${id}"]`)
+          ?.textContent || "",
+      reference:
+        document.querySelector(`[data-testid="expense-amount-${refId}"]`)
+          ?.textContent || "",
+      pressed:
+        document
+          .querySelector('[data-testid="expense-toggle"]')
+          ?.getAttribute("aria-pressed") || "",
+    }),
+    createdId,
+    seedId
+  );
+  await page.click('[data-testid="expense-toggle"]');
+  await page.waitForFunction(
+    (a, b) =>
+      !document.querySelector(`[data-testid="expense-amount-${a}"]`) &&
+      !document.querySelector(`[data-testid="expense-amount-${b}"]`),
+    { polling: 100, timeout: 3000 },
+    createdId,
+    seedId
+  );
+
+  // Per-row eye auto-hides after 10 seconds (no universal timer involved).
   await page.click(`[data-testid="expense-reveal-${createdId}"]`);
   await page.waitForFunction(
-    (id) => !document.querySelector(`[data-testid="expense-amount-${id}"]`),
+    (id) => !!document.querySelector(`[data-testid="expense-amount-${id}"]`),
     { polling: 100, timeout: 3000 },
     createdId
   );
+  await page.waitForFunction(
+    (id) => !document.querySelector(`[data-testid="expense-amount-${id}"]`),
+    { polling: 250, timeout: 14000 },
+    createdId
+  );
+  const autoHidden = true;
   await page.click(`[data-testid="expense-reveal-${seedId}"]`);
   await page.waitForFunction(
     (id) =>
@@ -373,8 +417,8 @@ let browser = null;
   );
   check(
     "A6",
-    "cost column always shows codes; per-row eye reveals only that row's amount",
-    globalToggle === null &&
+    "codes stay visible; universal eye toggles all rows; per-row eye auto-hides",
+    !!globalToggle &&
       kh0.h &&
       createdCost.includes("*B#") &&
       createdCost.includes("LaneA Parts Shop") &&
@@ -385,6 +429,10 @@ let browser = null;
       !beforeReveal &&
       revealed.amount.includes("1,200") &&
       !revealed.otherRevealed &&
+      universalOn.created.includes("1,200") &&
+      universalOn.reference.includes("1,500") &&
+      universalOn.pressed === "true" &&
+      autoHidden &&
       referenceAmount.includes("1,500"),
     JSON.stringify({
       globalToggle: !!globalToggle,
@@ -393,6 +441,8 @@ let browser = null;
       referenceCost,
       beforeReveal,
       revealed,
+      universalOn,
+      autoHidden,
       referenceAmount,
     })
   );

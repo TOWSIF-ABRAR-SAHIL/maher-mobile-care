@@ -37,6 +37,15 @@ const check = (id, name, ok, extra = "") => {
 
 let browser = null;
 
+function shiftDayKey(key, days) {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(
+    dt.getUTCDate()
+  )}`;
+}
+
 async function createService(page, payload) {
   const res = await api(page, "/api/services", {
     method: "POST",
@@ -225,6 +234,74 @@ async function setTextarea(page, id, value) {
     JSON.stringify(monthly.summary)
   );
 
+  // Returned cost decision on its own day so the totals above stay exact.
+  // `keep` leaves the parts cost as a loss; `writeoff` cancels it from every
+  // report while the code/amount stay on the row for audit.
+  const COST_DAY = shiftDayKey(TODAY, -1);
+  const costKeep = await createService(page, {
+    customerName: uniqueName("CostKeep"),
+    phone: "01700000884",
+    model: "Cost Keep Model",
+    technician: "NURUL",
+    problem: "Cost keep probe",
+    totalBill: 2000,
+    advance: 500,
+    status: "In-Progress",
+    shopExpense: "*J#",
+    serviceDate: COST_DAY,
+  });
+  const costWrite = await createService(page, {
+    customerName: uniqueName("CostWrite"),
+    phone: "01700000885",
+    model: "Cost Write Model",
+    technician: "NURUL",
+    problem: "Cost write probe",
+    totalBill: 2000,
+    advance: 500,
+    status: "In-Progress",
+    shopExpense: "*B#",
+    serviceDate: COST_DAY,
+  });
+  const keptRefund = await api(page, `/api/services/${costKeep.id}/refund`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expenseAction: "keep" }),
+  });
+  const writtenRefund = await api(page, `/api/services/${costWrite.id}/refund`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expenseAction: "writeoff" }),
+  });
+  const costStats = (await api(page, `/api/stats?date=${COST_DAY}`)).body;
+  check(
+    "E7a",
+    "refund keep keeps the parts cost and reports it as a loss",
+    keptRefund.ok &&
+      keptRefund.body.expenseWrittenOff === false &&
+      keptRefund.body.expenseAmount === 1500 &&
+      costStats.today.expense === 1500,
+    JSON.stringify({
+      flag: keptRefund.body.expenseWrittenOff,
+      expense: costStats.today.expense,
+    })
+  );
+  check(
+    "E7b",
+    "refund writeoff cancels the cost in reports but keeps code/amount for audit",
+    writtenRefund.ok &&
+      writtenRefund.body.expenseWrittenOff === true &&
+      writtenRefund.body.expenseAmount === 1200 &&
+      writtenRefund.body.shopExpense === "*B#" &&
+      costStats.today.expense === 1500 &&
+      costStats.today.returnedCount === 2,
+    JSON.stringify({
+      flag: writtenRefund.body.expenseWrittenOff,
+      code: writtenRefund.body.shopExpense,
+      amount: writtenRefund.body.expenseAmount,
+      expense: costStats.today.expense,
+    })
+  );
+
   const dues = (await api(page, "/api/services/dues")).body;
   check(
     "E7",
@@ -243,6 +320,7 @@ async function setTextarea(page, id, value) {
     totalBill: 1200,
     advance: 1200,
     status: "Completed",
+    shopExpense: "*B#",
     serviceDate: TODAY,
   });
 
@@ -299,6 +377,13 @@ async function setTextarea(page, id, value) {
   await page.waitForSelector('[data-testid="service-adjust-dialog"]', {
     timeout: 8000,
   });
+  const refundDisabledBeforeChoice = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid="adjust-refund-confirm"]')
+        ?.hasAttribute("disabled") ?? false
+  );
+  await page.click('[data-testid="adjust-expense-writeoff"]');
   await page.click('[data-testid="adjust-refund-confirm"]');
   await waitToast(page, "ফেরত দেওয়া হয়েছে");
   await page.waitForFunction(
@@ -308,14 +393,18 @@ async function setTextarea(page, id, value) {
   const afterRefund = (await getServices(page)).find((s) => s.id === uiJob.id);
   check(
     "E10",
-    "UI refund returns the full advance and keeps the damage loss",
-    afterRefund?.status === "Returned" &&
+    "UI refund requires a cost choice, then writes the cost off and keeps damage",
+    refundDisabledBeforeChoice &&
+      afterRefund?.status === "Returned" &&
       afterRefund?.refundAmount === 1200 &&
       afterRefund?.due === 0 &&
+      afterRefund?.expenseWrittenOff === true &&
       afterRefund?.damageLoss === 300,
     JSON.stringify({
+      disabled: refundDisabledBeforeChoice,
       status: afterRefund?.status,
       refund: afterRefund?.refundAmount,
+      writtenOff: afterRefund?.expenseWrittenOff,
       loss: afterRefund?.damageLoss,
     })
   );
@@ -358,7 +447,8 @@ async function setTextarea(page, id, value) {
       afterUiDaily.today.bill === 1500 &&
       afterUiDaily.today.advance === 1500 &&
       afterUiDaily.today.refund === 2400 &&
-      afterUiDaily.today.damageLoss === 1300,
+      afterUiDaily.today.damageLoss === 1300 &&
+      afterUiDaily.today.expense === 0,
     JSON.stringify(afterUiDaily.today)
   );
 
@@ -371,7 +461,7 @@ async function setTextarea(page, id, value) {
   check(
     "E12",
     "CSV backup includes refund/damage columns",
-    ["damageLoss", "damageNote", "returnedAt", "refundAmount", "refundNote"].every(
+    ["damageLoss", "damageNote", "returnedAt", "refundAmount", "refundNote", "expenseWrittenOff", "groupId", "deliveryDate", "deliveredAt"].every(
       (h) => csvHeader.includes(h)
     ),
     csvHeader.slice(0, 240)
@@ -403,11 +493,13 @@ async function setTextarea(page, id, value) {
     body: JSON.stringify({ file: snap.body.file }),
   });
   const restoredRows = await getServices(page);
+  const restoredCostRows = await getServices(page, COST_DAY);
   const restoredDone = restoredRows.find((s) => s.id === completed.id);
   const restoredReturn = restoredRows.find((s) => s.id === toReturn.id);
+  const restoredWrite = restoredCostRows.find((s) => s.id === costWrite.id);
   check(
     "E13",
-    "snapshot restore preserves refund/damage columns and converts legacy numbers",
+    "snapshot restore preserves refund/damage/expense-decision columns and converts legacy numbers",
     restored.ok &&
       restored.body.normalizedExpenses >= 1 &&
       restoredDone?.damageLoss === 500 &&
@@ -415,7 +507,8 @@ async function setTextarea(page, id, value) {
       restoredDone?.expenseAmount === 1500 &&
       restoredReturn?.status === "Returned" &&
       restoredReturn?.refundAmount === 1200 &&
-      restoredReturn?.damageLoss === 500,
+      restoredReturn?.damageLoss === 500 &&
+      restoredWrite?.expenseWrittenOff === true,
     JSON.stringify({
       ok: restored.ok,
       normalized: restored.body.normalizedExpenses,
@@ -424,6 +517,7 @@ async function setTextarea(page, id, value) {
       doneLoss: restoredDone?.damageLoss,
       refund: restoredReturn?.refundAmount,
       returnLoss: restoredReturn?.damageLoss,
+      writeOff: restoredWrite?.expenseWrittenOff,
     })
   );
 

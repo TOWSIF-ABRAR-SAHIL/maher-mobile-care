@@ -29,6 +29,15 @@ model Service {
   refundNote    String?  // internal note about the return/refund
   damageLoss    Int      @default(0) // internal: shop-borne damage repair/compensation
   damageNote    String?  // internal: what the technician damaged
+  /// A return can cancel the parts cost too (parts unused/returned). Reports
+  /// skip that amount while the code/amount stay on the row for audit.
+  expenseWrittenOff Boolean @default(false)
+  /// Multiple devices from one customer visit share this opaque group id.
+  groupId       String?
+  /// Expected handover date shown on the form/list.
+  deliveryDate  DateTime?
+  /// Actual handover time, set automatically when status becomes Delivered.
+  deliveredAt   DateTime?
   serviceDate   DateTime @default(now())
   archived      Boolean  @default(false) // soft-delete: hidden from lists/stats, restorable
   createdAt     DateTime @default(now())
@@ -38,6 +47,7 @@ model Service {
   @@index([technician])
   @@index([status])
   @@index([archived])
+  @@index([groupId])
 }
 
 /// Shop employees. `Service.technician` stays a plain String on purpose: a

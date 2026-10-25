@@ -84,10 +84,74 @@ export function ServiceTable({
   const [archived, setArchived] = useState<ServiceDTO[]>([]);
   const [archLoading, setArchLoading] = useState(false);
   const [restoring, setRestoring] = useState<number | null>(null);
-  // Privacy: the খরচ column always shows the saved code. A per-row eye
-  // reveals only that row's taka amount, so a customer cannot link the code
-  // to a price by looking at the list.
-  const [revealedExpenses, setRevealedExpenses] = useState<Record<number, boolean>>({});
+  // Privacy: the খরচ column always shows the saved code. The header's
+  // universal eye reveals every row at once (no timer) while a per-row eye
+  // reveals only that row's taka amount for 10 seconds.
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
+  const [revealedExpenses, setRevealedExpenses] = useState<
+    Record<number, boolean>
+  >({});
+  const revealTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>(
+    {}
+  );
+  const clearRevealTimer = (id: number) => {
+    const timer = revealTimers.current[id];
+    if (timer) {
+      clearTimeout(timer);
+      delete revealTimers.current[id];
+    }
+  };
+  const hideRowExpense = (id: number) => {
+    clearRevealTimer(id);
+    setRevealedExpenses((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+  const toggleRowExpense = (id: number) => {
+    if (showAllExpenses) return;
+    if (revealedExpenses[id]) {
+      hideRowExpense(id);
+      return;
+    }
+    clearRevealTimer(id);
+    setRevealedExpenses((prev) => ({ ...prev, [id]: true }));
+    revealTimers.current[id] = setTimeout(() => {
+      hideRowExpense(id);
+    }, 10_000);
+  };
+  /** One click shows every row; the next click hides every row. Partial
+   *  per-row reveals do not affect this decision. */
+  const toggleAllExpenses = () => {
+    if (showAllExpenses) {
+      setShowAllExpenses(false);
+      return;
+    }
+    Object.keys(revealTimers.current).forEach((key) => {
+      clearRevealTimer(Number(key));
+    });
+    setRevealedExpenses({});
+    setShowAllExpenses(true);
+  };
+  useEffect(() => {
+    // A new day means new rows; never leak a reveal/timer across dates.
+    Object.keys(revealTimers.current).forEach((key) => {
+      clearRevealTimer(Number(key));
+    });
+    setRevealedExpenses({});
+  }, [date]);
+  useEffect(
+    () => () => {
+      Object.keys(revealTimers.current).forEach((key) => {
+        const timer = revealTimers.current[Number(key)];
+        if (timer) clearTimeout(timer);
+      });
+      revealTimers.current = {};
+    },
+    []
+  );
   const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
   const [sharingId, setSharingId] = useState<number | null>(null);
   const sharingRef = useRef(false);
@@ -269,6 +333,40 @@ export function ServiceTable({
     </div>
   );
 
+  /** Expected handover date; turns red once the day has passed. */
+  const renderDelivery = (s: ServiceDTO) => {
+    if (s.deliveredAt) {
+      return (
+        <div className="mt-0.5 text-[11px] font-medium text-emerald-700">
+          ✅ ডেলিভারি: {dhakaDateKey(s.deliveredAt)}
+        </div>
+      );
+    }
+    if (!s.deliveryDate) return null;
+    const key = dhakaDateKey(s.deliveryDate);
+    const overdue = key < dhakaDateKey(new Date()) && !isReturned(s.status);
+    return (
+      <div
+        className={`mt-0.5 text-[11px] ${
+          overdue ? "font-semibold text-red-600" : "text-gray-500"
+        }`}
+      >
+        {overdue ? "⚠️ " : ""}ডেলিভারি: {key}
+      </div>
+    );
+  };
+
+  const groupBadge = (s: ServiceDTO) =>
+    s.groupId ? (
+      <span
+        data-testid={`group-badge-${s.id}`}
+        title="একই কাস্টমারের একাধিক ডিভাইস — বিল প্রিভিউতে সব ডিভাইস একসাথে দেখা যাবে"
+        className="rounded bg-blue-100 px-1 py-0.5 text-[10px] font-semibold text-blue-700"
+      >
+        👥 গ্রুপ
+      </span>
+    ) : null;
+
   const renderMoney = (s: ServiceDTO) => (
     <div className="space-y-0.5">
       <div>
@@ -294,6 +392,7 @@ export function ServiceTable({
     if (!s.shopExpense && !s.partsShop && s.damageLoss <= 0) {
       return <span className="text-gray-400">—</span>;
     }
+    const amountVisible = showAllExpenses || !!revealedExpenses[s.id];
 
     return (
       <div className="space-y-0.5">
@@ -309,35 +408,44 @@ export function ServiceTable({
                 ? s.shopExpense
                 : "৳••••"}
             </span>
+            {s.expenseWrittenOff ? (
+              <span
+                data-testid={`expense-written-off-${s.id}`}
+                className="rounded bg-gray-200 px-1 py-0.5 text-[10px] font-semibold text-gray-600"
+                title="ফেরতের সময় খরচ বাদ দেওয়া হয়েছে — রিপোর্টে যোগ হয় না"
+              >
+                বাতিল
+              </span>
+            ) : null}
             <button
               type="button"
               data-testid={`expense-reveal-${s.id}`}
               aria-label={
-                revealedExpenses[s.id]
-                  ? "খরচের টাকা লুকান"
-                  : "খরচের টাকা দেখুন"
+                showAllExpenses
+                  ? "সব খরচ দেখা হচ্ছে"
+                  : amountVisible
+                    ? "খরচের টাকা লুকান"
+                    : "খরচের টাকা দেখুন"
               }
-              aria-pressed={!!revealedExpenses[s.id]}
+              aria-pressed={amountVisible}
+              disabled={showAllExpenses}
               title={
-                revealedExpenses[s.id]
-                  ? "খরচের টাকা লুকান"
-                  : "খরচের টাকা দেখুন"
+                showAllExpenses
+                  ? "সব খরচ দেখা হচ্ছে"
+                  : amountVisible
+                    ? "এখনই লুকান (১০ সেকেন্ড পর নিজে থেকেও লুকাবে)"
+                    : "১০ সেকেন্ডের জন্য টাকা দেখুন"
               }
-              onClick={() =>
-                setRevealedExpenses((prev) => ({
-                  ...prev,
-                  [s.id]: !prev[s.id],
-                }))
-              }
-              className="rounded p-0.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+              onClick={() => toggleRowExpense(s.id)}
+              className="rounded p-0.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {revealedExpenses[s.id] ? (
+              {amountVisible ? (
                 <EyeOff className="h-3.5 w-3.5" />
               ) : (
                 <Eye className="h-3.5 w-3.5" />
               )}
             </button>
-            {revealedExpenses[s.id] ? (
+            {amountVisible ? (
               <span
                 data-testid={`expense-amount-${s.id}`}
                 className="text-xs font-semibold text-emerald-700"
@@ -455,18 +563,20 @@ export function ServiceTable({
           >
             <Scale />
           </Button>
-          {!isReturned(s.status) ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="এডিট"
-              className="h-10 w-10 lg:h-8 lg:w-8"
-              title="এডিট"
-              onClick={() => onEdit(s)}
-            >
-              <Pencil />
-            </Button>
-          ) : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="এডিট"
+            className="h-10 w-10 lg:h-8 lg:w-8"
+            title={
+              isReturned(s.status)
+                ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
+                : "এডিট"
+            }
+            onClick={() => onEdit(s)}
+          >
+            <Pencil />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -488,7 +598,7 @@ export function ServiceTable({
       data-view={isDesktop ? "table" : "cards"}
       className="rounded-xl border border-slate-200 bg-white p-4"
     >
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
           {showArchived ? (
             <>
@@ -503,6 +613,31 @@ export function ServiceTable({
           )}
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            variant={showAllExpenses ? "default" : "outline"}
+            size="sm"
+            data-testid="expense-toggle"
+            aria-pressed={showAllExpenses}
+            aria-label={
+              showAllExpenses
+                ? "সব খরচ লুকান"
+                : "সব খরচের টাকা দেখান"
+            }
+            title={
+              showAllExpenses
+                ? "সব খরচ আবার লুকান"
+                : "এক ক্লিকে সব খরচের টাকা দেখান"
+            }
+            onClick={toggleAllExpenses}
+            className="print:hidden"
+          >
+            {showAllExpenses ? (
+              <EyeOff className="mr-1 h-4 w-4" />
+            ) : (
+              <Eye className="mr-1 h-4 w-4" />
+            )}
+            {showAllExpenses ? "খরচ লুকান" : "খরচ দেখান"}
+          </Button>
           <Button
             variant={showArchived ? "default" : "outline"}
             size="sm"
@@ -609,7 +744,10 @@ export function ServiceTable({
                       : ""
                 }
               >
-                <TableCell className="font-mono font-semibold">{s.id}</TableCell>
+                <TableCell className="font-mono font-semibold">
+                  <div>{s.id}</div>
+                  {groupBadge(s)}
+                </TableCell>
                 {showArchived ? (
                   <TableCell className="whitespace-nowrap text-sm text-gray-600">
                     {dhakaDateKey(s.serviceDate)}
@@ -624,6 +762,7 @@ export function ServiceTable({
                   <div className="max-w-44 truncate text-xs text-gray-500" title={s.problem}>
                     {s.problem}
                   </div>
+                  {renderDelivery(s)}
                 </TableCell>
                 <TableCell>{renderStatus(s)}</TableCell>
                 <TableCell className="whitespace-nowrap text-sm tabular-nums">
@@ -666,6 +805,7 @@ export function ServiceTable({
                     <span className="font-mono font-semibold text-gray-700">
                       #{s.id}
                     </span>
+                    {groupBadge(s)}
                     {showArchived ? (
                       <span>{dhakaDateKey(s.serviceDate)}</span>
                     ) : null}
@@ -686,6 +826,7 @@ export function ServiceTable({
                   {s.model}
                 </p>
                 <p className="break-words text-xs text-gray-500">{s.problem}</p>
+                {renderDelivery(s)}
               </div>
 
               <div className="mt-2 rounded-lg border border-gray-200 bg-white/80 p-2 text-xs tabular-nums">

@@ -50,6 +50,24 @@ export async function POST(
       );
     }
 
+    // A returned job cannot be billed, but the parts cost may already have
+    // left the shop. The UI must ask which one happened; older callers that
+    // omit the field keep the cost as a loss so nothing silently disappears.
+    let expenseWrittenOff = existing.expenseWrittenOff;
+    if (existing.expenseAmount > 0) {
+      const action = body?.expenseAction;
+      if (action === "writeoff") {
+        expenseWrittenOff = true;
+      } else if (action === "keep") {
+        expenseWrittenOff = false;
+      } else if (action !== undefined && action !== null && action !== "") {
+        return NextResponse.json(
+          { error: "দোকান খরচের সিদ্ধান্ত সঠিক নয়" },
+          { status: 400 }
+        );
+      }
+    }
+
     const updated = await prisma.service.update({
       where: { id },
       data: {
@@ -57,6 +75,10 @@ export async function POST(
         returnedAt: new Date(),
         refundAmount: existing.advance,
         refundNote: note,
+        expenseWrittenOff,
+        // A returned job is no longer delivered; keep the status/date pair
+        // consistent with the edit endpoint (which clears it on reopen).
+        deliveredAt: null,
         due: 0,
       },
     });

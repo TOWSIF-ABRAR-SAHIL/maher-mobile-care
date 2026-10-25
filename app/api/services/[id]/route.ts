@@ -50,6 +50,15 @@ export async function PUT(
       { allowedTechnicians }
     );
 
+    // Actual handover time follows the status: first move into Delivered
+    // stamps it, reopening the job clears it so a stale date is never printed.
+    if (data.status !== undefined) {
+      data.deliveredAt =
+        data.status === "Delivered"
+          ? existing.deliveredAt ?? new Date()
+          : null;
+    }
+
     const updated = await prisma.service.update({ where: { id }, data });
     return NextResponse.json(updated);
   } catch (err: unknown) {

@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
         due: true,
         status: true,
         expenseAmount: true,
+        expenseWrittenOff: true,
         damageLoss: true,
         refundAmount: true,
         shopExpense: true,
@@ -59,7 +60,12 @@ export async function GET(req: NextRequest) {
         bill: activeRows.reduce((s, r) => s + r.totalBill, 0),
         due: activeRows.reduce((s, r) => s + r.due, 0),
         advance: activeRows.reduce((s, r) => s + r.advance, 0),
-        expense: rows.reduce((s, r) => s + r.expenseAmount, 0),
+        // A returned job whose parts were unused/returned never cost the shop;
+        // keep the row for audit but skip its amount in every report.
+        expense: rows.reduce(
+          (s, r) => s + (r.expenseWrittenOff ? 0 : r.expenseAmount),
+          0
+        ),
         damageLoss: rows.reduce((s, r) => s + r.damageLoss, 0),
         refund: returnedRows.reduce((s, r) => s + r.refundAmount, 0),
         returnedCount: returnedRows.length,

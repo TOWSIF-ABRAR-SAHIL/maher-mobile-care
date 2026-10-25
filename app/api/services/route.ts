@@ -16,6 +16,19 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    // ?groupId=… → every device row from one customer visit, for the
+    // combined receipt/payment slip. Archived rows are never printed.
+    const groupId = req.nextUrl.searchParams.get("groupId");
+    if (groupId !== null) {
+      if (!groupId.trim() || groupId.length > 80) {
+        return NextResponse.json({ error: "ভুল গ্রুপ আইডি" }, { status: 400 });
+      }
+      const services = await prisma.service.findMany({
+        where: { groupId: groupId.trim(), archived: false },
+        orderBy: { id: "asc" },
+      });
+      return NextResponse.json({ groupId: groupId.trim(), services });
+    }
     // ?archived=true → every archived record (all dates, for restore view).
     if (req.nextUrl.searchParams.get("archived") === "true") {
       const services = await prisma.service.findMany({
@@ -62,7 +75,14 @@ export async function POST(req: NextRequest) {
     const validated = validateServiceCreate(body, { allowedTechnicians });
     const { serviceDateKey: _serviceDateKey, ...serviceData } = validated;
     void _serviceDateKey;
-    const created = await prisma.service.create({ data: serviceData });
+    const created = await prisma.service.create({
+      data: {
+        ...serviceData,
+        // Handover time is server-owned; a product sale is delivered at save.
+        deliveredAt:
+          serviceData.status === "Delivered" ? new Date() : null,
+      },
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (err: unknown) {
     console.error("POST /api/services failed:", err);
