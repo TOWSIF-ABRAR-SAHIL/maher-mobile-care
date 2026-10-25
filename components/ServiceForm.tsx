@@ -695,66 +695,8 @@ export function ServiceForm({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="svc-delivery-date">
-              ডেলিভারির সম্ভাব্য তারিখ (ঐচ্ছিক)
-            </Label>
-            <Input
-              id="svc-delivery-date"
-              type="date"
-              value={f.deliveryDate}
-              onChange={set("deliveryDate")}
-              className="h-9 xl:h-8"
-            />
-            {initial?.deliveredAt ? (
-              <p className="mt-1 text-xs text-emerald-700">
-                ✅ ডেলিভারি সম্পন্ন: {dhakaDateKey(initial.deliveredAt)}
-              </p>
-            ) : null}
-          </div>
-          {editing ? (
-            <div>
-              <Label htmlFor="svc-date">তারিখ (ভুল দিনে হলে বদলান)</Label>
-              <Input
-                id="svc-date"
-                type="date"
-                value={f.serviceDate}
-                onChange={set("serviceDate")}
-                className="h-9 xl:h-8"
-              />
-            </div>
-          ) : null}
-        </div>
         {!editing && !isProductSale ? (
-          <div
-            data-testid="extra-devices"
-            className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-2"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-blue-950">
-                  👥 এক কাস্টমারের একাধিক ডিভাইস
-                </p>
-                <p className="text-xs leading-snug text-blue-900/80">
-                  নাম, ফোন, টেকনিশিয়ান ও তারিখ সব ডিভাইসের জন্য একই থাকবে।
-                  চাইলে আলাদা আলাদাভাবেও এন্ট্রি করতে পারবেন।
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                data-testid="add-device"
-                onClick={addDevice}
-                disabled={devices.length >= 7}
-                className="shrink-0 border-blue-300 bg-white text-blue-800 hover:bg-blue-100"
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                আরেকটি ডিভাইস
-              </Button>
-            </div>
-
+          <div data-testid="extra-devices" className="space-y-2">
             {devices.map((d, index) => {
               const dBill = parseBnNumber(d.totalBill) ?? 0;
               const dAdv = parseBnNumber(d.advance) ?? 0;
@@ -904,8 +846,61 @@ export function ServiceForm({
                 </div>
               );
             })}
+
+            <div className="space-y-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-testid="add-device"
+                onClick={addDevice}
+                disabled={devices.length >= 7}
+                className="h-9 w-full border-dashed border-blue-300 bg-white text-blue-800 hover:bg-blue-50 disabled:opacity-60"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                {devices.length >= 7
+                  ? "সর্বোচ্চ ৮টি ডিভাইস"
+                  : "আরেকটি ডিভাইস যোগ করুন"}
+              </Button>
+              <p className="px-1 text-xs leading-snug text-gray-500">
+                নাম, ফোন, টেকনিশিয়ান ও ডেলিভারি তারিখ সব ডিভাইসের জন্য একই
+                থাকবে।
+              </p>
+            </div>
           </div>
         ) : null}
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="svc-delivery-date">
+              ডেলিভারির সম্ভাব্য তারিখ (ঐচ্ছিক)
+            </Label>
+            <Input
+              id="svc-delivery-date"
+              type="date"
+              value={f.deliveryDate}
+              onChange={set("deliveryDate")}
+              className="h-9 xl:h-8"
+            />
+            {initial?.deliveredAt ? (
+              <p className="mt-1 text-xs text-emerald-700">
+                ✅ ডেলিভারি সম্পন্ন: {dhakaDateKey(initial.deliveredAt)}
+              </p>
+            ) : null}
+          </div>
+          {editing ? (
+            <div>
+              <Label htmlFor="svc-date">তারিখ (ভুল দিনে হলে বদলান)</Label>
+              <Input
+                id="svc-date"
+                type="date"
+                value={f.serviceDate}
+                onChange={set("serviceDate")}
+                className="h-9 xl:h-8"
+              />
+            </div>
+          ) : null}
+        </div>
 
         <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 border-t border-slate-200 bg-white/95 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           {editing ? (
