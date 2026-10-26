@@ -10,7 +10,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 224.3 76.3% 48%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -22,7 +22,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 224.3 76.3% 48%;
     --radius: 0.5rem;
 
     /* Maher Mobile Care shop palette — "Counter Ledger".
@@ -31,8 +31,8 @@
     --maher-surface: 214 28% 97%;      /* cool grey page background */
     --maher-surface-strong: 214 24% 93%; /* rails, table headers, quiet fills */
     --maher-border: 214 20% 87%;       /* slate border for cards/separators */
-    --maher-navy: 221.2 83.2% 53.3%;   /* brand blue #2563EB — header + primaries */
-    --maher-navy-light: 224.3 76.3% 48%; /* #1D4ED8 — deeper hover for blue buttons */
+    --maher-navy: 224.3 76.3% 48%;     /* brand blue #1D4ED8 — one step deeper */
+    --maher-navy-light: 226 71% 40%;   /* #1E40AF — pressed/deep hover */
     --maher-ink: 215 35% 15%;          /* primary reading colour */
     --maher-blue: 214 86% 52%;         /* selection / active workspace */
     --maher-blue-soft: 214 100% 96%;   /* light-blue selection fill */
@@ -63,7 +63,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 226 71% 40%;
   }
 }
 

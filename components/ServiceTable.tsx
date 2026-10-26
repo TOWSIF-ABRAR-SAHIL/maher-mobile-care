@@ -23,6 +23,8 @@ import {
   Search,
   Share2,
   Trash2,
+  Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ServiceAdjustDialog } from "@/components/ServiceAdjustDialog";
@@ -60,7 +62,7 @@ import {
   type ServiceStatus,
 } from "@/lib/utils";
 import { isShopExpenseCode } from "@/lib/expense-code";
-import { dhakaDateKey } from "@/lib/dhaka";
+import { dhakaDateKey, bengaliDateLabel } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -518,26 +520,48 @@ export function ServiceTable({
       </span>
     ) : null;
 
-  const renderMoney = (s: ServiceDTO) => (
-    <div className="space-y-0.5">
-      <div>
-        বিল: <span className="font-semibold">{formatTaka(s.totalBill)}</span>
-      </div>
-      <div className="text-maher-done">
-        জমা: <span className="font-semibold">{formatTaka(s.advance)}</span>
-      </div>
-      {isReturned(s.status) ? (
-        <div className="text-maher-money">
-          ফেরত:{" "}
-          <span className="font-semibold">{formatTaka(s.refundAmount)}</span>
+  /**
+   * Each row prints like a receipt line: the bill is the headline figure, the
+   * deposit and the balance sit on a ruled second line. All figures use
+   * tabular numerals so a column can be scanned down without wobble.
+   */
+  const renderMoney = (s: ServiceDTO) => {
+    const returned = isReturned(s.status);
+    return (
+      <div
+        data-testid={`svc-money-${s.id}`}
+        className="min-w-[7.5rem] tabular-nums"
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10px] font-medium text-muted-foreground">
+            বিল
+          </span>
+          <span className="text-[13px] font-semibold text-foreground">
+            {formatTaka(s.totalBill)}
+          </span>
         </div>
-      ) : (
-        <div className={s.due > 0 ? "text-maher-due" : "text-muted-foreground"}>
-          বাকি: <span className="font-semibold">{formatTaka(s.due)}</span>
+        <div className="mt-1 flex items-baseline justify-between gap-2 border-t border-dashed border-maher-border/80 pt-1 text-[11px]">
+          <span className="text-maher-done">
+            জমা{" "}
+            <span className="font-semibold">{formatTaka(s.advance)}</span>
+          </span>
+          {returned ? (
+            <span className="font-semibold text-maher-money">
+              ফেরত {formatTaka(s.refundAmount)}
+            </span>
+          ) : (
+            <span
+              className={`font-semibold ${
+                s.due > 0 ? "text-maher-due" : "text-muted-foreground"
+              }`}
+            >
+              বাকি {formatTaka(s.due)}
+            </span>
+          )}
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderCost = (s: ServiceDTO) => {
     if (!s.shopExpense && !s.partsShop && s.damageLoss <= 0) {
@@ -627,13 +651,13 @@ export function ServiceTable({
   };
 
   const renderActions = (s: ServiceDTO) => (
-    <div className="flex flex-wrap justify-end gap-1 print:hidden">
+    <div className="flex flex-wrap justify-end gap-1 lg:grid lg:grid-cols-[repeat(3,1.5rem)] lg:gap-0.5 min-[1400px]:flex min-[1400px]:flex-nowrap min-[1400px]:gap-1 print:hidden">
       {showArchived ? (
         <Button
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -646,7 +670,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="বিল প্রিন্ট"
-            className="h-10 w-10 text-maher-navy lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="বিল প্রিন্ট"
             onClick={() => onReceipt(s)}
           >
@@ -657,7 +681,7 @@ export function ServiceTable({
               asChild
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+              className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
               title="WhatsApp (chat/call)"
             >
               <a
@@ -674,7 +698,7 @@ export function ServiceTable({
               variant="ghost"
               size="icon"
               aria-label="ফোন নম্বর নেই"
-              className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+              className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
               title="ফোন নম্বর নেই"
               disabled
             >
@@ -685,7 +709,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="PDF শেয়ার"
-            className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="PDF শেয়ার"
             disabled={!s.phone.trim() || sharingId !== null}
             onClick={() => void sharePdf(s)}
@@ -704,7 +728,7 @@ export function ServiceTable({
                 ? "ড্যামেজ ক্ষতি"
                 : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-maher-money lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "ড্যামেজ ক্ষতি"
@@ -718,7 +742,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 lg:h-8 lg:w-8"
+            className="h-10 w-10 lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -732,7 +756,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-maher-due lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -774,23 +798,65 @@ export function ServiceTable({
    * thin left accent survives the status/due colouring — enough to spot a
    * returned job or an unpaid visit when scanning the list.
    */
-  const visitAccent = (visit: Visit) =>
+  const visitTone = (visit: Visit) =>
     visit.devices.some((d) => isReturned(d.status))
-      ? "border-l-[3px] border-l-maher-money"
+      ? "returned"
       : visit.devices.some((d) => d.due > 0)
+        ? "due"
+        : "normal";
+
+  /** Ledger tone for one device row. */
+  const rowTone = (s: ServiceDTO) =>
+    isReturned(s.status) ? "returned" : s.due > 0 ? "due" : "normal";
+
+  const toneEdge = (tone: string) =>
+    tone === "returned"
+      ? "border-l-[3px] border-l-maher-money"
+      : tone === "due"
         ? "border-l-[3px] border-l-maher-due"
         : "border-l-[3px] border-l-transparent";
 
-  const visitRowTint = () => "hover:bg-muted/40";
+  const toneWash = (tone: string) =>
+    tone === "returned"
+      ? "bg-maher-money/5 hover:bg-maher-money/10"
+      : tone === "due"
+        ? "bg-maher-due/5 hover:bg-maher-due/10"
+        : "hover:bg-maher-surface/70";
+
+  /** Cards sit on the grey page, so the neutral tone needs its own paper. */
+  const toneCard = (tone: string) =>
+    tone === "returned"
+      ? "bg-maher-money/5 hover:bg-maher-money/10"
+      : tone === "due"
+        ? "bg-maher-due/5 hover:bg-maher-due/10"
+        : "bg-card hover:bg-maher-surface/70";
+
+  const visitAccent = (visit: Visit) => toneEdge(visitTone(visit));
+
+  const visitRowTint = () => "hover:bg-maher-surface/70";
 
   const visitCardTint = (visit: Visit) =>
     `border-maher-border bg-card ${visitAccent(visit)}`;
+
+  /** One cell of the mobile receipt strip. */
+  const moneyCell = (label: string, value: string, tone: string) => (
+    <div className="min-w-0 px-2 py-1.5">
+      <div className="text-[10px] font-medium text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={`mt-0.5 truncate text-xs font-semibold tabular-nums ${tone}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
 
   /** The customer's money, printed once at the top of the visit block. */
   const visitMoney = (visit: Visit, layout: "stack" | "columns" = "stack") => {
     const totals = visitTotals(visit.devices);
     const rows = [
-      { label: "বিল", value: totals.bill, tone: "" },
+      { label: "বিল", value: totals.bill, tone: "text-foreground" },
       { label: "জমা", value: totals.advance, tone: "text-maher-done" },
       ...(totals.refund > 0
         ? [{ label: "ফেরত", value: totals.refund, tone: "text-maher-money" }]
@@ -803,24 +869,34 @@ export function ServiceTable({
     ];
     return (
       <div
-        data-testid={`visit-total-${visit.devices[0].id}`}
+        data-testid={
+          layout === "columns"
+            ? `money-strip-${visit.devices[0].id}`
+            : `visit-total-${visit.devices[0].id}`
+        }
         className={
           layout === "columns"
-            ? "grid grid-cols-3 gap-1 text-xs tabular-nums"
-            : "space-y-0.5 text-xs tabular-nums"
+            ? `grid ${
+                totals.refund > 0 ? "grid-cols-4" : "grid-cols-3"
+              } divide-x divide-maher-border overflow-hidden rounded-lg border border-maher-border bg-maher-surface/40 tabular-nums`
+            : "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs tabular-nums"
         }
       >
         {rows.map((row) =>
           layout === "columns" ? (
-            <div key={row.label} className={row.tone}>
-              <div className="text-[11px] leading-tight text-muted-foreground">
+            <div key={row.label} className="min-w-0 px-2 py-1.5">
+              <div className="text-[10px] font-medium text-muted-foreground">
                 {row.label}
               </div>
-              <div className="font-semibold">{formatTaka(row.value)}</div>
+              <div
+                className={`mt-0.5 truncate text-xs font-semibold ${row.tone}`}
+              >
+                {formatTaka(row.value)}
+              </div>
             </div>
           ) : (
             <div key={row.label} className={row.tone}>
-              {row.label}:{" "}
+              {row.label}{" "}
               <span className="font-semibold">{formatTaka(row.value)}</span>
             </div>
           )
@@ -836,7 +912,7 @@ export function ServiceTable({
         variant="ghost"
         size="icon"
         aria-label="বিল প্রিন্ট"
-        className="h-10 w-10 text-maher-navy lg:h-8 lg:w-8"
+        className="h-10 w-10 text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
         title="বিল প্রিন্ট"
         onClick={() => onReceipt(s)}
       >
@@ -847,7 +923,7 @@ export function ServiceTable({
           asChild
           variant="ghost"
           size="icon"
-          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="WhatsApp (chat/call)"
         >
           <a
@@ -864,7 +940,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফোন নম্বর নেই"
-          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফোন নম্বর নেই"
           disabled
         >
@@ -875,7 +951,7 @@ export function ServiceTable({
         variant="ghost"
         size="icon"
         aria-label="PDF শেয়ার"
-        className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+        className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
         title="PDF শেয়ার"
         disabled={!s.phone.trim() || sharingId !== null}
         onClick={() => void sharePdf(s)}
@@ -897,7 +973,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -912,7 +988,7 @@ export function ServiceTable({
             aria-label={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-maher-money lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
@@ -924,7 +1000,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 lg:h-8 lg:w-8"
+            className="h-10 w-10 lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -938,7 +1014,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-maher-due lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -953,9 +1029,10 @@ export function ServiceTable({
     <span
       data-testid={`visit-badge-${visit.devices[0].id}`}
       title="একই কাস্টমারের একাধিক ডিভাইস — বিল প্রিভিউতে সব ডিভাইস একসাথে দেখা যাবে"
-      className="rounded bg-maher-surface px-1 py-0.5 text-[10px] font-semibold text-maher-navy"
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-maher-surface px-1 py-0.5 font-sans text-[10px] font-semibold text-maher-navy"
     >
-      👥 {toBnDigits(visit.devices.length)}টি ডিভাইস
+      <Users aria-hidden className="h-3 w-3 shrink-0" />
+      {toBnDigits(visit.devices.length)}টি ডিভাইস
     </span>
   );
 
@@ -1014,15 +1091,14 @@ export function ServiceTable({
   const renderSingleRow = (s: ServiceDTO) => (
     <TableRow
       key={s.id}
-      className={
-        isReturned(s.status)
-          ? "bg-maher-money/10 hover:bg-maher-money/20"
-          : s.due > 0
-            ? "bg-maher-due/10 hover:bg-maher-due/20"
-            : ""
-      }
+      data-tone={rowTone(s)}
+      className={`group ${toneWash(rowTone(s))}`}
     >
-      <TableCell className="font-mono font-semibold">
+      <TableCell
+        className={`font-mono text-[13px] font-semibold tabular-nums ${toneEdge(
+          rowTone(s)
+        )}`}
+      >
         <div>{s.id}</div>
         {groupBadge(s)}
       </TableCell>
@@ -1032,8 +1108,15 @@ export function ServiceTable({
         </TableCell>
       ) : null}
       <TableCell>
-        <div className="font-medium">{s.customerName}</div>
-        <div className="text-xs text-muted-foreground">{s.phone}</div>
+        <div
+          className="max-w-[8.5rem] truncate font-semibold text-foreground"
+          title={s.customerName}
+        >
+          {s.customerName}
+        </div>
+        <div className="text-xs tabular-nums text-muted-foreground">
+          {s.phone}
+        </div>
       </TableCell>
       <TableCell>
         <div className="font-medium">{s.model}</div>
@@ -1046,19 +1129,11 @@ export function ServiceTable({
         {renderDelivery(s)}
       </TableCell>
       <TableCell>{renderStatus(s)}</TableCell>
-      <TableCell className="whitespace-nowrap text-sm tabular-nums">
+      <TableCell className="whitespace-nowrap align-top text-sm">
         {renderMoney(s)}
       </TableCell>
       <TableCell className="align-top">{renderCost(s)}</TableCell>
-      <TableCell
-        className={`sticky right-0 z-10 border-l border-maher-border print:hidden ${
-          isReturned(s.status)
-            ? "bg-maher-money/10"
-            : s.due > 0
-              ? "bg-maher-due/10"
-              : "bg-white"
-        }`}
-      >
+      <TableCell className="sticky right-0 z-10 border-l border-maher-border bg-card px-1 group-hover:bg-maher-surface print:hidden">
         {renderActions(s)}
       </TableCell>
     </TableRow>
@@ -1079,16 +1154,17 @@ export function ServiceTable({
         data-testid={`visit-row-${first.id}`}
         data-customer={visit.customerName}
         data-devices={visit.devices.length}
-        className={visitRowTint()}
+        data-tone={visitTone(visit)}
+        className={`group ${visitRowTint()}`}
       >
         <TableCell
           className={`align-top font-mono font-semibold ${visitAccent(visit)}`}
         >
-          <div data-testid={`visit-id-${first.id}`}>#{first.id}</div>
-          <div className="mt-0.5 flex items-center gap-1">
+          <div className="flex items-center gap-1">
+            <div data-testid={`visit-id-${first.id}`}>#{first.id}</div>
             {collapseToggle(visit)}
-            {deviceCountBadge(visit)}
           </div>
+          <div className="mt-0.5">{deviceCountBadge(visit)}</div>
         </TableCell>
         {showArchived ? (
           <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">
@@ -1096,7 +1172,12 @@ export function ServiceTable({
           </TableCell>
         ) : null}
         <TableCell className="align-top">
-          <div className="font-medium">{visit.customerName}</div>
+          <div
+            className="max-w-[8.5rem] truncate font-medium"
+            title={visit.customerName}
+          >
+            {visit.customerName}
+          </div>
           <div className="text-xs text-muted-foreground">{visit.phone}</div>
           {filterHint(visit)}
         </TableCell>
@@ -1162,30 +1243,27 @@ export function ServiceTable({
       key={s.id}
       data-testid={`service-card-${s.id}`}
       data-customer={s.customerName}
-      className={`rounded-xl border p-3 ${
-        isReturned(s.status)
-          ? "border-maher-money/30 bg-maher-money/10"
-          : s.due > 0
-            ? "border-maher-due/30 bg-maher-due/10"
-            : "border-maher-border bg-white"
-      }`}
+      data-tone={rowTone(s)}
+      className={`rounded-lg border p-3 ${toneEdge(rowTone(s))} ${toneCard(
+        rowTone(s)
+      )}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono font-semibold text-foreground">
+            <span className="font-mono text-[13px] font-semibold tabular-nums text-foreground">
               #{s.id}
             </span>
             {groupBadge(s)}
             {showArchived ? <span>{dhakaDateKey(s.serviceDate)}</span> : null}
           </div>
           <p
-            className="truncate font-semibold text-foreground"
+            className="mt-0.5 truncate text-[15px] font-semibold text-foreground"
             title={s.customerName}
           >
             {s.customerName}
           </p>
-          <p className="text-xs text-muted-foreground">{s.phone}</p>
+          <p className="text-xs tabular-nums text-muted-foreground">{s.phone}</p>
         </div>
         <div className="shrink-0 text-right">{renderStatus(s)}</div>
       </div>
@@ -1198,18 +1276,29 @@ export function ServiceTable({
         {renderDelivery(s)}
       </div>
 
-      <div className="mt-2 rounded-lg border border-maher-border bg-white/80 p-2 text-xs tabular-nums">
-        {renderMoney(s)}
+      <div
+        data-testid={`money-strip-${s.id}`}
+        className="mt-2 grid grid-cols-3 divide-x divide-maher-border overflow-hidden rounded-lg border border-maher-border bg-maher-surface/40"
+      >
+        {moneyCell("বিল", formatTaka(s.totalBill), "text-foreground")}
+        {moneyCell("জমা", formatTaka(s.advance), "text-maher-done")}
+        {isReturned(s.status)
+          ? moneyCell("ফেরত", formatTaka(s.refundAmount), "text-maher-money")
+          : moneyCell(
+              "বাকি",
+              formatTaka(s.due),
+              s.due > 0 ? "text-maher-due" : "text-muted-foreground"
+            )}
       </div>
 
-      <div className="mt-2 rounded-lg border border-dashed border-maher-border p-2 text-xs">
-        <p className="mb-1 font-semibold text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-2 text-xs">
+        <span className="text-[10px] font-medium text-muted-foreground">
           খরচ / পার্টস দোকান
-        </p>
-        {renderCost(s)}
+        </span>
+        <div className="min-w-0 text-right">{renderCost(s)}</div>
       </div>
 
-      <div className="mt-2 border-t border-maher-border pt-2">
+      <div className="mt-2 border-t border-dashed border-maher-border pt-2">
         {renderActions(s)}
       </div>
     </article>
@@ -1224,7 +1313,8 @@ export function ServiceTable({
         data-testid={`visit-card-${first.id}`}
         data-customer={visit.customerName}
         data-devices={visit.devices.length}
-        className={`rounded-xl border p-3 ${visitCardTint(visit)}`}
+        data-tone={visitTone(visit)}
+        className={`rounded-lg border p-3 ${visitCardTint(visit)}`}
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span
@@ -1246,14 +1336,11 @@ export function ServiceTable({
         <p className="text-xs text-muted-foreground">{visit.phone}</p>
         {filterHint(visit)}
 
-        <div
-          data-testid={`visit-summary-${first.id}`}
-          className="mt-2 overflow-hidden rounded-lg border border-maher-border bg-white/80 px-2 py-1.5"
-        >
-          <p className="text-[11px] font-semibold text-muted-foreground">
+        <div data-testid={`visit-summary-${first.id}`} className="mt-2">
+          <p className="mb-1 text-[10px] font-medium text-muted-foreground">
             ভিজিটের মোট
           </p>
-          <div className="mt-1">{visitMoney(visit, "columns")}</div>
+          {visitMoney(visit, "columns")}
         </div>
 
         {isCollapsed(visit) ? null : (
@@ -1306,12 +1393,12 @@ export function ServiceTable({
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
       data-date={date}
-      className="rounded-xl border border-maher-border bg-card p-4"
+      className="overflow-hidden rounded-xl border border-maher-border bg-card"
     >
-      <div className="mb-3 space-y-2">
+      <div className="border-b border-maher-border px-4 py-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+            <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight text-maher-ink">
               {showArchived ? (
                 <>
                   <Archive className="h-4 w-4 text-muted-foreground" />
@@ -1324,11 +1411,34 @@ export function ServiceTable({
                 </>
               )}
             </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {showArchived
-                ? "আর্কাইভ করা সব তারিখের এন্ট্রি — ফিরিয়ে আনা যাবে।"
-                : `${date} — এই দিনের সব ভিজিট, ডিভাইস ও বাকি।`}
-            </p>
+            <div
+              data-testid="service-list-facts"
+              className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+            >
+              {showArchived ? (
+                <span>আর্কাইভ করা সব তারিখের এন্ট্রি — ফিরিয়ে আনা যাবে।</span>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground/80">
+                    {bengaliDateLabel(date)}
+                  </span>
+                  <span aria-hidden className="h-3 w-px bg-maher-border" />
+                  <span>
+                    <span className="font-semibold tabular-nums text-maher-ink">
+                      {toBnDigits(visitsAll.length)}
+                    </span>
+                    টি ভিজিট
+                  </span>
+                  <span aria-hidden className="h-3 w-px bg-maher-border" />
+                  <span>
+                    <span className="font-semibold tabular-nums text-maher-ink">
+                      {toBnDigits(techFiltered.length)}
+                    </span>
+                    টি ডিভাইস
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           {!showArchived && onPrev && onNext && onDateChange && onToday ? (
             <ServiceDateNav
@@ -1342,7 +1452,7 @@ export function ServiceTable({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             <Button
               variant={showAllExpenses ? "default" : "outline"}
@@ -1358,7 +1468,7 @@ export function ServiceTable({
                   : "এক ক্লিকে সব খরচের টাকা দেখান"
               }
               onClick={toggleAllExpenses}
-              className="print:hidden"
+              className="h-8 bg-white print:hidden"
             >
               {showAllExpenses ? (
                 <EyeOff className="mr-1 h-4 w-4" />
@@ -1371,7 +1481,7 @@ export function ServiceTable({
               variant={showArchived ? "default" : "outline"}
               size="sm"
               onClick={() => setShowArchived((v) => !v)}
-              className="print:hidden"
+              className="h-8 bg-white print:hidden"
             >
               <Archive className="mr-1 h-4 w-4" />
               {showArchived ? "তালিকায় ফিরুন" : "আর্কাইভ দেখুন"}
@@ -1384,19 +1494,32 @@ export function ServiceTable({
               placeholder="নাম, আইডি, ফোন বা মডেল খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              className={`h-9 bg-white pl-9 ${search ? "pr-9" : ""}`}
             />
+            {search ? (
+              <button
+                type="button"
+                data-testid="svc-search-clear"
+                aria-label="খোঁজা মুছুন"
+                title="খোঁজা মুছুন"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-maher-surface-strong hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
 
+      <div className="px-4 py-3">
       {/* v1.1 filter notice. Deliberately NOT inside a `div.mb-3`: laneA's chip
           helper selects `div.mb-3 button` inside this section, so a status chip
           look-alike here would break that suite. */}
       {technicianFilter ? (
         <div
           data-testid="tech-filter-notice"
-          className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-maher-border bg-maher-surface/40 px-3 py-2 text-sm text-maher-navy print:hidden"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-maher-border bg-maher-surface/40 px-3 py-2 text-sm text-maher-navy print:hidden"
         >
           <span className="flex items-center gap-1.5">
             <Search className="h-4 w-4 shrink-0" />
@@ -1411,76 +1534,124 @@ export function ServiceTable({
       {busy ? (
         <div className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-14 w-full" />
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
           ))}
         </div>
       ) : (
         <>
           {!showArchived ? (
-            <div className="mb-3 flex flex-wrap gap-1.5 print:hidden">
-              {(["All", ...STATUSES] as const).map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                    statusFilter === st
-                      ? "border-maher-navy bg-maher-navy text-white"
-                      : "border-maher-border bg-white text-foreground hover:border-maher-border hover:text-maher-navy"
-                  }`}
-                >
-                  {st === "All" ? "সব" : STATUS_BN[st]} ({counts[st] ?? 0})
-                </button>
-              ))}
+            <div className="relative mb-3">
+              <div
+                data-testid="svc-status-tabs"
+                className="-mx-1 overflow-x-auto px-1 print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+              <div className="flex w-max min-w-full items-center gap-1.5">
+                {(["All", ...STATUSES] as const).map((st) => {
+                  const active = statusFilter === st;
+                  const dot =
+                    st === "All"
+                      ? "bg-maher-ink"
+                      : st === "Pending"
+                        ? "bg-maher-due"
+                        : st === "In-Progress"
+                          ? "bg-maher-navy"
+                          : st === "Completed"
+                            ? "bg-maher-done"
+                            : st === "Delivered"
+                              ? "bg-slate-400"
+                              : "bg-maher-money";
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setStatusFilter(st)}
+                      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        active
+                          ? "border-maher-navy bg-maher-navy text-white shadow-sm"
+                          : "border-maher-border bg-white text-foreground hover:border-maher-navy/40 hover:bg-maher-surface/60 hover:text-maher-navy"
+                      }`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          active ? "bg-white/80" : dot
+                        }`}
+                      />
+                      <span>{st === "All" ? "সব" : STATUS_BN[st]}</span>
+                      {" "}
+                      <span
+                        className={`tabular-nums ${
+                          active ? "text-white/75" : "text-muted-foreground"
+                        }`}
+                      >
+                        ({counts[st] ?? 0})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-card to-transparent sm:hidden"
+              />
             </div>
           ) : null}
           {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-12 text-center">
-          <ClipboardList className="h-8 w-8 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">
-            {technicianFilter
-              ? showArchived
-                ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
-                : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
-              : showArchived
-                ? "আর্কাইভ খালি।"
-                : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
-          </p>
-        </div>
-      ) : isDesktop ? (
-        <Table ref={tableRef}>
-          <TableHeader>
-            <TableRow className="bg-maher-surface/50 hover:bg-maher-surface [&_th]:text-xs [&_th]:font-semibold">
-              <TableHead>ID</TableHead>
-              {showArchived ? <TableHead>তারিখ</TableHead> : null}
-              <TableHead>কাস্টমার</TableHead>
-              <TableHead>মডেল ও সমস্যা</TableHead>
-              <TableHead>অবস্থা</TableHead>
-              <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
-              <TableHead>খরচ / পার্টস দোকান</TableHead>
-              <TableHead className="sticky right-0 z-10 border-l border-maher-border bg-maher-surface/50 text-right print:hidden">
-                অ্যাকশন
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((visit) =>
-              visit.devices.length > 1
-                ? renderVisitRow(visit)
-                : renderSingleRow(visit.devices[0])
-            )}
-          </TableBody>
-        </Table>
-      ) : (
-        <div className="space-y-2" data-testid="service-cards">
-          {filtered.map((visit) =>
-            visit.devices.length > 1
-              ? renderVisitCard(visit)
-              : renderSingleCard(visit.devices[0])
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-maher-border bg-maher-surface/30 py-12 text-center">
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-maher-navy/10 text-maher-navy">
+                <ClipboardList className="h-5 w-5" />
+              </span>
+              <p className="font-semibold text-foreground">
+                {technicianFilter
+                  ? showArchived
+                    ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
+                    : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
+                  : showArchived
+                    ? "আর্কাইভ খালি।"
+                    : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
+              </p>
+            </div>
+          ) : isDesktop ? (
+            <Table ref={tableRef}>
+              <TableHeader>
+                <TableRow className="border-y border-maher-border bg-maher-surface/60 hover:bg-maher-surface/60 [&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-muted-foreground">
+                  <TableHead>ID</TableHead>
+                  {showArchived ? <TableHead>তারিখ</TableHead> : null}
+                  <TableHead>কাস্টমার</TableHead>
+                  <TableHead>মডেল ও সমস্যা</TableHead>
+                  <TableHead>অবস্থা</TableHead>
+                  <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
+                  <TableHead>খরচ / পার্টস দোকান</TableHead>
+                  <TableHead className="sticky right-0 z-10 border-l border-maher-border bg-maher-surface px-1 text-right print:hidden">
+                    অ্যাকশন
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((visit) =>
+                  visit.devices.length > 1
+                    ? renderVisitRow(visit)
+                    : renderSingleRow(visit.devices[0])
+                )}
+              </TableBody>
+            </Table>
+          ) : (
+            <div
+              className="grid grid-cols-1 items-start gap-2 md:grid-cols-2"
+              data-testid="service-cards"
+            >
+              {filtered.map((visit) =>
+                visit.devices.length > 1
+                  ? renderVisitCard(visit)
+                  : renderSingleCard(visit.devices[0])
+              )}
+            </div>
           )}
-        </div>
-      )}
         </>
       )}
+      </div>
 
       {adjustTarget ? (
         <ServiceAdjustDialog
