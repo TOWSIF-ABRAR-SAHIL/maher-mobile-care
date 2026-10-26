@@ -32,7 +32,7 @@ let browser = null;
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { timeout: 15000 }
@@ -40,7 +40,7 @@ let browser = null;
 
   const clickHeaderBtn = (text) =>
     page.evaluate((t) => {
-      const b = [...document.querySelectorAll("header button")].find((x) =>
+      const b = [...document.querySelectorAll('[data-testid="service-date-nav"] button')].find((x) =>
         x.textContent.includes(t)
       );
       if (!b) throw new Error("header button missing: " + t);
@@ -50,13 +50,13 @@ let browser = null;
   // 1. Aj button: go prev day, then back via Aj
   await clickHeaderBtn("আগের দিন");
   await page.waitForFunction(
-    (day) => document.body.textContent.includes(`সার্ভিস তালিকা (${day})`),
+    (day) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === day,
     { timeout: 8000 },
     YESTERDAY
   );
   await clickHeaderBtn("আজ");
   await page.waitForFunction(
-    (day) => document.body.textContent.includes(`সার্ভিস তালিকা (${day})`),
+    (day) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === day,
     { timeout: 8000 },
     TODAY
   );

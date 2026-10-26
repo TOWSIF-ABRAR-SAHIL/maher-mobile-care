@@ -42,9 +42,12 @@ function parts(key: string): { y: number; m: number; d: number } | null {
 export function HeaderDatePicker({
   date,
   onDateChange,
+  tone = "dark",
 }: {
   date: string;
   onDateChange: (date: string) => void;
+  /** "dark" sits in navy chrome; "light" sits inside a white list header. */
+  tone?: "dark" | "light";
 }) {
   const todayKey = dhakaDateKey(new Date());
   const selected = parts(date) ?? parts(todayKey)!;
@@ -121,7 +124,9 @@ export function HeaderDatePicker({
           onDateChange(event.target.value);
           setOpen(false);
         }}
-        className="h-8 w-full bg-white pr-9 text-gray-800 [&::-webkit-calendar-picker-indicator]:opacity-0"
+        className={`w-full bg-white pr-9 text-gray-800 [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+          tone === "light" ? "h-9" : "h-8"
+        }`}
       />
       <button
         ref={toggleRef}
@@ -132,11 +137,15 @@ export function HeaderDatePicker({
         aria-expanded={open}
         aria-controls="header-calendar"
         onClick={toggle}
-        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md bg-white text-gray-600 transition-colors hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500"
+        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md bg-white text-gray-600 transition-colors hover:bg-maher-blue-soft hover:text-maher-blue focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-maher-blue"
       >
         <CalendarDays className="h-4 w-4" />
       </button>
-      <p className="mt-0.5 hidden truncate text-center text-xs text-blue-100 sm:block">
+      <p
+        className={`mt-0.5 hidden truncate text-center text-xs sm:block ${
+          tone === "light" ? "text-muted-foreground" : "text-blue-100"
+        }`}
+      >
         {bengaliDateLabel(date)}
       </p>
 
@@ -199,9 +208,9 @@ export function HeaderDatePicker({
                   onClick={() => pickDay(day)}
                   className={`h-8 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 ${
                     isSelected
-                      ? "bg-blue-700 text-white hover:bg-blue-800"
+                      ? "bg-maher-blue text-white hover:bg-maher-navy"
                       : isToday
-                        ? "bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-300 hover:bg-blue-100"
+                        ? "bg-maher-blue-soft text-maher-navy ring-1 ring-inset ring-maher-blue/30 hover:bg-maher-blue-soft/80"
                         : "text-gray-700 hover:bg-slate-100"
                   }`}
                 >

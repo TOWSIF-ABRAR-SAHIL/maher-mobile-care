@@ -87,6 +87,15 @@ export interface StatsResponse {
   today: DayStats;
 }
 
+/** Cross-date delivery backlog as of a Dhaka day. Counts device rows, not
+ *  visits: one customer visit can hold several overdue handsets. */
+export interface OverdueResponse {
+  date: string;
+  count: number;
+  totalDue: number;
+  oldestDeliveryDate: string | null;
+}
+
 export interface MonthlySummary {
   /** Non-returned jobs only. */
   count: number;

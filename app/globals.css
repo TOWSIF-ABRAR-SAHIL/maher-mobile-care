@@ -25,15 +25,23 @@
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
 
-    /* Maher Mobile Care shop palette — deliberate, subject-specific tokens */
-    --maher-surface: 40 18% 96%;   /* off-white page background, quieter than stark white */
-    --maher-border: 210 18% 84%;   /* subtle slate border for cards/separators */
-    --maher-navy: 209 78% 16%;     /* header deep navy (#0b2a4a-ish) */
-    --maher-navy-light: 209 60% 24%; /* header hover state */
-    --maher-money: 24 85% 50%;     /* copper/amber for taka/bill totals */
-    --maher-done: 140 70% 45%;     /* green for completed/paid */
-    --maher-due: 0 75% 55%;        /* red for pending/due */
-    --maher-card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+    /* Maher Mobile Care shop palette — "Counter Ledger".
+       Deep navy chrome, cool grey workspace, blue selection, and a strict
+       meaning for green (done), amber (cash/warning) and red (due/error). */
+    --maher-surface: 214 28% 97%;      /* cool grey page background */
+    --maher-surface-strong: 214 24% 93%; /* rails, table headers, quiet fills */
+    --maher-border: 214 20% 87%;       /* slate border for cards/separators */
+    --maher-navy: 212 52% 14%;         /* header deep navy */
+    --maher-navy-light: 212 42% 22%;   /* header hover state */
+    --maher-ink: 215 35% 15%;          /* primary reading colour */
+    --maher-blue: 214 86% 52%;         /* selection / active workspace */
+    --maher-blue-soft: 214 100% 96%;   /* light-blue selection fill */
+    --maher-money: 34 92% 44%;         /* amber for cash/bill totals */
+    --maher-warning: 38 94% 48%;       /* amber for ongoing/warnings */
+    --maher-done: 152 58% 36%;         /* green for completed/paid */
+    --maher-due: 0 72% 51%;            /* red for pending/due/error */
+    --maher-card-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.04),
+      0 8px 24px -18px rgb(15 23 42 / 0.22);
   }
 
   .dark {
@@ -70,6 +78,32 @@
     overflow-x: clip;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-maher-surface text-foreground antialiased;
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: hsl(var(--maher-blue-soft));
+    color: hsl(var(--maher-navy));
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--maher-blue) / 0.7);
+    outline-offset: 2px;
+  }
+  /* Ledger figures line up when scanned down a column. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .ledger-panel {
+    @apply rounded-xl border border-maher-border bg-card shadow-sm;
+  }
+  .ledger-eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+  .ledger-rule {
+    @apply h-px w-full bg-maher-border;
   }
 }

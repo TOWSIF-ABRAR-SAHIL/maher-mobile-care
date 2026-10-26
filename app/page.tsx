@@ -1,24 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
-import { createRoot } from "react-dom/client";
-import { BarChart3, MapPin, Phone, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CalendarDays, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { Header } from "@/components/Header";
-import { MonthlySummary } from "@/components/MonthlySummary";
-import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
-import { TechnicianManager } from "@/components/TechnicianManager";
-import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
+import { AppHeader } from "@/components/AppHeader";
+import { PageLead } from "@/components/PageLead";
+import { ShopFooter } from "@/components/ShopFooter";
 import { RestoreDialog } from "@/components/RestoreDialog";
-import { ServiceForm } from "@/components/ServiceForm";
-import { SHOP } from "@/lib/shop";
-import {
-  createReceiptPdf,
-  shareReceiptPdf as sharePdfBlob,
-} from "@/lib/receipt-pdf";
-import { ServiceTable } from "@/components/ServiceTable";
-import { DailySummary } from "@/components/DailySummary";
+import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
+import { MonthlySummary } from "@/components/MonthlySummary";
+import { DuesCard } from "@/components/home/DuesCard";
+import { FinanceSummary } from "@/components/home/FinanceSummary";
+import { InventoryPulse } from "@/components/home/InventoryPulse";
+import { QuickActions } from "@/components/home/QuickActions";
+import { RecentWork } from "@/components/home/RecentWork";
+import { ReportsCard } from "@/components/home/ReportsCard";
+import { ServiceKpis } from "@/components/home/ServiceKpis";
+import { SystemUtilities } from "@/components/home/SystemUtilities";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,10 +27,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { dhakaDateKey, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
-import { toBnDigits } from "@/lib/utils";
+import { publishBackup } from "@/lib/backup";
+import {
+  bengaliDateLabel,
+  dhakaDateKey,
+  monthContaining,
+  shiftDateKey,
+  shiftMonth,
+} from "@/lib/dhaka";
+import { useLastBackup } from "@/lib/use-last-backup";
 import type {
   MonthlyResponse,
+  OverdueResponse,
+  ProductListResponse,
   RangeMode,
   ServiceDTO,
   StatsResponse,
@@ -44,177 +53,71 @@ async function getJSON<T>(url: string): Promise<T> {
 }
 
 export default function Home() {
-  const [date, setDate] = useState(() => dhakaDateKey(new Date()));
+  const router = useRouter();
+  const today = useRef(dhakaDateKey(new Date())).current;
   const [services, setServices] = useState<ServiceDTO[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [products, setProducts] = useState<ProductListResponse | null>(null);
   const [monthly, setMonthly] = useState<MonthlyResponse | null>(null);
-  // `loading` is the first-paint skeleton only. Day-to-day refreshes keep the
-  // previous data on screen and use `refreshing` for a subtle top bar, so
-  // navigating days never blanks the dashboard or shifts the page.
+  const [dues, setDues] = useState<DuesResponse | null>(null);
+  const [overdue, setOverdue] = useState<OverdueResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
-  const [editing, setEditing] = useState<ServiceDTO | null>(null);
-  const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
-  // Every device row from the same visit, for the combined receipt/payment
-  // slip. null/1 falls back to the existing single-device receipt.
-  const [receiptGroup, setReceiptGroup] = useState<ServiceDTO[] | null>(null);
-  const receiptGroupReq = useRef(0);
   const [showRestore, setShowRestore] = useState(false);
-  const [showTechManager, setShowTechManager] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [showDues, setShowDues] = useState(false);
-  // Dues are fetched here (not inside the dialog) so the trigger button can
-  // show the live count/total before the dialog is ever opened.
-  const [dues, setDues] = useState<DuesResponse | null>(null);
-  const [duesLoading, setDuesLoading] = useState(true);
-  // v1.1: active roster drives the form dropdown and the dashboard cards.
-  const [technicians, setTechnicians] = useState<string[]>([]);
-  // Internal parts-shop names, used only as datalist suggestions in the form.
-  const [partsShops, setPartsShops] = useState<string[]>([]);
-  // Client-side card → table filter. Reset on every date change.
-  const [techFilter, setTechFilter] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
-  const [lastBackup, setLastBackup] = useState<string | null>(null);
-  const formRef = useRef<HTMLDivElement>(null);
-  const dateRef = useRef(date);
-  useEffect(() => {
-    dateRef.current = date;
-  }, [date]);
-  // Monotonic request id — stale (out-of-order) responses are ignored so
-  // rapid day-navigation never shows the wrong day's data.
-  const reqId = useRef(0);
-  const monthlyReq = useRef(0);
-  const duesReq = useRef(0);
-  // Set after the first successful load; later date changes update in place.
-  const loadedOnce = useRef(false);
-  // Delayed so a fast local API never flashes a progress bar.
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBackup = useLastBackup();
 
-  // Summary window. Presets are anchored to the navbar date ("আজকের দিনের
-  // সাথে connection"), custom range stays fixed until a preset is picked.
   const [rangeMode, setRangeMode] = useState<RangeMode>("rolling30");
-  const [range, setRange] = useState(() => {
-    const t = dhakaDateKey(new Date());
-    return { from: shiftDateKey(t, -29), to: t };
-  });
+  const [range, setRange] = useState(() => ({
+    from: shiftDateKey(today, -29),
+    to: today,
+  }));
   const rangeRef = useRef(range);
   useEffect(() => {
     rangeRef.current = range;
   }, [range]);
 
+  const reqId = useRef(0);
+  const monthlyReq = useRef(0);
+  const loadedOnce = useRef(false);
+
   const computeRange = (mode: RangeMode, day: string) => {
     if (mode === "thisMonth") return monthContaining(day);
     if (mode === "lastMonth") return monthContaining(shiftMonth(day, -1));
-    return { from: shiftDateKey(day, -29), to: day }; // rolling30
+    return { from: shiftDateKey(day, -29), to: day };
   };
 
-  /** Navbar date change — presets recompute from the new day, custom stays. */
-  const applyDate = (d: string, mode: RangeMode = rangeMode) => {
-    setDate(d);
-    // A roster filter belongs to the day it was picked on.
-    setTechFilter(null);
-    if (mode !== "custom") setRange(computeRange(mode, d));
-  };
-
-  const loadTechnicians = useCallback(async () => {
-    try {
-      const res = await fetch("/api/technicians");
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.technicians)) {
-        setTechnicians(data.technicians.filter((t: { isActive: boolean }) => t.isActive).map((t: { name: string }) => t.name));
-      }
-    } catch {
-      /* the form falls back to its built-in list */
-    }
-  }, []);
-
-  const loadPartsShops = useCallback(async () => {
-    try {
-      const res = await fetch("/api/parts-shops");
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.shops)) {
-        setPartsShops(data.shops.filter((s: unknown) => typeof s === "string"));
-      }
-    } catch {
-      /* suggestions are optional; free text still works */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      setLastBackup(localStorage.getItem("maher-last-backup"));
-    } catch {
-      /* private mode etc. */
-    }
-  }, []);
-
-  // ←/→ day navigation (ignored while typing or when a dialog is open).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT" ||
-          t.isContentEditable)
-      ) {
-        return;
-      }
-      if (document.querySelector('[role="alertdialog"], [role="dialog"]')) {
-        return;
-      }
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        const nd = shiftDateKey(
-          dateRef.current,
-          e.key === "ArrowLeft" ? -1 : 1
-        );
-        setDate(nd);
-        if (rangeMode !== "custom") setRange(computeRange(rangeMode, nd));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [rangeMode]);
-
-  const load = useCallback(async (day: string, showSkeleton: boolean) => {
+  const loadCore = useCallback(async (day: string, skeleton: boolean) => {
     const my = ++reqId.current;
-    if (showSkeleton) {
-      setLoading(true);
-    } else {
-      // Only show the refresh bar if the request is slow enough to notice;
-      // a fast local response must not produce its own flicker.
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => {
-        refreshTimer.current = null;
-        setRefreshing(true);
-      }, 150);
-    }
+    if (skeleton) setLoading(true);
+    else setRefreshing(true);
     try {
-      const [svc, st] = await Promise.all([
-        getJSON<{ services: ServiceDTO[] }>(
-          `/api/services?date=${day}`
-        ),
+      const [svc, st, prod, due, late] = await Promise.all([
+        getJSON<{ services: ServiceDTO[] }>(`/api/services?date=${day}`),
         getJSON<StatsResponse>(`/api/stats?date=${day}`),
+        getJSON<ProductListResponse>("/api/products?sort=stock"),
+        getJSON<DuesResponse>("/api/services/dues").catch(() => null),
+        getJSON<OverdueResponse>(`/api/services/overdue?date=${day}`).catch(
+          () => null
+        ),
       ]);
-      if (reqId.current !== my) return; // a newer request already started
+      if (reqId.current !== my) return;
       setServices(svc.services);
       setStats(st);
-    } catch (e) {
+      setProducts(prod);
+      setDues(due);
+      setOverdue(late);
+    } catch (error) {
       if (reqId.current !== my) return;
-      toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
+      toast.error(error instanceof Error ? error.message : "লোড করা যায়নি");
     } finally {
       if (reqId.current === my) {
         loadedOnce.current = true;
-        if (refreshTimer.current) {
-          clearTimeout(refreshTimer.current);
-          refreshTimer.current = null;
-        }
-        setRefreshing(false);
         setLoading(false);
-        setSyncing(false);
+        setRefreshing(false);
       }
     }
   }, []);
@@ -227,65 +130,39 @@ export default function Home() {
       );
       if (monthlyReq.current !== my) return;
       setMonthly(mo);
-    } catch (e) {
+    } catch (error) {
       if (monthlyReq.current !== my) return;
-      toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
+      toast.error(error instanceof Error ? error.message : "রিপোর্ট লোড করা যায়নি");
     }
   }, []);
 
-  const fetchDues = useCallback(async () => {
-    const my = ++duesReq.current;
-    try {
-      const d = await getJSON<DuesResponse>("/api/services/dues");
-      if (duesReq.current !== my) return;
-      setDues(d);
-    } catch {
-      if (duesReq.current === my) setDues(null);
-    } finally {
-      if (duesReq.current === my) setDuesLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    void loadCore(today, !loadedOnce.current);
+  }, [today, loadCore]);
 
   useEffect(() => {
     void fetchMonthly(range);
   }, [range, fetchMonthly]);
 
+  // Another tab may add a sale or a payment while Home is in the background.
   useEffect(() => {
-    return () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadCore(today, false);
+      void fetchMonthly(rangeRef.current);
     };
-  }, []);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [today, loadCore, fetchMonthly]);
 
-  useEffect(() => {
-    void fetchDues();
-  }, [fetchDues, dataVersion]);
-
-  useEffect(() => {
-    // Skeleton only on the very first paint. Date changes keep the previous
-    // list visible while the new day loads.
-    void load(date, !loadedOnce.current);
-  }, [date, load]);
-
-  useEffect(() => {
-    void loadTechnicians();
-  }, [loadTechnicians]);
-
-  useEffect(() => {
-    void loadPartsShops();
-  }, [loadPartsShops]);
-
-  const sync = () => {
-    setSyncing(true);
-    void load(date, false);
+  const refresh = () => {
+    void loadCore(today, false);
     void fetchMonthly(rangeRef.current);
-    void fetchDues();
   };
-
-  const goToday = () => applyDate(dhakaDateKey(new Date()));
 
   const pickPreset = (mode: RangeMode) => {
     setRangeMode(mode);
-    setRange(computeRange(mode, dateRef.current));
+    setRange(computeRange(mode, today));
   };
 
   const pickCustom = (from: string, to: string) => {
@@ -298,383 +175,134 @@ export default function Home() {
     setRange({ from, to });
   };
 
-  const print = () => {
-    // Printing before CSS/data finish loading produces a blank unstyled
-    // page — block it with a clear message instead.
-    if (loading || refreshing || !stats || !monthly) {
-      toast.error("পুরো পেজ লোড হওয়ার পর প্রিন্ট করুন");
-      return;
-    }
-    window.print();
-  };
-
-  /**
-   * Open the customer copy. A per-device receipt stays exactly as before; a
-   * shared visit loads every device row FIRST, so the dialog never flashes a
-   * one-device slip before the combined bill appears.
-   */
-  const openReceipt = (service: ServiceDTO) => {
-    const req = ++receiptGroupReq.current;
-    if (!service.groupId) {
-      setReceiptGroup(null);
-      setReceipt(service);
-      return;
-    }
-    setReceipt(null);
-    setReceiptGroup(null);
-    void (async () => {
-      try {
-        const data = await getJSON<{ services: ServiceDTO[] }>(
-          `/api/services?groupId=${encodeURIComponent(service.groupId!)}`
-        );
-        if (req !== receiptGroupReq.current) return;
-        const rows = Array.isArray(data.services) ? data.services : [];
-        if (rows.length > 1) {
-          setReceiptGroup(rows);
-          setReceipt(rows[0]);
-        } else {
-          setReceipt(rows[0] ?? service);
-        }
-      } catch {
-        if (req !== receiptGroupReq.current) return;
-        setReceipt(service);
-      }
-    })();
-  };
-
-  const closeReceipt = () => {
-    // Invalidate an in-flight group fetch so it cannot reopen a stale bundle.
-    receiptGroupReq.current += 1;
-    setReceipt(null);
-    setReceiptGroup(null);
-  };
-
-  /**
-   * Render the same Receipt off-screen, capture it with html2canvas, and hand
-   * the resulting PDF to the OS share sheet. The document is never uploaded;
-   * every byte stays on the shop PC. The fallback downloads the PDF and opens
-   * the customer's own WhatsApp chat (wa.me cannot attach files itself).
-   */
-  const shareReceiptPdf = async (service: ServiceDTO) => {
-    let group: ServiceDTO[] | null = null;
-    if (service.groupId) {
-      try {
-        const data = await getJSON<{ services: ServiceDTO[] }>(
-          `/api/services?groupId=${encodeURIComponent(service.groupId)}`
-        );
-        if (Array.isArray(data.services) && data.services.length > 1) {
-          group = data.services;
-        }
-      } catch {
-        /* fall back to the single-device PDF */
-      }
-    }
-    const host = document.createElement("div");
-    host.setAttribute("aria-hidden", "true");
-    host.style.cssText =
-      "position:fixed;left:-10000px;top:0;width:720px;background:#fff;pointer-events:none;z-index:-1;";
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    try {
-      flushSync(() => {
-        root.render(
-          group ? (
-            <ReceiptBundle services={group} />
-          ) : (
-            <Receipt service={service} />
-          )
-        );
-      });
-      if (document.fonts?.ready) {
-        await document.fonts.ready;
-      }
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      );
-
-      const receiptNode = host.querySelector<HTMLElement>("[data-receipt]");
-      if (!receiptNode) throw new Error("রিসিট তৈরি করা যায়নি");
-
-      const blob = await createReceiptPdf(receiptNode);
-      const result = await sharePdfBlob(service, blob);
-      if (result === "shared") {
-        toast.success("PDF শেয়ার হয়েছে");
-      } else if (result === "downloaded") {
-        toast.info(
-          "PDF download হয়েছে; WhatsApp chat খুলেছে — PDF attach করে Send করুন"
-        );
-      } else if (result === "downloaded-no-chat") {
-        toast.info(
-          "PDF download হয়েছে; WhatsApp খোলা যায়নি — WhatsApp বাটন থেকে চ্যাট খুলে পাঠান"
-        );
-      }
-    } catch (error) {
-      console.error("PDF share failed", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "PDF তৈরি করা যায়নি"
-      );
-    } finally {
-      root.unmount();
-      host.remove();
-    }
-  };
-
-  const stampBackup = () => {
-    const stamp = new Date().toLocaleString("en-GB", {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    try {
-      localStorage.setItem("maher-last-backup", stamp);
-    } catch {
-      /* private mode etc. */
-    }
-    setLastBackup(stamp);
-  };
-
-  const takeSnapshot = async () => {
-    const snap = await fetch("/api/backup", { method: "POST" });
-    const sj = await snap.json().catch(() => ({}));
-    if (!snap.ok || !sj.ok)
-      throw new Error(sj?.error || "ব্যাকআপ করা যায়নি");
-    return sj;
-  };
-
   const backup = async () => {
     if (backingUp) return;
     setBackingUp(true);
     try {
-      // 1) timestamped snapshot of dev.db on the server (./backups)
-      const sj = await takeSnapshot();
-      // 2) full data as CSV download in the browser
-      const a = document.createElement("a");
-      a.href = "/api/backup";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      stampBackup();
-      toast.success(`ব্যাকআপ হয়েছে (${sj.file ?? ""}, ${sj.services ?? 0}টি রেকর্ড)`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "ব্যাকআপ করা যায়নি");
+      const snap = await fetch("/api/backup", { method: "POST" });
+      const sj = await snap.json().catch(() => ({}));
+      if (!snap.ok || !sj?.ok) {
+        throw new Error(sj?.error || "ব্যাকআপ করা যায়নি");
+      }
+      const link = document.createElement("a");
+      link.href = "/api/backup";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      publishBackup();
+      toast.success(
+        `ব্যাকআপ হয়েছে (${sj.file ?? ""}, ${sj.services ?? 0}টি রেকর্ড)`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "ব্যাকআপ করা যায়নি");
     } finally {
       setBackingUp(false);
     }
   };
 
-  const edit = (s: ServiceDTO) => {
-    setEditing(s);
-    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const openEdit = (service: ServiceDTO) => {
+    router.push(
+      `/service?date=${dhakaDateKey(service.serviceDate)}&edit=${service.id}`
+    );
+  };
+  const openReceipt = (service: ServiceDTO) => {
+    router.push(
+      `/service?date=${dhakaDateKey(service.serviceDate)}&receipt=${service.id}`
+    );
   };
 
-  // A dialog must close before the receipt dialog / form opens underneath it,
-  // otherwise two radix portals stack and focus gets trapped in the old one.
-  const editFromDues = (s: ServiceDTO) => {
-    setShowDues(false);
-    edit(s);
-  };
-  const receiptFromDues = (s: ServiceDTO) => {
-    setShowDues(false);
-    openReceipt(s);
-  };
-
-  // Tab-e fire ele chupchap refresh — Sync mone rakhte hoy na.
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        void load(dateRef.current, false);
-        void fetchMonthly(rangeRef.current);
-        void fetchDues();
-        // The roster can change in another tab (or via the manager while this
-        // tab was in the background). Without this the entry form keeps a
-        // technician that is no longer selectable and every save is rejected
-        // with "সঠিক টেকনিশিয়ান বাছুন" until a manual reload.
-        void loadTechnicians();
-        void loadPartsShops();
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [load, fetchMonthly, fetchDues, loadTechnicians, loadPartsShops]);
-
-  // Dine prothom khulle auto snapshot (staff vulleo backup thakbe).
-  // Ref guard: StrictMode double-invokes effects in dev — one snapshot only.
-  const autoFired = useRef(false);
-  useEffect(() => {
-    if (autoFired.current) return;
-    autoFired.current = true;
-    const today = dhakaDateKey(new Date());
-    let done = null;
-    try {
-      done = localStorage.getItem("maher-auto-backup-date");
-    } catch {
-      /* ignore */
-    }
-    if (done === today) return;
-    (async () => {
-      try {
-        const sj = await takeSnapshot();
-        if (!sj.ok) return;
-        try {
-          localStorage.setItem("maher-auto-backup-date", today);
-        } catch {
-          /* ignore */
-        }
-        stampBackup();
-        toast.success("অটো ব্যাকআপ হয়েছে");
-      } catch {
-        /* server busy — user can backup manually */
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const duesButtonLabel = duesLoading
-    ? "💰 বাকি তালিকা (হিসাব হচ্ছে…)"
-    : dues
-      ? `💰 বাকি তালিকা (${toBnDigits(dues.count)}টি • ৳${toBnDigits(
-          dues.totalDue.toLocaleString("en-IN")
-        )})`
-      : "💰 বাকি তালিকা";
+  const report = monthly?.summary ?? null;
+  const day = stats?.today ?? null;
 
   return (
     <div className="min-h-dvh bg-maher-surface">
-      {/* Fixed so a slow refresh never changes the layout height. */}
       <div
-        data-testid="day-refreshing"
         aria-hidden={!refreshing}
-        className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-maher-navy transition-opacity duration-150 print:hidden ${
+        className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-maher-blue transition-opacity duration-150 ${
           refreshing ? "animate-pulse opacity-100" : "opacity-0"
         }`}
       />
-      {/* Paper: ONLY the customer receipt prints — never the dashboard. */}
-      {receipt ? (
-        <div className="hidden print:block">
-          {receiptGroup && receiptGroup.length > 1 ? (
-            <ReceiptBundle services={receiptGroup} />
-          ) : (
-            <Receipt service={receipt} />
-          )}
-        </div>
-      ) : null}
-      <main
-        data-refreshing={refreshing ? "true" : "false"}
-        className={`mx-auto w-full max-w-7xl space-y-2.5 px-3 py-2.5 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
-          receipt ? "print:hidden" : ""
-        }`}
-      >
-        <Header
-          date={date}
-          onPrev={() => applyDate(shiftDateKey(dateRef.current, -1))}
-          onNext={() => applyDate(shiftDateKey(dateRef.current, 1))}
-          onDateChange={(d) => applyDate(d)}
-          onToday={goToday}
-          lastBackup={lastBackup}
-          onSync={sync}
-          syncing={syncing}
-          onBackup={() => void backup()}
-          backingUp={backingUp}
-          onRestore={() => setShowRestore(true)}
-          onManageTechnicians={() => setShowTechManager(true)}
-          onPrint={print}
+
+      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1440px] 2xl:max-w-[1600px]">
+        <AppHeader
           searchRefreshKey={dataVersion}
-          onSearchEdit={edit}
+          onSearchEdit={openEdit}
           onSearchReceipt={openReceipt}
         />
 
-        {/* Action row: report + dues are dialogs now, so the daily form and
-            table stay above the fold. */}
-        <div
-          data-testid="action-row"
-          className="flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
-        >
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-report"
-            onClick={() => setShowReport(true)}
-            className="w-full bg-white text-foreground hover:bg-maher-surface sm:w-auto"
-          >
-            <BarChart3 className="mr-1 h-4 w-4" />
-            ওভারঅল রিপোর্ট
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-dues"
-            onClick={() => setShowDues(true)}
-            className="w-full border-maher-due/30 bg-white text-maher-due hover:bg-maher-due/10 sm:w-auto"
-          >
-            {duesButtonLabel}
-          </Button>
-        </div>
-
-        <DailySummary
-          stats={stats}
-          loading={loading}
-          selected={techFilter}
-          onSelect={setTechFilter}
-          date={date}
-          today={dhakaDateKey(new Date())}
+        <PageLead
+          title="আজকের ড্যাশবোর্ড"
+          description="আজকের সার্ভিস, টাকা, বাকি ও স্টকের সারসংক্ষেপ দেখুন।"
+          meta={
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5 text-maher-navy" />
+              {bengaliDateLabel(today)}
+            </span>
+          }
+          actions={
+            <Button
+              asChild
+              className="bg-maher-navy text-white hover:bg-maher-navy-light"
+            >
+              <Link href={`/service?date=${today}&mode=service`}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                নতুন সার্ভিস
+              </Link>
+            </Button>
+          }
         />
 
-        {/* Dashboard printing still includes the monthly report even though it
-            is a dialog on screen. The dialog itself is print:hidden. */}
-        <div className="hidden print:block" data-testid="monthly-print">
-          <MonthlySummary
-            summary={monthly?.summary ?? null}
-            range={range}
-            mode={rangeMode}
-            onPreset={pickPreset}
-            onCustom={pickCustom}
-            loading={loading}
-          />
-        </div>
+        <ServiceKpis
+          services={services}
+          stats={stats}
+          date={today}
+          overdue={overdue}
+          loading={loading}
+        />
+        <FinanceSummary stats={day} loading={loading} />
+        <QuickActions
+          date={today}
+          onOpenDues={() => setShowDues(true)}
+          onOpenReport={() => setShowReport(true)}
+        />
 
-        <div className="grid items-start gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <div ref={formRef} className="min-w-0 scroll-mt-24">
-            <ServiceForm
-              key={editing?.id ?? "new"}
-              initial={editing}
-              serviceDate={date}
-              technicians={technicians}
-              partsShops={partsShops}
-              onSaved={() => {
-                setEditing(null);
-                setDataVersion((v) => v + 1);
-                void load(date, false);
-                void fetchMonthly(range);
-                void loadPartsShops();
-              }}
-              onCancelEdit={() => setEditing(null)}
+        <div className="grid gap-3 xl:grid-cols-12">
+          <div className="order-2 min-w-0 xl:order-none xl:col-span-8 xl:col-start-1 xl:row-start-1">
+            <RecentWork services={services} date={today} loading={loading} />
+          </div>
+          <div className="order-1 xl:order-none xl:col-span-4 xl:col-start-9 xl:row-start-1">
+            <DuesCard
+              dues={dues}
+              loading={!dues && loading}
+              onOpen={() => setShowDues(true)}
             />
           </div>
-          <div className="min-w-0">
-            <ServiceTable
-              services={services}
+          <div className="order-3 xl:order-none xl:col-span-5 xl:col-start-1 xl:row-start-2">
+            <InventoryPulse products={products} loading={loading} />
+          </div>
+          <div className="order-4 xl:order-none xl:col-span-4 xl:col-start-6 xl:row-start-2">
+            <ReportsCard
+              report={report}
+              range={range}
+              mode={rangeMode}
               loading={loading}
-              date={date}
-              onEdit={edit}
-              onReceipt={openReceipt}
-              onSharePdf={shareReceiptPdf}
-              technicianFilter={techFilter}
-              onClearTechnician={() => setTechFilter(null)}
-              onChanged={() => {
-                if (editing) setEditing(null);
-                setDataVersion((v) => v + 1);
-                void load(date, false);
-                void fetchMonthly(range);
-              }}
+              onOpen={() => setShowReport(true)}
+            />
+          </div>
+          <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-2">
+            <SystemUtilities
+              lastBackup={lastBackup}
+              refreshing={refreshing}
+              backingUp={backingUp}
+              onRefresh={refresh}
+              onBackup={() => void backup()}
+              onRestore={() => setShowRestore(true)}
             />
           </div>
         </div>
       </main>
+
+      <ShopFooter />
 
       <Dialog open={showReport} onOpenChange={setShowReport}>
         <DialogContent
@@ -711,72 +339,27 @@ export default function Home() {
           </DialogHeader>
           <OutstandingDues
             dues={dues}
-            loading={duesLoading}
-            onEdit={editFromDues}
-            onReceipt={receiptFromDues}
+            loading={!dues && loading}
+            onEdit={(service) => {
+              setShowDues(false);
+              openEdit(service);
+            }}
+            onReceipt={(service) => {
+              setShowDues(false);
+              openReceipt(service);
+            }}
           />
         </DialogContent>
       </Dialog>
 
-      {/* The banner is app chrome. It belongs on a dashboard printout (it
-          carries the shop name) but must never end up on a customer's bill,
-          so it is hidden only while a receipt is open — same rule as <main>. */}
-      <footer
-        className={`mx-auto w-full max-w-7xl px-3 pb-6 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
-          receipt ? "print:hidden" : ""
-        }`}
-      >
-        <div className="overflow-hidden rounded-lg bg-gradient-to-r from-maher-navy via-maher-navy-light to-maher-navy text-white shadow print:bg-white print:text-black">
-          <div className="px-4 py-4 text-center">
-            <p className="text-base font-bold sm:text-lg">
-              {SHOP.name}
-            </p>
-            <div className="mt-2 flex flex-col items-center justify-center gap-1.5 text-xs text-white/75 sm:flex-row sm:gap-6 print:text-gray-700">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                {SHOP.address}
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-semibold">
-                <Phone className="h-3.5 w-3.5 shrink-0" />
-                {SHOP.phone}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                ১০০% অফলাইন
-              </span>
-            </div>
-          </div>
-          <div className="border-t border-white/10 px-4 py-2 text-center text-xs text-white/60 print:border-gray-300 print:text-gray-500">
-            দৈনিক সার্ভিস ট্র্যাকার — ডেটা আপনার পিসিতেই থাকে
-          </div>
-        </div>
-      </footer>
-      <ReceiptDialog
-        service={receipt}
-        services={receiptGroup}
-        onClose={closeReceipt}
-        onPrint={print}
-      />
-      {/* Mounted last so `document.querySelector('[role="dialog"]')` in the
-          suites keeps resolving to the receipt dialog first. */}
       <RestoreDialog
         open={showRestore}
         onClose={() => setShowRestore(false)}
         onRestored={() => {
           setShowRestore(false);
-          setDataVersion((v) => v + 1);
-          void load(dateRef.current, false);
+          setDataVersion((value) => value + 1);
+          void loadCore(today, false);
           void fetchMonthly(rangeRef.current);
-          void fetchDues();
-        }}
-      />
-      <TechnicianManager
-        open={showTechManager}
-        onClose={() => setShowTechManager(false)}
-        onChanged={() => {
-          void loadTechnicians();
-          setDataVersion((v) => v + 1);
-          void load(dateRef.current, false);
         }}
       />
     </div>

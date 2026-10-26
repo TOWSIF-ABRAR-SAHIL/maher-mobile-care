@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Archive,
-  ArrowLeft,
   Boxes,
   Coins,
   Layers,
@@ -20,7 +20,9 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ProductsHeader } from "@/components/ProductsHeader";
+import { AppHeader } from "@/components/AppHeader";
+import { PageLead } from "@/components/PageLead";
+import { ShopFooter } from "@/components/ShopFooter";
 import { ProductDialog } from "@/components/ProductDialog";
 import { CategoryManagerDialog } from "@/components/CategoryManagerDialog";
 import { Badge } from "@/components/ui/badge";
@@ -52,10 +54,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { dhakaDateKey } from "@/lib/dhaka";
 import { formatNum, formatTaka } from "@/lib/utils";
 import type {
   ProductDTO,
   ProductListResponse,
+  ServiceDTO,
   StockStatus,
 } from "@/lib/types";
 
@@ -75,6 +79,7 @@ const STATUS_TEXT: Record<StockStatus, string> = {
 };
 
 export default function ProductsPage() {
+  const router = useRouter();
   const [data, setData] = useState<ProductListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,6 +97,12 @@ export default function ProductsPage() {
   const [archiving, setArchiving] = useState(false);
 
   const reqId = useRef(0);
+
+  // Home's low-stock pulse deep-links here with ?status=low.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("status");
+    if (raw === "in" || raw === "low" || raw === "out") setStatus(raw);
+  }, []);
 
   const load = useCallback(async () => {
     const my = ++reqId.current;
@@ -142,6 +153,14 @@ export default function ProductsPage() {
   const openEdit = (product: ProductDTO) => {
     setEditProduct(product);
     setDialogOpen(true);
+  };
+
+  /** Global search belongs to the shared chrome; from inventory it opens the
+   *  matching service row on the Service desk. */
+  const openServiceFromSearch = (service: ServiceDTO) => {
+    router.push(
+      `/service?date=${dhakaDateKey(service.serviceDate)}&edit=${service.id}`
+    );
   };
 
   const archive = async () => {
@@ -224,21 +243,44 @@ export default function ProductsPage() {
           refreshing ? "animate-pulse opacity-100" : "opacity-0"
         }`}
       />
-      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-2.5 xl:max-w-[1440px] 2xl:max-w-[1600px]">
-        <ProductsHeader />
+      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1440px] 2xl:max-w-[1600px]">
+        <AppHeader
+          searchRefreshKey={0}
+          onSearchEdit={openServiceFromSearch}
+          onSearchReceipt={openServiceFromSearch}
+        />
 
-        <div className="flex items-center justify-between gap-2 print:hidden">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-maher-navy"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            ড্যাশবোর্ড
-          </Link>
-          <p className="text-[11px] text-muted-foreground">
-            ক্রয় মূল্য ও স্টক শুধু দোকানের হিসাবের জন্য
-          </p>
-        </div>
+        <PageLead
+          eyebrow="স্টক রুম"
+          title="প্রোডাক্ট ও ইনভেন্টরি"
+          description="স্টক, দাম, ক্যাটাগরি ও কম-স্টকের সতর্কতা — সবই আসল ইনভেন্টরি ডেটা থেকে।"
+          meta={
+            <span className="inline-flex items-center rounded-full border border-maher-border bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {summary ? `${formatNum(summary.totalProducts)}টি প্রোডাক্ট` : "…"}
+            </span>
+          }
+          actions={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCategoriesOpen(true)}
+                className="bg-white"
+              >
+                <Settings2 className="mr-1 h-4 w-4" />
+                ক্যাটাগরি
+              </Button>
+              <Button
+                type="button"
+                onClick={openCreate}
+                className="bg-maher-navy text-white hover:bg-maher-navy-light"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                নতুন প্রোডাক্ট
+              </Button>
+            </>
+          }
+        />
 
         {/* Summary cards — always describe the whole active inventory. */}
         <section
@@ -330,21 +372,6 @@ export default function ProductsPage() {
                 <SelectItem value="selling">দাম (বেশি→কম)</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 lg:flex lg:w-auto">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setCategoriesOpen(true)}
-            >
-              <Settings2 className="mr-1 h-4 w-4" />
-              ক্যাটাগরি
-            </Button>
-            <Button type="button" onClick={openCreate}>
-              <Plus className="mr-1 h-4 w-4" />
-              নতুন প্রোডাক্ট
-            </Button>
           </div>
         </section>
 
@@ -561,6 +588,8 @@ export default function ProductsPage() {
           )}
         </section>
       </main>
+
+      <ShopFooter />
 
       <ProductDialog
         open={dialogOpen}

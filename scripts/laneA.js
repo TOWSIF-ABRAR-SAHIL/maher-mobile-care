@@ -21,8 +21,8 @@ const {
 const BASE = resolveTestBase();
 const TODAY = dhakaToday();
 const YESTERDAY = shiftDay(TODAY, -1);
-const TITLE_YESTERDAY = `সার্ভিস তালিকা (${YESTERDAY})`;
-const TITLE_TODAY = `সার্ভিস তালিকা (${TODAY})`;
+const TITLE_YESTERDAY = YESTERDAY;
+const TITLE_TODAY = TODAY;
 const T = Date.now();
 const NAME = uniqueName("TestKarim");
 const REF = uniqueName("LaneARef");
@@ -41,7 +41,7 @@ let browser = null;
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }
@@ -511,12 +511,12 @@ let browser = null;
 
   // ---- A9: archive → restore → archive (cleanup) ----
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("আগের দিন"))
       .click()
   );
   await page.waitForFunction(
-    (title) => document.body.textContent.includes(title),
+    (title) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === title,
     { polling: 500, timeout: 8000 },
     TITLE_YESTERDAY
   );
@@ -560,7 +560,7 @@ let browser = null;
       .click()
   );
   await page.waitForFunction(
-    (title) => document.body.textContent.includes(title),
+    (title) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === title,
     { polling: 500, timeout: 8000 },
     TITLE_YESTERDAY
   );
@@ -592,12 +592,12 @@ let browser = null;
 
   // ---- A10: receipt preview, no cost leak ----
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("পরের দিন"))
       .click()
   );
   await page.waitForFunction(
-    (title) => document.body.textContent.includes(title),
+    (title) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === title,
     { polling: 500, timeout: 8000 },
     TITLE_TODAY
   );

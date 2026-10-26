@@ -46,7 +46,7 @@ let browser = null;
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }
@@ -311,7 +311,7 @@ let browser = null;
   // The report now blocks the navbar, so close it, move the day, reopen.
   await closeReport();
   await page.evaluate((probe) => {
-    const i = document.querySelector("header input[type='date']");
+    const i = document.querySelector('[data-testid="service-date-nav"] input[type="date"]');
     Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value"
@@ -336,7 +336,7 @@ let browser = null;
   // back to today + rolling
   await closeReport();
   await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="header-actions"] button')]
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((x) => x.textContent.includes("আজ"))
       .click()
   );
@@ -364,24 +364,62 @@ let browser = null;
   check("B6", "from>to rejected, range kept", stillRolling === rollingBefore);
   await closeReport();
 
-  // ---------- C1: backup button ----------
-  await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="header-actions"] button')]
-      .find((x) => x.textContent.includes("ব্যাকআপ"))
-      .click()
-  );
+  // ---------- C1: backup button (Home owns backup now) ----------
+  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="home-backup"]', {
+    polling: 200,
+    timeout: 30000,
+  });
+  // Home's backup both snapshots and starts a CSV download. Let the browser
+  // download abort a later navigation in headless mode, so capture the anchor
+  // request instead of writing a file.
+  await page.evaluate(() => {
+    window.__backupHref = null;
+    const original = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (typeof this.href === "string" && this.href.includes("/api/backup")) {
+        window.__backupHref = this.href;
+        return;
+      }
+      return original.call(this);
+    };
+  });
+  await page.click('[data-testid="home-backup"]');
+  await page.waitForFunction(() => typeof window.__backupHref === "string", {
+    polling: 200,
+    timeout: 20000,
+  });
   await page.waitForFunction(
-    () => document.body.textContent.includes("ব্যাকআপ হয়েছে"),
-    { polling: 500, timeout: 15000 }
+    () =>
+      document
+        .querySelector('[data-testid="home-utilities"]')
+        ?.textContent?.includes("সর্বশেষ ব্যাকআপ"),
+    { polling: 500, timeout: 20000 }
   );
   const lbl = await page.evaluate(
     () =>
-      [...document.querySelectorAll("header p")].find((p) =>
-        p.textContent.includes("সর্বশেষ")
+      [...document.querySelectorAll('[data-testid="home-utilities"] p')].find(
+        (p) => p.textContent.includes("সর্বশেষ ব্যাকআপ")
       )?.textContent
   );
+  const href = await page.evaluate(() => window.__backupHref);
   console.log("reached C1");
-  check("C1", "backup toast + label", !!lbl, lbl);
+  check(
+    "C1",
+    "backup toast + label",
+    !!lbl && typeof href === "string" && href.includes("/api/backup"),
+    `${lbl} | ${href}`
+  );
+
+  // Back to the service desk for the receipt / print checks below.
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForFunction(
+    (day) =>
+      document.querySelector('[data-testid="daily-services"]')?.dataset.date ===
+      day,
+    { polling: 300, timeout: 30000 },
+    TODAY
+  );
 
   // ---------- C2: restore roundtrip (marker removed via restore) ----------
   const snap = await api(page, "/api/backup", { method: "POST" });
@@ -618,25 +656,39 @@ let browser = null;
   await page.emulateMediaType("print");
   await new Promise((r) => setTimeout(r, 400));
   await page.screenshot({ path: shot("laneBC-dash.png"), fullPage: true });
-  const dashPaper = await page.evaluate(() => ({
-    formGone: !document.querySelector("form") || getComputedStyle(document.querySelector("form")).display === "none" || document.querySelector("form").offsetParent === null,
-    titleBlack: getComputedStyle(document.querySelector("header h1")).color === "rgb(0, 0, 0)",
-  }));
-  check("C4", "dashboard paper styled", dashPaper.formGone && dashPaper.titleBlack, JSON.stringify(dashPaper));
+  const dashPaper = await page.evaluate(() => {
+    const header = document.querySelector('[data-testid="app-header"]');
+    const printCopy = document.querySelector('[data-testid="monthly-print"]');
+    return {
+      formGone:
+        !document.querySelector("form") ||
+        getComputedStyle(document.querySelector("form")).display === "none" ||
+        document.querySelector("form").offsetParent === null,
+      headerHidden: !header || getComputedStyle(header).display === "none",
+      printCopyShown:
+        !!printCopy && getComputedStyle(printCopy).display !== "none",
+    };
+  });
+  check(
+    "C4",
+    "dashboard paper styled (chrome hidden, report copy shown)",
+    dashPaper.formGone && dashPaper.headerHidden && dashPaper.printCopyShown,
+    JSON.stringify(dashPaper)
+  );
   await page.emulateMediaType("screen");
 
   // ---------- C6: keyboard ----------
-  const titleYesterday = `সার্ভিস তালিকা (${YESTERDAY})`;
-  const titleToday = `সার্ভিস তালিকা (${TODAY})`;
+  const titleYesterday = YESTERDAY;
+  const titleToday = TODAY;
   await page.keyboard.press("ArrowLeft");
   await page.waitForFunction(
-    (title) => document.body.textContent.includes(title),
+    (title) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === title,
     { polling: 500, timeout: 8000 },
     titleYesterday
   );
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(
-    (title) => document.body.textContent.includes(title),
+    (title) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === title,
     { polling: 500, timeout: 8000 },
     titleToday
   );

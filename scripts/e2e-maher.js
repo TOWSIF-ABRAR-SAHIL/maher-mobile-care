@@ -41,7 +41,7 @@ let browser = null;
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { timeout: 15000 }
@@ -118,7 +118,7 @@ let browser = null;
   check("search no-match empty state", true);
   // Full reload: guarantees the search box is empty so later steps
   // see the unfiltered day list (no leftover query can pollute them).
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { timeout: 15000 }
@@ -136,10 +136,10 @@ let browser = null;
     { timeout: 15000 }
   );
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")].find((b) => b.textContent.includes("আগের দিন")).click()
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')].find((b) => b.textContent.includes("আগের দিন")).click()
   );
   await page.waitForFunction(
-    (day) => document.body.textContent.includes(`সার্ভিস তালিকা (${day})`),
+    (day) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === day,
     { timeout: 8000 },
     YESTERDAY
   );
@@ -169,7 +169,7 @@ let browser = null;
 
   // back to today, delete the E2E row
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")].find((b) => b.textContent.includes("পরের দিন")).click()
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')].find((b) => b.textContent.includes("পরের দিন")).click()
   );
   await waitDailyRow(page, E2E_NAME, true);
   await clickDailyRowButton(page, E2E_NAME, "ডিলিট");

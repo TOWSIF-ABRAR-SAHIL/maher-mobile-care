@@ -116,7 +116,7 @@ function visitCards(page, customer) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }

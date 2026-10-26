@@ -52,7 +52,7 @@ let browser = null;
   const errors = () =>
     allErrors.filter((e) => !/Failed to load resource/.test(e));
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }
@@ -60,9 +60,7 @@ let browser = null;
 
   const openManager = async () => {
     await page.evaluate(() =>
-      [...document.querySelectorAll("header button")]
-        .find((b) => b.textContent.includes("টেকনিশিয়ান"))
-        .click()
+      document.querySelector('[data-testid="open-technician-manager"]')?.click()
     );
     await page.waitForSelector('[data-testid="tech-manager"]', {
       polling: 200,
@@ -274,7 +272,7 @@ let browser = null;
   await clickCard(NEW);
   await new Promise((r) => setTimeout(r, 600));
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("পরের দিন"))
       .click()
   );
@@ -286,7 +284,7 @@ let browser = null;
     ),
   }));
   await page.evaluate(() =>
-    [...document.querySelectorAll("header button")]
+    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("আগের দিন"))
       .click()
   );
@@ -505,7 +503,7 @@ let browser = null;
   // Regression: the form used to reset with technician:"" while the roster-sync
   // effect only ran on mount, so every save after the first failed with
   // "সঠিক টেকনিশিয়ান বাছুন" until a manual reload.
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await waitDailyRow(page, OWNER, true).catch(() => null);
   const fillAndSave = async (name) => {
     await typeInto(page, "svc-name", name);

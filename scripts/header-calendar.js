@@ -29,7 +29,7 @@ function check(name, ok, extra = "") {
     await page.setViewport({ width: 1366, height: 900 });
     const errors = trackErrors(page);
 
-    await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
     await page.waitForFunction(
       () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
       { timeout: 15000 }
@@ -82,7 +82,7 @@ function check(name, ok, extra = "") {
     await page.click(`[data-date="${pickKey}"]`);
     await page.waitForFunction(
       (key) =>
-        document.querySelector("header input[type='date']")?.value === key,
+        document.querySelector('[data-testid="service-date-nav"] input[type="date"]')?.value === key,
       { timeout: 5000 },
       pickKey
     );

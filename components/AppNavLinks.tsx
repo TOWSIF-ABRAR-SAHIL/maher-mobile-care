@@ -2,45 +2,52 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, LayoutDashboard } from "lucide-react";
+import { House, Package, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * The three primary destinations. Kept to exactly three on purpose: the
+ * counter workflow is Home → Service → Product, and anything else belongs
+ * inside one of those pages.
+ */
 const LINKS = [
-  { href: "/", label: "ড্যাশবোর্ড", icon: LayoutDashboard },
-  { href: "/products", label: "প্রোডাক্টস", icon: Boxes },
+  { key: "home", href: "/", label: "হোম", icon: House },
+  { key: "service", href: "/service", label: "সার্ভিস", icon: Wrench },
+  { key: "products", href: "/products", label: "প্রোডাক্ট", icon: Package },
 ] as const;
 
-/**
- * Compact module switcher shown inside the navy header on every page.
- * `/products` and any future inventory sub-route light up together.
- */
 export function AppNavLinks({ className }: { className?: string }) {
   const pathname = usePathname() || "/";
 
   return (
     <nav
       aria-label="প্রধান মেনু"
+      data-testid="header-nav"
       className={cn(
-        "inline-flex w-fit items-center gap-0.5 rounded-lg bg-white/10 p-0.5",
+        "grid w-full grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.06] p-1",
+        "md:inline-flex md:w-auto md:justify-self-center",
         className
       )}
     >
-      {LINKS.map(({ href, label, icon: Icon }) => {
+      {LINKS.map(({ key, href, label, icon: Icon }) => {
         const active =
           href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
             key={href}
             href={href}
+            data-nav-item={key}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "inline-flex h-[22px] items-center gap-1 rounded-md px-2 text-[11px] font-semibold transition-colors sm:text-xs",
+              "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+              "md:h-8 md:justify-start md:px-3.5 md:text-[13px]",
               active
                 ? "bg-white text-maher-navy shadow-sm"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
+                : "text-white/65 hover:bg-white/10 hover:text-white"
             )}
           >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <Icon className="h-4 w-4 shrink-0" aria-hidden />
             <span className="whitespace-nowrap">{label}</span>
           </Link>
         );

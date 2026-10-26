@@ -261,6 +261,7 @@ export function ServiceForm({
   serviceDate,
   technicians,
   partsShops = [],
+  initialProductMode = false,
   onSaved,
   onCancelEdit,
 }: {
@@ -272,6 +273,8 @@ export function ServiceForm({
   technicians: string[];
   /** Previously used parts-buying shops (datalist suggestions). */
   partsShops?: string[];
+  /** Deep link `/service?mode=product` opens the product-sale variant. */
+  initialProductMode?: boolean;
   onSaved: () => void;
   onCancelEdit: () => void;
 }) {
@@ -280,14 +283,24 @@ export function ServiceForm({
     // Editing a product sale (inferred from its sales technician) must show
     // the product labels and the delivered state from the first render.
     // A returned product stays Returned — its status is locked.
-    return initial &&
+    if (
+      initial &&
       isSalesTechnician(initial.technician) &&
       initial.status !== "Returned"
-      ? { ...base, status: "Delivered" }
-      : base;
+    ) {
+      return { ...base, status: "Delivered" };
+    }
+    // Product-sale deep link starts delivered at the counter, same as the
+    // mode toggle would do on click.
+    if (!initial && initialProductMode) {
+      return { ...base, status: "Delivered" };
+    }
+    return base;
   });
   const [isProductSale, setIsProductSale] = useState(
-    () => !!initial && isSalesTechnician(initial.technician)
+    () =>
+      (!!initial && isSalesTechnician(initial.technician)) ||
+      (!initial && initialProductMode)
   );
   // Remember the service status so switching back from product mode restores
   // it instead of leaving every service job as "Delivered".

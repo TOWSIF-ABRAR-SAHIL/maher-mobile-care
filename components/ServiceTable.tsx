@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ServiceAdjustDialog } from "@/components/ServiceAdjustDialog";
+import { ServiceDateNav } from "@/components/ServiceDateNav";
 import { StatusBadge } from "@/components/StatusBadge";
 import { whatsAppHref } from "@/lib/contact";
 import {
@@ -122,6 +123,11 @@ export function ServiceTable({
   onChanged,
   technicianFilter,
   onClearTechnician,
+  onPrev,
+  onNext,
+  onDateChange,
+  onToday,
+  initialStatus,
 }: {
   services: ServiceDTO[];
   loading: boolean;
@@ -133,6 +139,13 @@ export function ServiceTable({
   /** v1.1: show only this technician's rows, or null for everyone. */
   technicianFilter?: string | null;
   onClearTechnician?: () => void;
+  /** Date navigation lives in this list header, not in the app chrome. */
+  onPrev?: () => void;
+  onNext?: () => void;
+  onDateChange?: (date: string) => void;
+  onToday?: () => void;
+  /** Deep-link from the Home workflow rail (`/service?status=Pending`). */
+  initialStatus?: "All" | ServiceStatus;
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ServiceDTO | null>(null);
@@ -210,7 +223,12 @@ export function ServiceTable({
     },
     []
   );
-  const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>(
+    initialStatus ?? "All"
+  );
+  useEffect(() => {
+    setStatusFilter(initialStatus ?? "All");
+  }, [initialStatus]);
   // Multi-device visits can be folded to their summary strip. Keyed by the
   // stable visit key (group id / row id) so an edit or a refresh keeps the
   // choice. A search or status filter always expands, otherwise a matching
@@ -1287,58 +1305,79 @@ export function ServiceTable({
     <section
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
+      data-date={date}
       className="rounded-xl border border-maher-border bg-card p-4"
     >
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-          {showArchived ? (
-            <>
-              <Archive className="h-4 w-4 text-muted-foreground" />
-              আর্কাইভ (মুছে ফেলা এন্ট্রি)
-            </>
-          ) : (
-            <>
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              সার্ভিস তালিকা ({date})
-            </>
-          )}
-        </h2>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button
-            variant={showAllExpenses ? "default" : "outline"}
-            size="sm"
-            data-testid="expense-toggle"
-            aria-pressed={showAllExpenses}
-            aria-label={
-              showAllExpenses
-                ? "সব খরচ লুকান"
-                : "সব খরচের টাকা দেখান"
-            }
-            title={
-              showAllExpenses
-                ? "সব খরচ আবার লুকান"
-                : "এক ক্লিকে সব খরচের টাকা দেখান"
-            }
-            onClick={toggleAllExpenses}
-            className="print:hidden"
-          >
-            {showAllExpenses ? (
-              <EyeOff className="mr-1 h-4 w-4" />
-            ) : (
-              <Eye className="mr-1 h-4 w-4" />
-            )}
-            {showAllExpenses ? "খরচ লুকান" : "খরচ দেখান"}
-          </Button>
-          <Button
-            variant={showArchived ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowArchived((v) => !v)}
-            className="print:hidden"
-          >
-            <Archive className="mr-1 h-4 w-4" />
-            {showArchived ? "তালিকায় ফিরুন" : "আর্কাইভ দেখুন"}
-          </Button>
-          <div className="relative sm:w-72 print:hidden">
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+              {showArchived ? (
+                <>
+                  <Archive className="h-4 w-4 text-muted-foreground" />
+                  আর্কাইভ (মুছে ফেলা এন্ট্রি)
+                </>
+              ) : (
+                <>
+                  <ClipboardList className="h-4 w-4 text-maher-navy" />
+                  সার্ভিস তালিকা
+                </>
+              )}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {showArchived
+                ? "আর্কাইভ করা সব তারিখের এন্ট্রি — ফিরিয়ে আনা যাবে।"
+                : `${date} — এই দিনের সব ভিজিট, ডিভাইস ও বাকি।`}
+            </p>
+          </div>
+          {!showArchived && onPrev && onNext && onDateChange && onToday ? (
+            <ServiceDateNav
+              date={date}
+              onPrev={onPrev}
+              onNext={onNext}
+              onDateChange={onDateChange}
+              onToday={onToday}
+              isToday={date === dhakaDateKey(new Date())}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={showAllExpenses ? "default" : "outline"}
+              size="sm"
+              data-testid="expense-toggle"
+              aria-pressed={showAllExpenses}
+              aria-label={
+                showAllExpenses ? "সব খরচ লুকান" : "সব খরচের টাকা দেখান"
+              }
+              title={
+                showAllExpenses
+                  ? "সব খরচ আবার লুকান"
+                  : "এক ক্লিকে সব খরচের টাকা দেখান"
+              }
+              onClick={toggleAllExpenses}
+              className="print:hidden"
+            >
+              {showAllExpenses ? (
+                <EyeOff className="mr-1 h-4 w-4" />
+              ) : (
+                <Eye className="mr-1 h-4 w-4" />
+              )}
+              {showAllExpenses ? "খরচ লুকান" : "খরচ দেখান"}
+            </Button>
+            <Button
+              variant={showArchived ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowArchived((v) => !v)}
+              className="print:hidden"
+            >
+              <Archive className="mr-1 h-4 w-4" />
+              {showArchived ? "তালিকায় ফিরুন" : "আর্কাইভ দেখুন"}
+            </Button>
+          </div>
+          <div className="relative w-full sm:w-72 print:hidden">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="svc-search"

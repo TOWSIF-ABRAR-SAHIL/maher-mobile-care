@@ -115,8 +115,18 @@ async function selectOption(page, triggerSelector, label) {
     return true;
   }, label);
   // A programmatic click can leave Radix's portal open; Escape closes it
-  // without touching the form.
+  // without touching the form. Wait for the portal to actually unmount: the
+  // closing menu overlaps the lock field, so a slow machine would otherwise
+  // route the next real click to a menu item and silently change the type.
   await page.keyboard.press("Escape");
+  await page
+    .waitForFunction(
+      () =>
+        !document.querySelector('[role="option"]') &&
+        !document.querySelector('[role="listbox"][data-state="open"]'),
+      { polling: 100, timeout: 5000 }
+    )
+    .catch(() => {});
   await sleep(150);
   return picked;
 }
@@ -144,7 +154,7 @@ async function submitForm(page, expectedToast) {
     }
   });
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }

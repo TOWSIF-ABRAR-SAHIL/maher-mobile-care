@@ -8,6 +8,30 @@ import { activeTechnicianNames } from "@/lib/technicians";
 
 export const dynamic = "force-dynamic";
 
+/** GET /api/services/:id — one row, for deep-link edit/receipt navigation. */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const id = Number(params.id);
+    if (!Number.isInteger(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+    const service = await prisma.service.findUnique({ where: { id } });
+    if (!service) {
+      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+    }
+    return NextResponse.json(service);
+  } catch (err) {
+    console.error(`GET /api/services/${params.id} failed:`, err);
+    return NextResponse.json(
+      { error: "Failed to fetch service" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }

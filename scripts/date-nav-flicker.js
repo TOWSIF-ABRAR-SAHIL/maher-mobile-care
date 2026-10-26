@@ -34,7 +34,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await page.setViewport({ width: 1366, height: 900 });
     const errors = trackErrors(page);
 
-    await page.goto(BASE, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
     await page.waitForFunction(
       () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
       { timeout: 15000 }
@@ -98,14 +98,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
 
     await page.evaluate(() =>
-      [...document.querySelectorAll("header button")]
+      [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
         .find((button) => button.textContent.includes("আগের দিন"))
         .click()
     );
 
     // The heading changes immediately, but the list must not blank out.
     await page.waitForFunction(
-      (day) => document.body.textContent.includes(`সার্ভিস তালিকা (${day})`),
+      (day) => document.querySelector('[data-testid="daily-services"]')?.dataset.date === day,
       { timeout: 5000 },
       YESTERDAY
     );

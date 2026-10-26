@@ -46,7 +46,7 @@ let browser = null;
   await page.setViewport({ width: 1366, height: 900 });
   const errors = trackErrors(page);
 
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
     () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
     { polling: 500, timeout: 30000 }
@@ -137,7 +137,7 @@ let browser = null;
     const printCopy = document.querySelector('[data-testid="monthly-print"]');
     return {
       header: top("header"),
-      action: top('[data-testid="action-row"]'),
+      action: top('[data-testid="page-actions"]'),
       summary: top('[data-testid="toggle-daily-summary"]'),
       tech: top('[data-testid="technician-stats"]'),
       today: top('[data-testid="today-stats"]'),
