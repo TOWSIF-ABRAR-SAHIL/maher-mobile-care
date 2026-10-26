@@ -6,9 +6,9 @@ import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
 import type { ServiceDTO } from "@/lib/types";
 
 /**
- * Shared navy chrome: brand left, two destinations centred, global search
- * right. Phones get two rows — brand + search, then a full-width two-tab
- * rail — while tablets and desktops stay on one measured row.
+ * Shared brand-blue chrome: brand left, two destinations centred, global
+ * search right. Phones get two rows — brand + search, then a full-width
+ * two-tab rail — while tablets and desktops stay on one measured row.
  */
 export function AppHeader({
   searchRefreshKey = 0,

@@ -4,9 +4,9 @@ import { SHOP } from "@/lib/shop";
 import { cn } from "@/lib/utils";
 
 /**
- * The shop's identity block in the navy chrome. The monogram is deliberately
- * drawn like a counter stamp rather than a generic app logo: one square, one
- * handset, one live dot.
+ * The shop's identity block in the brand-blue chrome. The monogram is
+ * deliberately drawn like a counter stamp rather than a generic app logo: one
+ * square, one handset, one live dot.
  */
 export function BrandMark({ className }: { className?: string }) {
   return (
@@ -26,7 +26,7 @@ export function BrandMark({ className }: { className?: string }) {
         <span className="block truncate text-[15px] font-bold leading-tight tracking-[0.055em] text-white sm:text-base">
           {SHOP.name}
         </span>
-        <span className="block truncate text-[10px] leading-tight text-white/55 sm:text-[11px]">
+        <span className="block truncate text-[10px] leading-tight text-white/90 sm:text-[11px]">
           {SHOP.chromeTagline}
         </span>
       </span>

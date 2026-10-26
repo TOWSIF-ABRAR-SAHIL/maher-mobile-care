@@ -23,7 +23,7 @@ export function AppNavLinks({ className }: { className?: string }) {
       aria-label="প্রধান মেনু"
       data-testid="header-nav"
       className={cn(
-        "grid w-full grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/[0.06] p-1",
+        "grid w-full grid-cols-2 gap-1 rounded-lg border border-white/20 bg-white/10 p-1",
         "md:inline-flex md:w-auto md:justify-self-center",
         className
       )}
@@ -42,7 +42,7 @@ export function AppNavLinks({ className }: { className?: string }) {
               "md:h-8 md:justify-start md:px-3.5 md:text-[13px]",
               active
                 ? "bg-white text-maher-navy shadow-sm"
-                : "text-white/65 hover:bg-white/10 hover:text-white"
+                : "text-white/90 hover:bg-white/15 hover:text-white"
             )}
           >
             <Icon className="h-4 w-4 shrink-0" aria-hidden />

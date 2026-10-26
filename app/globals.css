@@ -26,13 +26,13 @@
     --radius: 0.5rem;
 
     /* Maher Mobile Care shop palette — "Counter Ledger".
-       Deep navy chrome, cool grey workspace, blue selection, and a strict
+       Brand-blue chrome, cool grey workspace, blue selection, and a strict
        meaning for green (done), amber (cash/warning) and red (due/error). */
     --maher-surface: 214 28% 97%;      /* cool grey page background */
     --maher-surface-strong: 214 24% 93%; /* rails, table headers, quiet fills */
     --maher-border: 214 20% 87%;       /* slate border for cards/separators */
-    --maher-navy: 212 52% 14%;         /* header deep navy */
-    --maher-navy-light: 212 42% 22%;   /* header hover state */
+    --maher-navy: 221.2 83.2% 53.3%;   /* brand blue #2563EB — header + primaries */
+    --maher-navy-light: 224.3 76.3% 48%; /* #1D4ED8 — deeper hover for blue buttons */
     --maher-ink: 215 35% 15%;          /* primary reading colour */
     --maher-blue: 214 86% 52%;         /* selection / active workspace */
     --maher-blue-soft: 214 100% 96%;   /* light-blue selection fill */

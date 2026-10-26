@@ -368,7 +368,7 @@ export function MobileSearch({
       >
         <SheetHeader className="border-white/15">
           <SheetTitle className="text-white">🔍 সব তারিখে খুঁজুন</SheetTitle>
-          <SheetDescription className="text-blue-100">
+          <SheetDescription className="text-blue-50">
             নাম, ফোন, মডেল বা বিল নং দিয়ে খুঁজুন — তারিখ বদলাতে হবে না।
           </SheetDescription>
         </SheetHeader>
