@@ -208,7 +208,7 @@ let browser = null;
     "/ redirects to the Service desk with no query loss",
     landing.path === "/service" &&
       landing.search === "" &&
-      landing.h1 === "সার্ভিস ওয়ার্কস্পেস" &&
+      landing.h1 === "" &&
       !landing.stageLine &&
       landing.hasUtilities,
     JSON.stringify(landing)

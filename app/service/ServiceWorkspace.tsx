@@ -558,10 +558,7 @@ export function ServiceWorkspace({
           onSearchReceipt={openReceipt}
         />
 
-        <PageLead
-          eyebrow="সার্ভিস ডেস্ক"
-          title="সার্ভিস ওয়ার্কস্পেস"
-          actions={
+        <PageLead actions={
             <>
               <Button
                 type="button"
