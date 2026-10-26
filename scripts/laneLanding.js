@@ -1,6 +1,6 @@
 /* Landing + Service utilities: `/` redirects to the Service desk, the navbar
- * has exactly two destinations, the stage line reconciles with the API, and
- * refresh / backup / restore still live on the Service page.
+ * has exactly two destinations, and refresh / backup / restore still live on
+ * the Service page.
  *
  * Run only through `npm test` (scripts/run-tests.js), which supplies a fresh
  * throwaway database, backup folder and server.
@@ -20,13 +20,6 @@ const BASE = resolveTestBase();
 const TODAY = dhakaToday();
 const YESTERDAY = shiftDay(TODAY, -1);
 const LONG_AGO = shiftDay(TODAY, -2);
-const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
-const bnToNumber = (value) =>
-  Number(
-    String(value)
-      .replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)))
-      .replace(/[^0-9]/g, "")
-  );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const GROUP_NAME = uniqueName("LandGroup");
@@ -166,19 +159,6 @@ let browser = null;
     throw new Error("overdue seed failed: " + JSON.stringify(old.body));
   }
 
-  const services = (await get(`/api/services?date=${TODAY}`)).services;
-  const overdueApi = await get(`/api/services/overdue?date=${TODAY}`);
-  const active = services.filter((s) => s.status !== "Returned");
-  const expected = {
-    Pending: active.filter((s) => s.status === "Pending").length,
-    "In-Progress": active.filter((s) => s.status === "In-Progress").length,
-    Completed: active.filter((s) => s.status === "Completed").length,
-    Delivered: active.filter((s) => s.status === "Delivered").length,
-  };
-  const expectedVisits = new Set(
-    active.map((s) => (s.groupId ? `g:${s.groupId}` : `r:${s.id}`))
-  ).size;
-
   // ---------- L0: `/` lands on the Service desk ----------
   await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
@@ -214,9 +194,9 @@ let browser = null;
       brandHref: brand?.getAttribute("href") ?? null,
       brandLabel: brand?.getAttribute("aria-label") ?? "",
       rootLinks: document.querySelectorAll('a[href="/"]').length,
-      hasStageLine: !!document.querySelector(
-        '[data-testid="service-stage-line"]'
-      ),
+      stageLine:
+        document.body.textContent.includes("আজকের ধাপ") ||
+        !!document.querySelector('[data-testid="service-stage-line"]'),
       hasUtilities: !!document.querySelector(
         '[data-testid="service-utilities"]'
       ),
@@ -229,7 +209,7 @@ let browser = null;
     landing.path === "/service" &&
       landing.search === "" &&
       landing.h1 === "সার্ভিস ওয়ার্কস্পেস" &&
-      landing.hasStageLine &&
+      !landing.stageLine &&
       landing.hasUtilities,
     JSON.stringify(landing)
   );
@@ -249,84 +229,7 @@ let browser = null;
     JSON.stringify({ href: landing.brandHref, label: landing.brandLabel })
   );
 
-  // ---------- L3: stage line agrees with the APIs ----------
-  const stage = await page.evaluate(() => {
-    const text = (id) =>
-      document.querySelector(`[data-testid="${id}"]`)?.textContent ?? "";
-    return {
-      pending: text("stage-pending"),
-      inProgress: text("stage-in-progress"),
-      completed: text("stage-completed"),
-      delivered: text("stage-delivered"),
-      overdue: text("stage-overdue"),
-      overdueBusy:
-        document
-          .querySelector('[data-testid="stage-overdue"]')
-          ?.getAttribute("aria-busy") ?? null,
-      total: text("stage-total"),
-    };
-  });
-  const shown = {
-    Pending: bnToNumber(stage.pending),
-    "In-Progress": bnToNumber(stage.inProgress),
-    Completed: bnToNumber(stage.completed),
-    Delivered: bnToNumber(stage.delivered),
-    overdue: bnToNumber(stage.overdue),
-  };
-  console.log("reached L3", JSON.stringify({ stage, shown, expected, overdueApi }));
-  check(
-    "L3",
-    "stage counts (device rows) + overdue match the API",
-    shown.Pending === expected.Pending &&
-      shown["In-Progress"] === expected["In-Progress"] &&
-      shown.Completed === expected.Completed &&
-      shown.Delivered === expected.Delivered &&
-      shown.overdue === overdueApi.count &&
-      shown.Pending === 1 &&
-      shown["In-Progress"] === 1 &&
-      shown.Completed === 1 &&
-      shown.Delivered === 1 &&
-      overdueApi.count === 1 &&
-      expectedVisits === 3 &&
-      stage.overdueBusy !== "true",
-    JSON.stringify({ shown, expected, overdue: overdueApi.count })
-  );
-
-  // ---------- L4: a stage chip filters the table ----------
-  await page.click('[data-testid="stage-pending"]');
-  await page.waitForFunction(
-    () => location.pathname === "/service" && location.search.includes("status=Pending"),
-    { polling: 100, timeout: 15000 }
-  );
-  await page.waitForFunction(
-    (pendingName, doneName) => {
-      const text =
-        document.querySelector('[data-testid="daily-services"]')?.textContent ??
-        "";
-      return text.includes(pendingName) && !text.includes(doneName);
-    },
-    { polling: 200, timeout: 15000 },
-    PENDING_NAME,
-    DONE_NAME
-  );
-  const filtered = await page.evaluate(() => ({
-    current: document
-      .querySelector('[data-testid="stage-pending"]')
-      ?.getAttribute("aria-current"),
-    rows:
-      document.querySelector('[data-testid="daily-services"]')?.textContent ??
-      "",
-  }));
-  check(
-    "L4",
-    "stage chip deep-links into the existing status filter",
-    filtered.current === "page" &&
-      filtered.rows.includes(PENDING_NAME) &&
-      !filtered.rows.includes(DONE_NAME),
-    JSON.stringify({ current: filtered.current })
-  );
-
-  // ---------- L5: `/` keeps a bookmarked date + status ----------
+  // ---------- L3: `/` keeps a bookmarked date + status ----------
   await page.goto(`${BASE}/?date=${YESTERDAY}&status=Pending`, {
     waitUntil: "networkidle0",
     timeout: 60000,
@@ -338,30 +241,38 @@ let browser = null;
     { polling: 200, timeout: 15000 },
     YESTERDAY
   );
-  const deep = await page.evaluate(() => ({
-    path: location.pathname,
-    search: location.search,
-    date:
-      document.querySelector('[data-testid="daily-services"]')?.dataset.date ??
-      null,
-    current: document
-      .querySelector('[data-testid="stage-pending"]')
-      ?.getAttribute("aria-current"),
-    text:
-      document.querySelector('[data-testid="daily-services"]')?.textContent ??
-      "",
-  }));
-  console.log("reached L5", JSON.stringify(deep));
+  const deep = await page.evaluate(() => {
+    const chip = [
+      ...document.querySelectorAll('[data-testid="daily-services"] button'),
+    ].find((b) => b.textContent.trim().startsWith("পেন্ডিং"));
+    return {
+      path: location.pathname,
+      search: location.search,
+      date:
+        document.querySelector('[data-testid="daily-services"]')?.dataset.date ??
+        null,
+      activeChip: chip ? chip.classList.contains("bg-maher-navy") : false,
+      text:
+        document.querySelector('[data-testid="daily-services"]')?.textContent ??
+        "",
+    };
+  });
+  console.log("reached L3", JSON.stringify(deep));
   check(
-    "L5",
+    "L3",
     "root deep link forwards date and status to /service",
     deep.path === "/service" &&
       deep.search.includes(`date=${YESTERDAY}`) &&
       deep.search.includes("status=Pending") &&
       deep.date === YESTERDAY &&
-      deep.current === "page" &&
+      deep.activeChip &&
       deep.text.includes(OLD_NAME),
-    JSON.stringify({ path: deep.path, search: deep.search, date: deep.date })
+    JSON.stringify({
+      path: deep.path,
+      search: deep.search,
+      date: deep.date,
+      chip: deep.activeChip,
+    })
   );
 
   // Back to today's full desk for the utility checks.
@@ -372,11 +283,8 @@ let browser = null;
   await page.waitForSelector('[data-testid="service-utilities"]', {
     timeout: 15000,
   });
-  await page.waitForSelector('[data-testid="stage-overdue"]', {
-    timeout: 15000,
-  });
 
-  // ---------- L6: refresh hits the existing day endpoint ----------
+  // ---------- L4: refresh hits the existing day endpoint ----------
   const refreshed = await Promise.all([
     page.waitForResponse(
       (res) =>
@@ -386,9 +294,9 @@ let browser = null;
     page.click('[data-testid="service-refresh"]'),
   ]).then(([res]) => res.ok());
   await sleep(300);
-  check("L6", "service refresh reloads the day", refreshed);
+  check("L4", "service refresh reloads the day", refreshed);
 
-  // ---------- L7: backup snapshot + CSV anchor + stamp ----------
+  // ---------- L5: backup snapshot + CSV anchor + stamp ----------
   await page.evaluate(() => {
     window.__backupHref = null;
     const original = HTMLAnchorElement.prototype.click;
@@ -421,9 +329,9 @@ let browser = null;
       )?.textContent,
     };
   });
-  console.log("reached L7", JSON.stringify(backup));
+  console.log("reached L5", JSON.stringify(backup));
   check(
-    "L7",
+    "L5",
     "backup toast stamp + CSV anchor update in place",
     typeof backup.href === "string" &&
       backup.href.includes("/api/backup") &&
@@ -431,7 +339,7 @@ let browser = null;
     JSON.stringify(backup)
   );
 
-  // ---------- L8: restore still requires its confirmation click ----------
+  // ---------- L6: restore still requires its confirmation click ----------
   await page.click('[data-testid="service-restore"]');
   await page.waitForFunction(
     () =>
@@ -472,9 +380,9 @@ let browser = null;
       false
   );
   await closeDialog();
-  check("L8", "restore opens from Service and asks for confirmation", armed);
+  check("L6", "restore opens from Service and asks for confirmation", armed);
 
-  // ---------- L9: report / dues / technician dialogs still open ----------
+  // ---------- L7: report / dues / technician dialogs still open ----------
   const dialogs = {};
   for (const [button, testid, key] of [
     ["open-report", "report-dialog", "report"],
@@ -490,24 +398,23 @@ let browser = null;
     await closeDialog();
   }
   check(
-    "L9",
+    "L7",
     "report, dues and technician manager stay on Service",
     dialogs.report && dialogs.dues && dialogs.tech,
     JSON.stringify(dialogs)
   );
 
-  // ---------- L10: 390px still fits ----------
+  // ---------- L8: 390px still fits ----------
   await page.setViewport({ width: 390, height: 844 });
   await page.goto(`${BASE}/service?date=${TODAY}`, {
     waitUntil: "networkidle0",
     timeout: 60000,
   });
-  await page.waitForSelector('[data-testid="service-stage-line"]', {
+  await page.waitForSelector('[data-testid="service-utilities"]', {
     timeout: 15000,
   });
   const mobile = await page.evaluate(() => {
     const nav = document.querySelector('[data-testid="header-nav"]');
-    const stage = document.querySelector('[data-testid="service-stage-line"]');
     const utils = document.querySelector('[data-testid="service-utilities"]');
     const rect = (el) => {
       if (!el) return null;
@@ -521,20 +428,20 @@ let browser = null;
       nav: [...(nav?.querySelectorAll("a") || [])].map((a) =>
         a.textContent.trim()
       ),
-      stage: rect(stage),
+      stageLine:
+        document.body.textContent.includes("আজকের ধাপ") ||
+        !!document.querySelector('[data-testid="service-stage-line"]'),
       utilities: rect(utils),
     };
   });
-  console.log("reached L10", JSON.stringify(mobile));
+  console.log("reached L8", JSON.stringify(mobile));
   check(
-    "L10",
-    "390px: two tabs, stage line and utilities fit the viewport",
+    "L8",
+    "390px: two tabs, no stage line, utilities fit the viewport",
     !mobile.overflow &&
       mobile.nav.join(",") === "সার্ভিস,প্রোডাক্ট" &&
-      !!mobile.stage &&
+      !mobile.stageLine &&
       !!mobile.utilities &&
-      mobile.stage.left >= 0 &&
-      mobile.stage.right <= 391 &&
       mobile.utilities.left >= 0 &&
       mobile.utilities.right <= 391,
     JSON.stringify(mobile)

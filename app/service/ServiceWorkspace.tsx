@@ -20,7 +20,6 @@ import { PageLead } from "@/components/PageLead";
 import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
-import { ServiceStageLine } from "@/components/service/ServiceStageLine";
 import { ServiceTable } from "@/components/ServiceTable";
 import { ServiceUtilities } from "@/components/service/ServiceUtilities";
 import { ShopFooter } from "@/components/ShopFooter";
@@ -39,7 +38,6 @@ import { useLastBackup } from "@/lib/use-last-backup";
 import { cn, STATUSES, toBnDigits, type ServiceStatus } from "@/lib/utils";
 import type {
   MonthlyResponse,
-  OverdueResponse,
   RangeMode,
   ServiceDTO,
   StatsResponse,
@@ -86,9 +84,6 @@ export function ServiceWorkspace({
   const [showDues, setShowDues] = useState(false);
   const [dues, setDues] = useState<DuesResponse | null>(null);
   const [duesLoading, setDuesLoading] = useState(true);
-  const [overdue, setOverdue] = useState<OverdueResponse | null>(null);
-  const [overdueLoading, setOverdueLoading] = useState(true);
-  const [overdueError, setOverdueError] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [showRestore, setShowRestore] = useState(false);
   const lastBackup = useLastBackup();
@@ -107,7 +102,6 @@ export function ServiceWorkspace({
   const reqId = useRef(0);
   const monthlyReq = useRef(0);
   const duesReq = useRef(0);
-  const overdueReq = useRef(0);
   const loadedOnce = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -227,38 +221,17 @@ export function ServiceWorkspace({
     }
   }, []);
 
-  const fetchOverdue = useCallback(async (day: string) => {
-    const my = ++overdueReq.current;
-    setOverdueLoading(true);
-    try {
-      const data = await getJSON<OverdueResponse>(
-        `/api/services/overdue?date=${day}`
-      );
-      if (overdueReq.current !== my) return;
-      setOverdue(data);
-      setOverdueError(false);
-    } catch {
-      if (overdueReq.current !== my) return;
-      setOverdue(null);
-      setOverdueError(true);
-    } finally {
-      if (overdueReq.current === my) setOverdueLoading(false);
-    }
-  }, []);
-
-  /** One manual refresh for every panel on the desk, including the stage line. */
+  /** One manual refresh for every panel on the desk. */
   const refreshAll = useCallback(() => {
     void load(dateRef.current, false);
     void fetchMonthly(rangeRef.current);
     void fetchDues();
-    void fetchOverdue(dateRef.current);
     void loadTechnicians();
     void loadPartsShops();
   }, [
     load,
     fetchMonthly,
     fetchDues,
-    fetchOverdue,
     loadTechnicians,
     loadPartsShops,
   ]);
@@ -276,10 +249,6 @@ export function ServiceWorkspace({
   useEffect(() => {
     void fetchDues();
   }, [fetchDues, dataVersion]);
-
-  useEffect(() => {
-    void fetchOverdue(date);
-  }, [date, fetchOverdue, dataVersion]);
 
   useEffect(() => {
     void load(date, !loadedOnce.current);
@@ -639,18 +608,6 @@ export function ServiceWorkspace({
               </Button>
             </>
           }
-        />
-
-        <ServiceStageLine
-          services={services}
-          stats={stats}
-          date={date}
-          overdue={overdue}
-          overdueLoading={overdueLoading}
-          overdueError={overdueError}
-          loading={loading}
-          activeStatus={statusParam}
-          onRetryOverdue={() => void fetchOverdue(date)}
         />
 
         <DailySummary
