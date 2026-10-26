@@ -364,13 +364,13 @@ let browser = null;
   check("B6", "from>to rejected, range kept", stillRolling === rollingBefore);
   await closeReport();
 
-  // ---------- C1: backup button (Home owns backup now) ----------
+  // ---------- C1: backup button (Service owns the utilities now) ----------
   await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForSelector('[data-testid="home-backup"]', {
+  await page.waitForSelector('[data-testid="service-backup"]', {
     polling: 200,
     timeout: 30000,
   });
-  // Home's backup both snapshots and starts a CSV download. Let the browser
+  // Backup both snapshots and starts a CSV download. Let the browser
   // download abort a later navigation in headless mode, so capture the anchor
   // request instead of writing a file.
   await page.evaluate(() => {
@@ -384,7 +384,7 @@ let browser = null;
       return original.call(this);
     };
   });
-  await page.click('[data-testid="home-backup"]');
+  await page.click('[data-testid="service-backup"]');
   await page.waitForFunction(() => typeof window.__backupHref === "string", {
     polling: 200,
     timeout: 20000,
@@ -392,13 +392,13 @@ let browser = null;
   await page.waitForFunction(
     () =>
       document
-        .querySelector('[data-testid="home-utilities"]')
+        .querySelector('[data-testid="service-utilities"]')
         ?.textContent?.includes("সর্বশেষ ব্যাকআপ"),
     { polling: 500, timeout: 20000 }
   );
   const lbl = await page.evaluate(
     () =>
-      [...document.querySelectorAll('[data-testid="home-utilities"] p')].find(
+      [...document.querySelectorAll('[data-testid="service-utilities"] p')].find(
         (p) => p.textContent.includes("সর্বশেষ ব্যাকআপ")
       )?.textContent
   );

@@ -98,7 +98,7 @@ export default function ProductsPage() {
 
   const reqId = useRef(0);
 
-  // Home's low-stock pulse deep-links here with ?status=low.
+  // ?status=low deep-links from the old stock pulse still work.
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("status");
     if (raw === "in" || raw === "low" || raw === "out") setStatus(raw);

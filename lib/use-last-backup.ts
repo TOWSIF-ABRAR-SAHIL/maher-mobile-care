@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { BACKUP_EVENT, readLastBackup } from "@/lib/backup";
 
-/** Last backup stamp shared by AutoBackup and the Home utilities card. */
+/** Last backup stamp shared by AutoBackup and the Service utilities rail. */
 export function useLastBackup(): string | null {
   const [stamp, setStamp] = useState<string | null>(null);
 

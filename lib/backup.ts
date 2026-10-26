@@ -1,8 +1,9 @@
 "use client";
 
-/** localStorage keys shared by the auto-backup runner, Home utilities and the
- *  backup button. Keeping them in one module stops the two paths from using
- *  different stamps and re-running a snapshot that already happened. */
+/** localStorage keys shared by the auto-backup runner, the Service utilities
+ *  rail and the backup button. Keeping them in one module stops the two paths
+ *  from using different stamps and re-running a snapshot that already
+ *  happened. */
 export const LAST_BACKUP_KEY = "maher-last-backup";
 export const AUTO_BACKUP_DATE_KEY = "maher-auto-backup-date";
 export const BACKUP_EVENT = "maher:backup";
@@ -24,7 +25,8 @@ export function readLastBackup(): string | null {
   }
 }
 
-/** Persist a stamp and let any mounted page (Home's utilities card) react. */
+/** Persist a stamp and let any mounted page (the Service utilities rail)
+ *  react. */
 export function publishBackup(stamp = formatBackupStamp()): string {
   try {
     localStorage.setItem(LAST_BACKUP_KEY, stamp);

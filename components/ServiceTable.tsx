@@ -144,7 +144,7 @@ export function ServiceTable({
   onNext?: () => void;
   onDateChange?: (date: string) => void;
   onToday?: () => void;
-  /** Deep-link from the Home workflow rail (`/service?status=Pending`). */
+  /** Deep-link from the Service stage line (`/service?status=Pending`). */
   initialStatus?: "All" | ServiceStatus;
 }) {
   const [search, setSearch] = useState("");

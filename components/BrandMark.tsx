@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 export function BrandMark({ className }: { className?: string }) {
   return (
     <Link
-      href="/"
-      aria-label={`${SHOP.name} — হোম`}
+      href="/service"
+      aria-label={`${SHOP.name} — সার্ভিস`}
       className={cn(
         "group flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
         className

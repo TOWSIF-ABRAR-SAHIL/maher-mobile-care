@@ -37,7 +37,7 @@ export function ShopFooter({ className }: { className?: string }) {
           </div>
         </div>
         <div className="border-t border-maher-border bg-maher-surface px-4 py-2 text-center text-[11px] text-muted-foreground sm:text-left">
-          ডেটা আপনার পিসিতেই থাকে — ব্যাকআপ ও রিস্টোর Home থেকে।
+          ডেটা আপনার পিসিতেই থাকে — ব্যাকআপ ও রিস্টোর সার্ভিস পেজ থেকে।
         </div>
       </div>
     </footer>

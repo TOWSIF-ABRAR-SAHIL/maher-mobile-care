@@ -18,8 +18,11 @@ import { MonthlySummary } from "@/components/MonthlySummary";
 import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
 import { PageLead } from "@/components/PageLead";
 import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
+import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
+import { ServiceStageLine } from "@/components/service/ServiceStageLine";
 import { ServiceTable } from "@/components/ServiceTable";
+import { ServiceUtilities } from "@/components/service/ServiceUtilities";
 import { ShopFooter } from "@/components/ShopFooter";
 import { TechnicianManager } from "@/components/TechnicianManager";
 import { Button } from "@/components/ui/button";
@@ -30,10 +33,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { publishBackup } from "@/lib/backup";
 import { dhakaDateKey, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
+import { useLastBackup } from "@/lib/use-last-backup";
 import { cn, STATUSES, toBnDigits, type ServiceStatus } from "@/lib/utils";
 import type {
   MonthlyResponse,
+  OverdueResponse,
   RangeMode,
   ServiceDTO,
   StatsResponse,
@@ -80,6 +86,12 @@ export function ServiceWorkspace({
   const [showDues, setShowDues] = useState(false);
   const [dues, setDues] = useState<DuesResponse | null>(null);
   const [duesLoading, setDuesLoading] = useState(true);
+  const [overdue, setOverdue] = useState<OverdueResponse | null>(null);
+  const [overdueLoading, setOverdueLoading] = useState(true);
+  const [overdueError, setOverdueError] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
+  const lastBackup = useLastBackup();
   const [technicians, setTechnicians] = useState<string[]>([]);
   const [partsShops, setPartsShops] = useState<string[]>([]);
   const [techFilter, setTechFilter] = useState<string | null>(null);
@@ -95,6 +107,7 @@ export function ServiceWorkspace({
   const reqId = useRef(0);
   const monthlyReq = useRef(0);
   const duesReq = useRef(0);
+  const overdueReq = useRef(0);
   const loadedOnce = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -214,6 +227,42 @@ export function ServiceWorkspace({
     }
   }, []);
 
+  const fetchOverdue = useCallback(async (day: string) => {
+    const my = ++overdueReq.current;
+    setOverdueLoading(true);
+    try {
+      const data = await getJSON<OverdueResponse>(
+        `/api/services/overdue?date=${day}`
+      );
+      if (overdueReq.current !== my) return;
+      setOverdue(data);
+      setOverdueError(false);
+    } catch {
+      if (overdueReq.current !== my) return;
+      setOverdue(null);
+      setOverdueError(true);
+    } finally {
+      if (overdueReq.current === my) setOverdueLoading(false);
+    }
+  }, []);
+
+  /** One manual refresh for every panel on the desk, including the stage line. */
+  const refreshAll = useCallback(() => {
+    void load(dateRef.current, false);
+    void fetchMonthly(rangeRef.current);
+    void fetchDues();
+    void fetchOverdue(dateRef.current);
+    void loadTechnicians();
+    void loadPartsShops();
+  }, [
+    load,
+    fetchMonthly,
+    fetchDues,
+    fetchOverdue,
+    loadTechnicians,
+    loadPartsShops,
+  ]);
+
   useEffect(() => {
     void fetchMonthly(range);
   }, [range, fetchMonthly]);
@@ -227,6 +276,10 @@ export function ServiceWorkspace({
   useEffect(() => {
     void fetchDues();
   }, [fetchDues, dataVersion]);
+
+  useEffect(() => {
+    void fetchOverdue(date);
+  }, [date, fetchOverdue, dataVersion]);
 
   useEffect(() => {
     void load(date, !loadedOnce.current);
@@ -402,6 +455,31 @@ export function ServiceWorkspace({
     }
   };
 
+  const backup = async () => {
+    if (backingUp) return;
+    setBackingUp(true);
+    try {
+      const snap = await fetch("/api/backup", { method: "POST" });
+      const sj = await snap.json().catch(() => ({}));
+      if (!snap.ok || !sj?.ok) {
+        throw new Error(sj?.error || "ব্যাকআপ করা যায়নি");
+      }
+      const link = document.createElement("a");
+      link.href = "/api/backup";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      publishBackup();
+      toast.success(
+        `ব্যাকআপ হয়েছে (${sj.file ?? ""}, ${sj.services ?? 0}টি রেকর্ড)`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "ব্যাকআপ করা যায়নি");
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   const edit = (service: ServiceDTO) => {
     setEditing(service);
     setMobileTab("form");
@@ -417,8 +495,9 @@ export function ServiceWorkspace({
     openReceipt(service);
   };
 
-  // Deep links from Home/search: open the exact row, or the receipt slip.
-  // Consumed once so a normal refresh does not fight the user's current state.
+  // Deep links from search and old Home bookmarks: open the exact row, or the
+  // receipt slip. Consumed once so a normal refresh does not fight the user's
+  // current state.
   useEffect(() => {
     if (paramsConsumed.current) return;
     if (!initialEditId && !initialReceiptId) {
@@ -458,17 +537,11 @@ export function ServiceWorkspace({
   // Visibility refresh keeps the selected day and all counters honest.
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") {
-        void load(dateRef.current, false);
-        void fetchMonthly(rangeRef.current);
-        void fetchDues();
-        void loadTechnicians();
-        void loadPartsShops();
-      }
+      if (document.visibilityState === "visible") refreshAll();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [load, fetchMonthly, fetchDues, loadTechnicians, loadPartsShops]);
+  }, [refreshAll]);
 
   const duesButtonLabel = duesLoading
     ? "💰 বাকি তালিকা (হিসাব হচ্ছে…)"
@@ -568,6 +641,18 @@ export function ServiceWorkspace({
           }
         />
 
+        <ServiceStageLine
+          services={services}
+          stats={stats}
+          date={date}
+          overdue={overdue}
+          overdueLoading={overdueLoading}
+          overdueError={overdueError}
+          loading={loading}
+          activeStatus={statusParam}
+          onRetryOverdue={() => void fetchOverdue(date)}
+        />
+
         <DailySummary
           stats={stats}
           loading={loading}
@@ -575,6 +660,15 @@ export function ServiceWorkspace({
           onSelect={setTechFilter}
           date={date}
           today={dhakaDateKey(new Date())}
+        />
+
+        <ServiceUtilities
+          lastBackup={lastBackup}
+          refreshing={refreshing}
+          backingUp={backingUp}
+          onRefresh={refreshAll}
+          onBackup={() => void backup()}
+          onRestore={() => setShowRestore(true)}
         />
 
         <div className="hidden print:block" data-testid="monthly-print">
@@ -734,6 +828,19 @@ export function ServiceWorkspace({
         services={receiptGroup}
         onClose={closeReceipt}
         onPrint={print}
+      />
+
+      <RestoreDialog
+        open={showRestore}
+        onClose={() => setShowRestore(false)}
+        onRestored={() => {
+          setShowRestore(false);
+          setDataVersion((value) => value + 1);
+          void load(dateRef.current, false);
+          void fetchMonthly(rangeRef.current);
+          void loadTechnicians();
+          void loadPartsShops();
+        }}
       />
 
       <TechnicianManager

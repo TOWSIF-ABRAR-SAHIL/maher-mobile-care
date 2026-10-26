@@ -2,36 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Package, Wrench } from "lucide-react";
+import { Package, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * The three primary destinations. Kept to exactly three on purpose: the
- * counter workflow is Home → Service → Product, and anything else belongs
- * inside one of those pages.
+ * The two primary destinations. The counter workflow is Service → Product;
+ * reports, dues, backup and restore live inside the Service page rather than
+ * taking another tab.
  */
 const LINKS = [
-  { key: "home", href: "/", label: "হোম", icon: House },
   { key: "service", href: "/service", label: "সার্ভিস", icon: Wrench },
   { key: "products", href: "/products", label: "প্রোডাক্ট", icon: Package },
 ] as const;
 
 export function AppNavLinks({ className }: { className?: string }) {
-  const pathname = usePathname() || "/";
+  const pathname = usePathname() || "/service";
 
   return (
     <nav
       aria-label="প্রধান মেনু"
       data-testid="header-nav"
       className={cn(
-        "grid w-full grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.06] p-1",
+        "grid w-full grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/[0.06] p-1",
         "md:inline-flex md:w-auto md:justify-self-center",
         className
       )}
     >
       {LINKS.map(({ key, href, label, icon: Icon }) => {
-        const active =
-          href === "/" ? pathname === "/" : pathname.startsWith(href);
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={href}

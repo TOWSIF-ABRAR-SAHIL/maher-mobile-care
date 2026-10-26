@@ -6,8 +6,8 @@ import { HeaderDatePicker } from "@/components/HeaderDatePicker";
 
 /**
  * Date navigation belongs to the service list, not the app chrome. Changing
- * the day changes the list and the form's booking day together; Home always
- * means "today".
+ * the day changes the list and the form's booking day together; the desk
+ * always means "today" until the user picks another day.
  */
 export function ServiceDateNav({
   date,

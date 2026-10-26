@@ -195,9 +195,9 @@ async function main() {
         );
         check(
           `A${width}`,
-          `${width}px shows exactly three nav destinations`,
-          state.navCount === 3 &&
-            state.navLabels.join(",") === "হোম,সার্ভিস,প্রোডাক্ট" &&
+          `${width}px shows exactly two nav destinations`,
+          state.navCount === 2 &&
+            state.navLabels.join(",") === "সার্ভিস,প্রোডাক্ট" &&
             !state.navOverflow &&
             state.dateNavVisible,
           `links=${state.navCount}, labels=${state.navLabels.join("|")}, overflow=${state.navOverflow}`

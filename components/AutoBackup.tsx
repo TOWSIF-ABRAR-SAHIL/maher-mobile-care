@@ -37,7 +37,7 @@ export function AutoBackup() {
         publishBackup();
         toast.success("অটো ব্যাকআপ হয়েছে");
       } catch {
-        /* server busy — the manual backup on Home is still available */
+        /* server busy — the manual backup on Service is still available */
       }
     })();
   }, []);
