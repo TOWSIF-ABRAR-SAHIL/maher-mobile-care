@@ -211,7 +211,16 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
     totalBill > 0 &&
     totalDue === 0 &&
     services.every((r) => r.status !== "Returned");
-  const expected = services.find((r) => r.deliveryDate)?.deliveryDate ?? null;
+  // One visit = one bill. The header date is only used when every device is
+  // promised for the same day; otherwise each row prints its own date.
+  const expectedKeys = services.map((r) =>
+    r.deliveryDate ? dhakaDateKey(r.deliveryDate) : ""
+  );
+  const sharedExpected =
+    expectedKeys.length > 0 &&
+    expectedKeys.every((key) => key !== "" && key === expectedKeys[0])
+      ? expectedKeys[0]
+      : null;
 
   return (
     <div
@@ -236,10 +245,7 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p>
-          বিল নং:{" "}
-          <span className="font-bold">
-            {services.map((s) => `#${s.id}`).join(", ")}
-          </span>
+          বিল নং: <span className="font-bold">#{first.id}</span>
         </p>
         <p>
           তারিখ:{" "}
@@ -268,14 +274,12 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
             <td className="py-0.5 align-top text-gray-600">টেকনিশিয়ান</td>
             <td className="py-0.5 font-semibold">{first.technician}</td>
           </tr>
-          {expected ? (
+          {sharedExpected ? (
             <tr>
               <td className="py-0.5 align-top text-gray-600">
                 ডেলিভারির তারিখ
               </td>
-              <td className="py-0.5 font-medium">
-                {dhakaDateKey(expected)}
-              </td>
+              <td className="py-0.5 font-medium">{sharedExpected}</td>
             </tr>
           ) : null}
         </tbody>
@@ -319,6 +323,14 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
                       s.status}
                   </span>
                 )}
+                {!sharedExpected &&
+                s.deliveryDate &&
+                !s.deliveredAt &&
+                s.status !== "Returned" ? (
+                  <span className="mt-0.5 block text-[10px] text-gray-600">
+                    প্রত্যাশিত ডেলিভারি: {dhakaDateKey(s.deliveryDate)}
+                  </span>
+                ) : null}
               </td>
               <td className="py-1 text-right tabular-nums">
                 {formatTaka(s.totalBill)}

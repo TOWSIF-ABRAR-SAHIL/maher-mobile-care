@@ -4,30 +4,6 @@ import { formatTaka } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { TechStat } from "@/lib/types";
 
-/**
- * Deterministic colour per technician name. The roster is dynamic now, so a
- * fixed name→class map would leave every new employee grey; hashing the name
- * keeps colours stable across reloads without hardcoding anyone.
- */
-const PALETTE = [
-  "text-blue-600",
-  "text-green-600",
-  "text-purple-600",
-  "text-orange-600",
-  "text-rose-600",
-  "text-teal-600",
-  "text-indigo-600",
-  "text-amber-600",
-];
-
-function nameColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return PALETTE[hash % PALETTE.length];
-}
-
 export function TechnicianStats({
   stats,
   loading,
@@ -43,14 +19,14 @@ export function TechnicianStats({
   return (
     <section
       data-testid="technician-stats"
-      className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"
+      className="rounded-xl border border-maher-border bg-card p-3 sm:p-4"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
-          <Users className="h-4 w-4 text-gray-500" />
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+          <Users className="h-4 w-4 text-muted-foreground" />
           টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
         </h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           কার্ডে ক্লিক করে শুধু ওই টেকনিশিয়ানের কাজ দেখুন
         </p>
       </div>
@@ -76,42 +52,55 @@ export function TechnicianStats({
                       : `${t.technician}-এর কাজ দেখুন`
                   }
                   className={cn(
-                    "rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-left transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white motion-reduce:transition-none motion-reduce:hover:transform-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    "rounded-xl border border-maher-border p-2.5 text-left transition hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:transform-none focus:outline-none focus-visible:ring-2 focus-visible:ring-maher-navy",
                     // A technician who left the shop stays visible (greyed) when
                     // they still have work on this date, so the day's totals add up.
-                    !t.isActive && "border-dashed bg-gray-100 opacity-70",
-                    isSelected && "ring-2 ring-blue-500 bg-blue-50"
+                    !t.isActive && "border-dashed bg-maher-surface/40 opacity-70",
+                    t.isActive && "bg-maher-surface/40 hover:bg-white hover:border-maher-navy/30",
+                    isSelected && "ring-2 ring-maher-navy bg-maher-navy/5"
                   )}
                 >
                   <p
                     className={cn(
                       "flex flex-wrap items-center gap-1 break-words font-bold",
-                      t.isActive
-                        ? t.count > 0
-                          ? nameColor(t.technician)
-                          : "text-gray-700"
-                        : "text-gray-500"
+                      // Colour here encodes employment state, not identity:
+                      // every active technician reads the same.
+                      t.isActive ? "text-maher-navy" : "text-muted-foreground"
                     )}
                   >
                     {t.technician}
                     {!t.isActive ? (
-                      <span className="rounded bg-gray-200 px-1 py-0.5 text-xs font-medium text-gray-600">
+                      <span className="rounded bg-maher-border px-1 py-0.5 text-xs font-medium text-muted-foreground">
                         নিষ্ক্রিয়
                       </span>
                     ) : null}
                     {isSelected ? (
-                      <span className="text-xs font-semibold text-blue-700">
+                      <span className="text-xs font-semibold text-maher-navy">
                         ✓ নির্বাচিত
                       </span>
                     ) : null}
                   </p>
-                  <p className="mt-1 text-sm text-gray-700">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     কাজ করেছে:{" "}
-                    <span className="font-semibold">{t.count} টি</span>
+                    <span
+                      className={cn(
+                        "font-semibold tabular-nums",
+                        t.count > 0 ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      {t.count} টি
+                    </span>
                   </p>
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-muted-foreground">
                     মোট বিল:{" "}
-                    <span className="font-semibold">{formatTaka(t.bill)}</span>
+                    <span
+                      className={cn(
+                        "font-semibold tabular-nums",
+                        t.bill > 0 ? "text-maher-done" : "text-muted-foreground"
+                      )}
+                    >
+                      {formatTaka(t.bill)}
+                    </span>
                   </p>
                 </button>
               );

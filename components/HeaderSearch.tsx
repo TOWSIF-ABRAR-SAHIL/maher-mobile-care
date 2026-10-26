@@ -364,7 +364,7 @@ export function MobileSearch({
       </SheetTrigger>
       <SheetContent
         side="top"
-        className="border-blue-950/40 bg-[#0b2a4a] p-0 text-white"
+        className="border-maher-navy/40 bg-maher-navy p-0 text-white"
       >
         <SheetHeader className="border-white/15">
           <SheetTitle className="text-white">🔍 সব তারিখে খুঁজুন</SheetTitle>

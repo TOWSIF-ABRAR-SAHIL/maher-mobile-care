@@ -44,6 +44,15 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        maher: {
+          surface: "hsl(var(--maher-surface))",
+          border: "hsl(var(--maher-border))",
+          navy: "hsl(var(--maher-navy))",
+          "navy-light": "hsl(var(--maher-navy-light))",
+          money: "hsl(var(--maher-money))",
+          done: "hsl(var(--maher-done))",
+          due: "hsl(var(--maher-due))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -24,6 +24,16 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* Maher Mobile Care shop palette — deliberate, subject-specific tokens */
+    --maher-surface: 40 18% 96%;   /* off-white page background, quieter than stark white */
+    --maher-border: 210 18% 84%;   /* subtle slate border for cards/separators */
+    --maher-navy: 209 78% 16%;     /* header deep navy (#0b2a4a-ish) */
+    --maher-navy-light: 209 60% 24%; /* header hover state */
+    --maher-money: 24 85% 50%;     /* copper/amber for taka/bill totals */
+    --maher-done: 140 70% 45%;     /* green for completed/paid */
+    --maher-due: 0 75% 55%;        /* red for pending/due */
+    --maher-card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
   }
 
   .dark {

@@ -17,7 +17,9 @@ export default function RootLayout({
     <html lang="bn">
       <body>
         {children}
-        <Toaster richColors position="bottom-right" closeButton />
+        <div className="print:hidden">
+          <Toaster richColors position="bottom-right" closeButton />
+        </div>
       </body>
     </html>
   );

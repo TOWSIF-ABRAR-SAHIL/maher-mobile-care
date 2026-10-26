@@ -26,6 +26,7 @@ const DEFAULT_SUITES = [
   "scripts/laneD.js",
   "scripts/laneE.js",
   "scripts/laneF.js",
+  "scripts/laneG.js",
   "scripts/api-check.js",
   "scripts/technician-mgmt.js",
   "scripts/responsive-check.js",

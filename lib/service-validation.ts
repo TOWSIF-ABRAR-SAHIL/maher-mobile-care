@@ -39,6 +39,8 @@ export interface ServiceFormValues {
   damageNote?: string;
   /** Expected handover date (YYYY-MM-DD), optional. */
   deliveryDate?: string;
+  /** Optional handset IMEI (stored as text; blank means no IMEI). */
+  imei?: string;
   serviceDate?: string;
 }
 
@@ -77,6 +79,8 @@ export interface ValidatedServicePayload {
   damageLoss: number;
   damageNote: string | null;
   deliveryDate: Date | null;
+  /** Optional: NULL when the form left it blank. */
+  imei: string | null;
   serviceDateKey: string;
   serviceDate: Date;
 }
@@ -96,6 +100,21 @@ function readBody(body: unknown): Record<string, unknown> {
 
 const MAX_PARTS_SHOP_LENGTH = 100;
 const MAX_NOTE_LENGTH = 300;
+const MAX_IMEI_LENGTH = 32;
+
+/**
+ * Optional handset IMEI. Blank → NULL. The field is never required, so a job
+ * saves fine without one; when typed it is kept as text (some handsets print
+ * letters/slashes) and only checked for length.
+ */
+export function optionalImei(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > MAX_IMEI_LENGTH) {
+    throw new Error("IMEI নম্বর ৩২ অক্ষরের বেশি হতে পারবে না");
+  }
+  return text;
+}
 
 /** Optional internal field: blanks become NULL, long names are rejected. */
 function optionalPartsShop(value: unknown): string | null {
@@ -212,6 +231,7 @@ export function validateServicePayload(
   const deliveryDate = deliveryDateRaw
     ? serviceDateFromKey(deliveryDateRaw)
     : null;
+  const imei = optionalImei(values.imei);
   const serviceDateKey =
     values.serviceDate && values.serviceDate.trim() !== ""
       ? values.serviceDate.trim()
@@ -236,6 +256,7 @@ export function validateServicePayload(
     damageLoss,
     damageNote,
     deliveryDate,
+    imei,
     serviceDateKey,
     serviceDate: serviceDateFromKey(serviceDateKey),
   };
@@ -268,6 +289,7 @@ export function validateServiceCreate(
         raw.deliveryDate == null || raw.deliveryDate === ""
           ? undefined
           : String(raw.deliveryDate),
+      imei: raw.imei == null ? undefined : String(raw.imei),
       serviceDate:
         raw.serviceDate == null || raw.serviceDate === ""
           ? undefined
@@ -293,6 +315,7 @@ export interface ValidatedServiceUpdate {
   damageLoss?: number;
   damageNote?: string | null;
   deliveryDate?: Date | null;
+  imei?: string | null;
   deliveredAt?: Date | null;
   serviceDate?: Date;
 }
@@ -392,6 +415,12 @@ export function validateServiceUpdate(
       throw new Error("সঠিক ডেলিভারি তারিখ দিন");
     }
     data.deliveryDate = text ? serviceDateFromKey(text) : null;
+  }
+
+  // Optional in both directions: a blank edit clears the IMEI, omitting the
+  // field leaves it untouched (partial PUT semantics).
+  if (raw.imei !== undefined) {
+    data.imei = optionalImei(raw.imei);
   }
 
   return data;

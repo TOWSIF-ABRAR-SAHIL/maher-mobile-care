@@ -15,9 +15,10 @@ const MAX_DEVICES = 8;
  * POST /api/services/batch
  *
  * One customer visit can bring several devices. Customer/phone/technician/
- * date are shared; each device keeps its own model, problem, bill and status,
- * so totals, dues and technician stats still work per device. All rows are
- * created in one transaction with a shared `groupId` for the combined receipt.
+ * date are shared; each device keeps its own model, problem, bill, status and
+ * expected delivery date, so totals, dues and technician stats still work per
+ * device. All rows are created in one transaction with a shared `groupId` for
+ * the combined receipt.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -46,6 +47,13 @@ export async function POST(req: NextRequest) {
         device && typeof device === "object" && !Array.isArray(device)
           ? (device as Record<string, unknown>)
           : {};
+      // Customer/phone/technician/day are shared, but the expected handover
+      // date belongs to the individual device. Fall back to the shared value
+      // so older callers that only send one date keep working.
+      const deviceDeliveryDate =
+        typeof d.deliveryDate === "string" && d.deliveryDate.trim() !== ""
+          ? d.deliveryDate
+          : shared.deliveryDate;
       return validateServiceCreate(
         {
           // Shared fields come from the top level, never from a device row.
@@ -53,7 +61,7 @@ export async function POST(req: NextRequest) {
           phone: shared.phone,
           technician: shared.technician,
           serviceDate: shared.serviceDate,
-          deliveryDate: shared.deliveryDate,
+          deliveryDate: deviceDeliveryDate,
           model: d.model,
           problem: d.problem,
           totalBill: d.totalBill,
@@ -61,6 +69,8 @@ export async function POST(req: NextRequest) {
           status: d.status,
           shopExpense: d.shopExpense,
           partsShop: d.partsShop,
+          // Optional and per device — a blank IMEI stays NULL for that row.
+          imei: d.imei,
         },
         { allowedTechnicians: activeTechnicians }
       );

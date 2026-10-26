@@ -138,6 +138,7 @@ let browser = null;
     return {
       header: top("header"),
       action: top('[data-testid="action-row"]'),
+      summary: top('[data-testid="toggle-daily-summary"]'),
       tech: top('[data-testid="technician-stats"]'),
       today: top('[data-testid="today-stats"]'),
       form: top("form"),
@@ -153,11 +154,11 @@ let browser = null;
   console.log("reached D1", JSON.stringify(layout));
   check(
     "D1",
-    "order: header → actions → tech → today → form/table → footer; old blocks gone",
+    "order: header → actions → daily-summary bar → form/table → footer; old blocks gone",
     layout.header < layout.action &&
-      layout.action < layout.tech &&
-      layout.tech < layout.today &&
-      layout.today < layout.form &&
+      layout.action < layout.summary &&
+      layout.summary < layout.form &&
+      layout.summary < layout.table &&
       Math.abs(layout.form - layout.table) < 120 &&
       layout.footer > layout.table &&
       layout.oldSearch === false &&
@@ -165,6 +166,45 @@ let browser = null;
       layout.reportOutsideDialog === false &&
       layout.printCopyHidden === true,
     JSON.stringify(layout)
+  );
+
+  // ---------- D1b: the summary bar expands the technician + day panels ----------
+  await page.click('[data-testid="toggle-daily-summary"]');
+  await page.waitForFunction(
+    () => {
+      const el = document.getElementById("daily-summary-body");
+      return !!el && el.getBoundingClientRect().height > 100;
+    },
+    { polling: 100, timeout: 5000 }
+  );
+  const expanded = await page.evaluate(() => {
+    const top = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null;
+    };
+    return {
+      tech: top('[data-testid="technician-stats"]'),
+      today: top('[data-testid="today-stats"]'),
+      form: top("form"),
+    };
+  });
+  check(
+    "D1b",
+    "daily summary expands: tech → today, both above the form",
+    expanded.tech !== null &&
+      expanded.today !== null &&
+      expanded.tech < expanded.today &&
+      expanded.today < expanded.form,
+    JSON.stringify(expanded)
+  );
+  // Collapse again so the viewport checks below see the default layout.
+  await page.click('[data-testid="toggle-daily-summary"]');
+  await page.waitForFunction(
+    () => {
+      const el = document.getElementById("daily-summary-body");
+      return !!el && el.getBoundingClientRect().height < 5;
+    },
+    { polling: 100, timeout: 5000 }
   );
 
   // ---------- D2: report dialog (X + ESC) ----------
@@ -273,7 +313,7 @@ let browser = null;
       wa: wa?.getAttribute("href") || "",
       noMasked: !t.includes("৳••••"),
     };
-  }, `${duesBefore.count}টি বাকি • মোট ৳${duesBefore.totalDue.toLocaleString("en-IN")}`);
+  }, `${duesBefore.count}টি ডিভাইস বাকি • মোট ৳${duesBefore.totalDue.toLocaleString("en-IN")}`);
   check(
     "D3b",
     "dues dialog keeps columns + functional call/WhatsApp",

@@ -16,12 +16,12 @@ function DayCard({
   valueClass?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-slate-200 border-l-4 bg-white p-2.5 ${border}`}>
-      <p className="text-sm text-gray-600">{label}</p>
-      <p className={`mt-1 text-xl font-bold tracking-tight tabular-nums ${valueClass ?? "text-gray-900"}`}>
+    <div className={`rounded-xl border border-maher-border border-l-4 bg-card p-2.5 ${border}`}>
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-xl font-bold tracking-tight tabular-nums ${valueClass ?? "text-foreground"}`}>
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-xs text-gray-500">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -74,10 +74,10 @@ export function TodayStats({
       className="grid grid-cols-2 gap-2 md:grid-cols-4"
     >
       <DayCard
-        border={stats.count > 0 ? "border-l-blue-500" : "border-l-slate-300"}
+        border={stats.count > 0 ? "border-l-maher-navy" : "border-l-maher-border"}
         label={`${prefix} মোট কাজ`}
         value={`${stats.count} টি`}
-        valueClass={stats.count > 0 ? "text-blue-700" : "text-gray-900"}
+        valueClass={stats.count > 0 ? "text-maher-navy" : "text-foreground"}
         hint={
           stats.returnedCount > 0
             ? `+ ${stats.returnedCount}টি ফেরত`
@@ -85,23 +85,23 @@ export function TodayStats({
         }
       />
       <DayCard
-        border={stats.bill > 0 ? "border-l-green-500" : "border-l-slate-300"}
+        border={stats.bill > 0 ? "border-l-maher-done" : "border-l-maher-border"}
         label={`${prefix} মোট বিল`}
         value={formatTaka(stats.bill)}
-        valueClass={stats.bill > 0 ? "text-green-700" : "text-gray-900"}
+        valueClass={stats.bill > 0 ? "text-maher-done" : "text-foreground"}
         hint={billHint}
       />
       <DayCard
-        border={stats.due > 0 ? "border-l-red-500" : "border-l-slate-300"}
+        border={stats.due > 0 ? "border-l-maher-due" : "border-l-maher-border"}
         label={`${prefix} মোট বাকি`}
         value={formatTaka(stats.due)}
-        valueClass={stats.due > 0 ? "text-red-600" : "text-gray-900"}
+        valueClass={stats.due > 0 ? "text-maher-due" : "text-foreground"}
       />
       <DayCard
-        border={totalExpense > 0 ? "border-l-orange-500" : "border-l-slate-300"}
+        border={totalExpense > 0 ? "border-l-maher-money" : "border-l-maher-border"}
         label={`${prefix} মোট খরচ`}
         value={formatTaka(totalExpense)}
-        valueClass={totalExpense > 0 ? "text-orange-700" : "text-gray-900"}
+        valueClass={totalExpense > 0 ? "text-maher-money" : "text-foreground"}
         hint={expenseHint || undefined}
       />
     </div>

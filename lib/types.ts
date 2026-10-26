@@ -25,6 +25,12 @@ export interface ServiceDTO {
   damageNote: string | null;
   /** Set when a return also cancels the shop's parts cost (reports skip it). */
   expenseWrittenOff: boolean;
+  /**
+   * Optional handset IMEI, stored as text. Internal only: never rendered in the
+   * service list or on a customer receipt. Device unlock credentials are NOT
+   * stored at all — they live only in the open form session.
+   */
+  imei: string | null;
   /** Shared by every device row from one customer visit, or null. */
   groupId: string | null;
   /** Expected handover date (YYYY-MM-DD), or null. */
@@ -111,3 +117,92 @@ export interface MonthlyResponse {
 
 /** Summary window mode — presets follow the navbar date, custom is free. */
 export type RangeMode = "rolling30" | "thisMonth" | "lastMonth" | "custom";
+
+/* ------------------------------------------------------------------ */
+/* Inventory DTOs                                                       */
+/* ------------------------------------------------------------------ */
+
+/** 0 stock = out; 0 < stock <= threshold = low; above threshold = in. */
+export type StockStatus = "in" | "low" | "out";
+
+export interface ProductCategoryDTO {
+  id: number;
+  name: string;
+  /** Non-archived products in this category (shown in the manager). */
+  activeProductCount: number;
+  /** Every product, including archived ones. Deletion is blocked while > 0. */
+  productCount: number;
+  createdAt: string;
+}
+
+export interface ProductDTO {
+  id: number;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  categoryId: number;
+  categoryName: string;
+  brand: string | null;
+  description: string | null;
+  supplier: string | null;
+  sellingPrice: number;
+  /** Internal cost — never printed on a customer receipt. */
+  purchasePrice: number;
+  stock: number;
+  lowStockThreshold: number;
+  status: StockStatus;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductSummaryDTO {
+  totalProducts: number;
+  categories: number;
+  units: number;
+  lowStock: number;
+  outOfStock: number;
+  /** stock × purchasePrice, summed. Internal value. */
+  inventoryValue: number;
+}
+
+export interface ProductListResponse {
+  products: ProductDTO[];
+  summary: ProductSummaryDTO;
+  categories: ProductCategoryDTO[];
+}
+
+export type StockMovementType =
+  | "OPENING"
+  | "STOCK_IN"
+  | "STOCK_OUT"
+  | "ADJUSTMENT"
+  | "SALE"
+  | "RETURN";
+
+export interface StockMovementDTO {
+  id: number;
+  productId: number;
+  movementType: StockMovementType;
+  /** Signed delta: +in, −out. */
+  quantity: number;
+  previousStock: number;
+  newStock: number;
+  reason: string | null;
+  relatedServiceId: number | null;
+  createdAt: string;
+}
+
+/** A product line on a sale/receipt (name and price are snapshots). */
+export interface SaleItemDTO {
+  id: number;
+  serviceId: number;
+  productId: number | null;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  /** Internal cost at sale time. Never sent to the receipt renderer. */
+  unitCost?: number;
+}

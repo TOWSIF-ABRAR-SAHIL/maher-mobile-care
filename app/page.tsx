@@ -18,8 +18,7 @@ import {
   shareReceiptPdf as sharePdfBlob,
 } from "@/lib/receipt-pdf";
 import { ServiceTable } from "@/components/ServiceTable";
-import { TechnicianStats } from "@/components/TechnicianStats";
-import { TodayStats } from "@/components/TodayStats";
+import { DailySummary } from "@/components/DailySummary";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -311,24 +310,34 @@ export default function Home() {
 
   /**
    * Open the customer copy. A per-device receipt stays exactly as before; a
-   * shared visit loads every device row once and shows the combined slip.
+   * shared visit loads every device row FIRST, so the dialog never flashes a
+   * one-device slip before the combined bill appears.
    */
   const openReceipt = (service: ServiceDTO) => {
     const req = ++receiptGroupReq.current;
-    setReceipt(service);
+    if (!service.groupId) {
+      setReceiptGroup(null);
+      setReceipt(service);
+      return;
+    }
+    setReceipt(null);
     setReceiptGroup(null);
-    if (!service.groupId) return;
     void (async () => {
       try {
         const data = await getJSON<{ services: ServiceDTO[] }>(
           `/api/services?groupId=${encodeURIComponent(service.groupId!)}`
         );
         if (req !== receiptGroupReq.current) return;
-        if (Array.isArray(data.services) && data.services.length > 1) {
-          setReceiptGroup(data.services);
+        const rows = Array.isArray(data.services) ? data.services : [];
+        if (rows.length > 1) {
+          setReceiptGroup(rows);
+          setReceipt(rows[0]);
+        } else {
+          setReceipt(rows[0] ?? service);
         }
       } catch {
-        /* keep the single-device receipt */
+        if (req !== receiptGroupReq.current) return;
+        setReceipt(service);
       }
     })();
   };
@@ -533,12 +542,12 @@ export default function Home() {
       : "💰 বাকি তালিকা";
 
   return (
-    <div className="min-h-dvh bg-gray-100">
+    <div className="min-h-dvh bg-maher-surface">
       {/* Fixed so a slow refresh never changes the layout height. */}
       <div
         data-testid="day-refreshing"
         aria-hidden={!refreshing}
-        className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-blue-600 transition-opacity duration-150 print:hidden ${
+        className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-maher-navy transition-opacity duration-150 print:hidden ${
           refreshing ? "animate-pulse opacity-100" : "opacity-0"
         }`}
       />
@@ -589,7 +598,7 @@ export default function Home() {
             size="sm"
             data-testid="open-report"
             onClick={() => setShowReport(true)}
-            className="w-full bg-white text-slate-700 hover:bg-slate-50 sm:w-auto"
+            className="w-full bg-white text-foreground hover:bg-maher-surface sm:w-auto"
           >
             <BarChart3 className="mr-1 h-4 w-4" />
             ওভারঅল রিপোর্ট
@@ -600,22 +609,17 @@ export default function Home() {
             size="sm"
             data-testid="open-dues"
             onClick={() => setShowDues(true)}
-            className="w-full border-red-200 bg-white text-red-700 hover:bg-red-50 sm:w-auto"
+            className="w-full border-maher-due/30 bg-white text-maher-due hover:bg-maher-due/10 sm:w-auto"
           >
             {duesButtonLabel}
           </Button>
         </div>
 
-        <TechnicianStats
-          stats={stats?.techStats ?? []}
+        <DailySummary
+          stats={stats}
           loading={loading}
           selected={techFilter}
           onSelect={setTechFilter}
-        />
-
-        <TodayStats
-          stats={stats?.today ?? null}
-          loading={loading}
           date={date}
           today={dhakaDateKey(new Date())}
         />
@@ -722,12 +726,12 @@ export default function Home() {
           receipt ? "print:hidden" : ""
         }`}
       >
-        <div className="overflow-hidden rounded-lg bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow print:bg-white print:text-black">
+        <div className="overflow-hidden rounded-lg bg-gradient-to-r from-maher-navy via-maher-navy-light to-maher-navy text-white shadow print:bg-white print:text-black">
           <div className="px-4 py-4 text-center">
             <p className="text-base font-bold sm:text-lg">
               {SHOP.name}
             </p>
-            <div className="mt-2 flex flex-col items-center justify-center gap-1.5 text-xs text-slate-300 sm:flex-row sm:gap-6 print:text-gray-700">
+            <div className="mt-2 flex flex-col items-center justify-center gap-1.5 text-xs text-white/75 sm:flex-row sm:gap-6 print:text-gray-700">
               <span className="inline-flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
                 {SHOP.address}
@@ -742,7 +746,7 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <div className="border-t border-white/10 px-4 py-2 text-center text-xs text-slate-400 print:border-gray-300 print:text-gray-500">
+          <div className="border-t border-white/10 px-4 py-2 text-center text-xs text-white/60 print:border-gray-300 print:text-gray-500">
             দৈনিক সার্ভিস ট্র্যাকার — ডেটা আপনার পিসিতেই থাকে
           </div>
         </div>

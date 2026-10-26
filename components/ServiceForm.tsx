@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { KeyRound, Loader2, Lock, Plus } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, Lock, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,16 @@ import {
 } from "@/lib/service-validation";
 import type { ServiceDTO } from "@/lib/types";
 
+/** Optional unlock method. `none` = Not Provided (the default, never required). */
+type LockType = "none" | "PIN" | "Pattern" | "Password";
+
+const LOCK_OPTIONS: ReadonlyArray<{ value: LockType; label: string }> = [
+  { value: "none", label: "Not Provided" },
+  { value: "PIN", label: "PIN" },
+  { value: "Pattern", label: "Pattern" },
+  { value: "Password", label: "Password" },
+];
+
 const empty = {
   customerName: "",
   phone: "",
@@ -47,6 +57,16 @@ const empty = {
   partsShop: "",
   deliveryDate: "",
   serviceDate: "",
+  imei: "",
+  /*
+   * Device unlock credentials are deliberately form-only. They are never
+   * validated, never put in the API payload and never written to SQLite: the
+   * technician can read the lock while the job is open, and the value dies
+   * with the form. `lockType`/`lockVisible` are UI state for the same reason.
+   */
+  lockType: "none" as LockType,
+  lockValue: "",
+  lockVisible: false,
 };
 
 /** One device in a shared-customer visit. Money/status live on the visit. */
@@ -55,14 +75,27 @@ interface VisitDevice {
   model: string;
   problem: string;
   totalBill: string;
+  /** Expected handover day for THIS device; defaults to the entry day. */
+  deliveryDate: string;
+  /** Optional handset IMEI (persisted as text on this device row). */
+  imei: string;
+  /** Form-only unlock state: never validated, never sent, never stored. */
+  lockType: LockType;
+  lockValue: string;
+  lockVisible: boolean;
 }
 
-function blankDevice(key: number): VisitDevice {
+function blankDevice(key: number, entryDay: string): VisitDevice {
   return {
     key,
     model: "",
     problem: "",
     totalBill: "",
+    deliveryDate: entryDay,
+    imei: "",
+    lockType: "none",
+    lockValue: "",
+    lockVisible: false,
   };
 }
 
@@ -103,6 +136,7 @@ function isSalesTechnician(name: string): boolean {
  */
 function toForm(s: ServiceDTO) {
   return {
+    ...empty,
     customerName: s.customerName,
     phone: s.phone,
     model: s.model,
@@ -115,7 +149,111 @@ function toForm(s: ServiceDTO) {
     partsShop: s.partsShop ?? "",
     deliveryDate: s.deliveryDate ? dhakaDateKey(s.deliveryDate) : "",
     serviceDate: dhakaDateKey(s.serviceDate),
+    imei: s.imei ?? "",
+    // Unlock fields always start blank, even when editing an existing job.
+    lockType: "none" as LockType,
+    lockValue: "",
+    lockVisible: false,
   };
+}
+
+/**
+ * Optional unlock credential. Entirely form-local: the value is never added to
+ * the request body, never validated and never logged, so a blank or a filled
+ * lock can never block saving. PIN and Password get a reveal toggle; Pattern is
+ * typed as a short description (no dot grid to keep the form compact).
+ */
+function DeviceLockFields({
+  idPrefix,
+  testId,
+  lockType,
+  value,
+  visible,
+  onTypeChange,
+  onValueChange,
+  onToggleVisible,
+}: {
+  idPrefix: string;
+  testId: string;
+  lockType: LockType;
+  value: string;
+  visible: boolean;
+  onTypeChange: (value: LockType) => void;
+  onValueChange: (value: string) => void;
+  onToggleVisible: () => void;
+}) {
+  const canReveal = lockType === "PIN" || lockType === "Password";
+  const placeholder =
+    lockType === "PIN"
+      ? "PIN লিখুন"
+      : lockType === "Password"
+        ? "পাসওয়ার্ড লিখুন"
+        : "Pattern বর্ণনা করুন";
+  return (
+    <div data-testid={testId}>
+      <Label htmlFor={`${idPrefix}-lock-type`}>
+        Device Lock (PIN / Pattern / Password)
+      </Label>
+      <Select
+        value={lockType}
+        onValueChange={(v) => {
+          if (!v) return;
+          onTypeChange(v as LockType);
+        }}
+      >
+        <SelectTrigger
+          id={`${idPrefix}-lock-type`}
+          data-testid={`${testId}-type`}
+          className="h-9 xl:h-8"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {LOCK_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {lockType !== "none" ? (
+        <div className="mt-1 flex gap-1.5">
+          <Input
+            id={`${idPrefix}-lock-value`}
+            data-testid={`${testId}-value`}
+            type={canReveal && !visible ? "password" : "text"}
+            value={value}
+            onChange={(e) => onValueChange(e.target.value)}
+            placeholder={placeholder}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-9 xl:h-8"
+          />
+          {canReveal ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              data-testid={`${testId}-toggle`}
+              aria-label={visible ? "লুকান" : "দেখান"}
+              title={visible ? "লুকান" : "দেখান"}
+              onClick={onToggleVisible}
+              className="h-9 w-9 shrink-0 xl:h-8 xl:w-8"
+            >
+              {visible ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+        ঐচ্ছিক — শুধু এই ফর্মেই থাকে, সেভ হয় না বা কোথাও দেখা যায় না।
+      </p>
+    </div>
+  );
 }
 
 export function ServiceForm({
@@ -162,8 +300,11 @@ export function ServiceForm({
   const editing = initial !== null;
   /** Returned rows can be edited, but the ledger fields stay frozen. */
   const isReturnedRow = editing && initial?.status === "Returned";
-  // The first device is always present; extras are added one at a time.
-  const [devices, setDevices] = useState<VisitDevice[]>(() => [blankDevice(0)]);
+  // The first device is always present; extras are added one at a time. Each
+  // device carries its own expected delivery day, defaulting to the entry day.
+  const [devices, setDevices] = useState<VisitDevice[]>(() => [
+    blankDevice(0, serviceDate),
+  ]);
   const [visitTotalBill, setVisitTotalBill] = useState("");
   const deviceSeq = useRef(1);
   const addDevice = () => {
@@ -171,19 +312,28 @@ export function ServiceForm({
     const key = deviceSeq.current;
     deviceSeq.current += 1;
     setDevices((prev) =>
-      prev.length >= 8 ? prev : [...prev, blankDevice(key)]
+      prev.length >= 8 ? prev : [...prev, blankDevice(key, serviceDate)]
     );
   };
   const removeDevice = (key: number) =>
     setDevices((prev) =>
       prev.length > 1 ? prev.filter((d) => d.key !== key) : prev
     );
+  /** Patch one device row only, so extra cards never leak into each other. */
+  const patchDevice = (
+    key: number,
+    patch: Partial<Omit<VisitDevice, "key">>
+  ) =>
+    setDevices((prev) =>
+      prev.map((d) => (d.key === key ? { ...d, ...patch } : d))
+    );
   const setDevice =
-    (key: number, field: keyof Omit<VisitDevice, "key">) =>
+    (
+      key: number,
+      field: "model" | "problem" | "totalBill" | "deliveryDate" | "imei"
+    ) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
-      setDevices((prev) =>
-        prev.map((d) => (d.key === key ? { ...d, [field]: e.target.value } : d))
-      );
+      patchDevice(key, { [field]: e.target.value });
 
   /**
    * Options = active roster, PLUS the edited row's own technician when that
@@ -232,9 +382,27 @@ export function ServiceForm({
     });
   }, [techOptions]);
 
-  const set = (key: keyof typeof empty) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => setF((prev) => ({ ...prev, [key]: e.target.value }));
+  // The selected day is the default delivery day for every device. When the
+  // shop moves the dashboard to another day, devices still sitting on the
+  // previous default follow it; a date the user picked deliberately stays.
+  const lastServiceDate = useRef(serviceDate);
+  useEffect(() => {
+    const previous = lastServiceDate.current;
+    if (previous === serviceDate) return;
+    lastServiceDate.current = serviceDate;
+    setDevices((prev) =>
+      prev.map((d) =>
+        d.deliveryDate === previous || d.deliveryDate === ""
+          ? { ...d, deliveryDate: serviceDate }
+          : d
+      )
+    );
+  }, [serviceDate]);
+
+  const set = (
+    key: Exclude<keyof typeof empty, "lockType" | "lockValue" | "lockVisible">
+  ) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setF((prev) => ({ ...prev, [key]: e.target.value }));
 
   const billNum = parseBnNumber(f.totalBill) ?? 0;
   const advNum = parseBnNumber(f.advance) ?? 0;
@@ -285,7 +453,7 @@ export function ServiceForm({
         const entryDevices = devices.filter(
           (d, index) =>
             index === 0 ||
-            [d.model, d.problem, d.totalBill].some((v) => v.trim())
+            [d.model, d.problem, d.totalBill, d.imei].some((v) => v.trim())
         );
         const bills = entryDevices.map((d, index) =>
           parseEntryAmount(
@@ -312,7 +480,10 @@ export function ServiceForm({
               // repeating it would multiply the shop's expense reports.
               shopExpense: index === 0 ? f.shopExpense : "",
               partsShop: index === 0 ? f.partsShop : "",
-              deliveryDate: f.deliveryDate,
+              // Each device keeps its own expected handover day.
+              deliveryDate: d.deliveryDate,
+              // Optional per-device IMEI; a blank one becomes NULL.
+              imei: d.imei,
               serviceDate,
             },
             { allowedTechnicians: techOptions }
@@ -340,6 +511,7 @@ export function ServiceForm({
             shopExpense: f.shopExpense,
             partsShop: f.partsShop,
             deliveryDate: f.deliveryDate,
+            imei: f.imei,
             serviceDate: editing ? f.serviceDate : serviceDate,
           },
           // An inactive technician's own historical job stays editable, so the
@@ -372,7 +544,10 @@ export function ServiceForm({
           : {}),
         shopExpense: p.shopExpense ?? "",
         partsShop: p.partsShop ?? "",
-        deliveryDate: f.deliveryDate,
+        // The validated payload already holds this row's own date (per device
+        // for a visit, the single form field when editing one row).
+        deliveryDate: p.deliveryDate ? dhakaDateKey(p.deliveryDate) : "",
+        imei: p.imei ?? "",
         serviceDate: editing ? p.serviceDateKey : serviceDate,
       });
 
@@ -388,7 +563,7 @@ export function ServiceForm({
             phone: f.phone,
             technician: f.technician,
             serviceDate,
-            deliveryDate: f.deliveryDate,
+            // Each device row carries its own delivery date.
             devices: [payload, ...extraPayloads].map((p) => ({
               ...toDto(p, true),
             })),
@@ -424,7 +599,7 @@ export function ServiceForm({
             ? technicians[0]
             : FALLBACK_TECHNICIANS[0];
         setF({ ...empty, technician: defaultTech ?? "" });
-        setDevices([blankDevice(0)]);
+        setDevices([blankDevice(0, serviceDate)]);
         deviceSeq.current = 1;
         setVisitTotalBill("");
         setIsProductSale(false);
@@ -470,7 +645,7 @@ export function ServiceForm({
       {isProductSale ? (
         <p
           className={`mt-1 text-xs leading-snug ${
-            hasSalesTechnician ? "text-gray-500" : "text-amber-700"
+            hasSalesTechnician ? "text-muted-foreground" : "text-maher-money"
           }`}
         >
           {hasSalesTechnician
@@ -514,7 +689,7 @@ export function ServiceForm({
         </SelectContent>
       </Select>
       {isProductSale && !isReturnedRow ? (
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           অটো: ডেলিভারি (প্রোডাক্ট হাতে দেওয়া হয়েছে)
         </p>
       ) : null}
@@ -534,7 +709,7 @@ export function ServiceForm({
         className="h-9 xl:h-8"
       />
       {initial?.deliveredAt ? (
-        <p className="mt-1 text-xs text-emerald-700">
+        <p className="mt-1 text-xs text-maher-done">
           ✅ ডেলিভারি সম্পন্ন: {dhakaDateKey(initial.deliveredAt)}
         </p>
       ) : null}
@@ -542,9 +717,9 @@ export function ServiceForm({
   );
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-2.5 print:hidden">
-      <h2 className="mb-1.5 flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
-        <Plus className="h-4 w-4 text-blue-700" />
+    <section className="rounded-xl border border-maher-border bg-card p-2.5 print:hidden">
+      <h2 className="mb-1.5 flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+        <Plus className="h-4 w-4 text-maher-navy" />
         নতুন সার্ভিস এন্ট্রি
       </h2>
       <form onSubmit={submit} className="space-y-2">
@@ -554,7 +729,7 @@ export function ServiceForm({
             role="radiogroup"
             aria-label="এন্ট্রির ধরন"
             data-testid="service-mode-toggle"
-            className="grid grid-cols-2 gap-1 rounded-lg border border-blue-200 bg-blue-50/70 p-1"
+            className="grid grid-cols-2 gap-1 rounded-lg border border-maher-border bg-maher-surface/50 p-1"
           >
             <Button
               type="button"
@@ -567,8 +742,8 @@ export function ServiceForm({
               onClick={chooseService}
               className={
                 !isProductSale
-                  ? "bg-blue-700 text-white hover:bg-blue-800"
-                  : "text-gray-700 hover:bg-white"
+                  ? "bg-maher-navy text-white hover:bg-maher-navy-light"
+                  : "text-muted-foreground hover:bg-white"
               }
             >
               🛠️ সার্ভিসিং
@@ -584,22 +759,22 @@ export function ServiceForm({
               onClick={chooseProduct}
               className={
                 isProductSale
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : "text-gray-700 hover:bg-white"
+                  ? "bg-maher-money text-white hover:brightness-90"
+                  : "text-muted-foreground hover:bg-white"
               }
             >
               🛍️ প্রোডাক্ট সেল
             </Button>
           </div>
           {isProductSale ? (
-            <p className="mt-1 text-xs leading-snug text-blue-800">
+            <p className="mt-1 text-xs leading-snug text-maher-navy">
               প্রোডাক্টের নাম ও বিবরণ লিখুন; কাজের অবস্থা অটো “ডেলিভারি” হবে।
             </p>
           ) : null}
         </div>
 
         {isReturnedRow ? (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+          <div className="rounded-lg border border-maher-money bg-maher-money/10 px-3 py-2 text-xs leading-snug text-maher-money">
             ↩️ এই কাজটি ফেরত দেওয়া হয়েছে। বিল, জমা ও অবস্থা লক করা আছে —
             কাস্টমার, ফোন, মডেল, সমস্যা, টেকনিশিয়ান, খরচ ও তারিখ এডিট করতে
             পারবেন।
@@ -663,6 +838,42 @@ export function ServiceForm({
               />
             </div>
 
+            {isProductSale ? null : (
+              <>
+                <div>
+                  <Label htmlFor="svc-imei">IMEI Number</Label>
+                  <Input
+                    id="svc-imei"
+                    data-testid="svc-imei"
+                    value={f.imei}
+                    onChange={set("imei")}
+                    placeholder="Enter IMEI number (optional)"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={32}
+                    className="h-9 xl:h-8"
+                  />
+                </div>
+                <DeviceLockFields
+                  idPrefix="svc"
+                  testId="svc-lock"
+                  lockType={f.lockType}
+                  value={f.lockValue}
+                  visible={f.lockVisible}
+                  onTypeChange={(lockType) =>
+                    setF((prev) => ({ ...prev, lockType }))
+                  }
+                  onValueChange={(lockValue) =>
+                    setF((prev) => ({ ...prev, lockValue }))
+                  }
+                  onToggleVisible={() =>
+                    setF((prev) => ({ ...prev, lockVisible: !prev.lockVisible }))
+                  }
+                />
+              </>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label htmlFor="svc-bill">মোট বিল (৳)</Label>
@@ -673,7 +884,7 @@ export function ServiceForm({
                   placeholder="0"
                   inputMode="numeric"
                   readOnly={isReturnedRow}
-                  className="h-9 xl:h-8 read-only:bg-gray-50"
+                  className="h-9 xl:h-8 read-only:bg-maher-surface/50"
                 />
               </div>
               <div>
@@ -685,7 +896,7 @@ export function ServiceForm({
                   placeholder="0"
                   inputMode="numeric"
                   readOnly={isReturnedRow}
-                  className="h-9 xl:h-8 read-only:bg-gray-50"
+                  className="h-9 xl:h-8 read-only:bg-maher-surface/50"
                 />
               </div>
             </div>
@@ -697,7 +908,7 @@ export function ServiceForm({
                   id="svc-due"
                   value={formatTaka(due).replace("৳", "").trim()}
                   readOnly
-                  className="h-9 bg-gray-50 font-semibold xl:h-8"
+                  className="h-9 bg-maher-surface/50 font-semibold xl:h-8"
                 />
               </div>
               <div>{statusField}</div>
@@ -707,7 +918,6 @@ export function ServiceForm({
           <>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>{technicianField}</div>
-              {deliveryDateField}
             </div>
 
             <div data-testid="extra-devices" className="space-y-2">
@@ -720,11 +930,11 @@ export function ServiceForm({
                     data-testid={
                       isFirst ? "device-1" : `extra-device-${index}`
                     }
-                    className="rounded-lg border border-blue-200 bg-white p-2"
+                    className="rounded-lg border border-maher-border bg-card p-2"
                   >
                     <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
-                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-700 px-1 text-[11px] font-bold text-white">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-maher-navy px-1 text-[11px] font-bold text-white">
                           {toBnDigits(index + 1)}
                         </span>
                         ডিভাইস {toBnDigits(index + 1)}
@@ -734,7 +944,7 @@ export function ServiceForm({
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="h-7 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          className="h-7 px-2 text-maher-due hover:bg-maher-due/10 hover:text-maher-due"
                           onClick={() => removeDevice(d.key)}
                         >
                           সরান
@@ -777,6 +987,56 @@ export function ServiceForm({
                           />
                         </div>
                       </div>
+                      <div>
+                        <Label htmlFor={`${prefix}-delivery-date`}>
+                          ডেলিভারির সম্ভাব্য তারিখ (ঐচ্ছিক)
+                        </Label>
+                        <Input
+                          id={`${prefix}-delivery-date`}
+                          type="date"
+                          value={d.deliveryDate}
+                          onChange={setDevice(d.key, "deliveryDate")}
+                          data-testid={`device-delivery-${d.key}`}
+                          className="h-9 xl:h-8"
+                        />
+                        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                          ডিফল্ট এন্ট্রির দিন — চাইলে এই ডিভাইসের জন্য অন্য দিন
+                          বেছে নিন।
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor={`${prefix}-imei`}>IMEI Number</Label>
+                        <Input
+                          id={`${prefix}-imei`}
+                          data-testid={`device-imei-${d.key}`}
+                          value={d.imei}
+                          onChange={setDevice(d.key, "imei")}
+                          placeholder="Enter IMEI number (optional)"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          spellCheck={false}
+                          maxLength={32}
+                          className="h-9 xl:h-8"
+                        />
+                      </div>
+                      <DeviceLockFields
+                        idPrefix={prefix}
+                        testId={`device-lock-${d.key}`}
+                        lockType={d.lockType}
+                        value={d.lockValue}
+                        visible={d.lockVisible}
+                        onTypeChange={(lockType) =>
+                          patchDevice(d.key, { lockType })
+                        }
+                        onValueChange={(lockValue) =>
+                          patchDevice(d.key, { lockValue })
+                        }
+                        onToggleVisible={() =>
+                          patchDevice(d.key, {
+                            lockVisible: !d.lockVisible,
+                          })
+                        }
+                      />
                     </div>
                   </div>
                 );
@@ -790,21 +1050,21 @@ export function ServiceForm({
                   data-testid="add-device"
                   onClick={addDevice}
                   disabled={devices.length >= 8}
-                  className="h-9 w-full border-dashed border-blue-300 bg-white text-blue-800 hover:bg-blue-50 disabled:opacity-60"
+                  className="h-9 w-full border-dashed border-maher-border bg-card text-maher-navy hover:bg-maher-surface disabled:opacity-60"
                 >
                   <Plus className="mr-1.5 h-4 w-4" />
                   {devices.length >= 8
                     ? "সর্বোচ্চ ৮টি ডিভাইস"
                     : "আরেকটি ডিভাইস যোগ করুন"}
                 </Button>
-                <p className="px-1 text-xs leading-snug text-gray-500">
-                  নাম, ফোন, টেকনিশিয়ান ও ডেলিভারি তারিখ সব ডিভাইসের জন্য একই
-                  থাকবে।
+                <p className="px-1 text-xs leading-snug text-muted-foreground">
+                  নাম, ফোন ও টেকনিশিয়ান সব ডিভাইসের জন্য একই। প্রতিটি ডিভাইসের
+                  ডেলিভারি তারিখ আলাদা দিতে পারবেন — ডিফল্ট এন্ট্রির দিন।
                 </p>
               </div>
             </div>
 
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+            <div className="space-y-2 rounded-lg border border-maher-border bg-maher-surface/50 p-2">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label htmlFor="svc-total-bill">মোট বিল (৳)</Label>
@@ -817,7 +1077,7 @@ export function ServiceForm({
                     readOnly={hasDeviceBills}
                     className="h-9 xl:h-8 read-only:bg-white read-only:font-semibold"
                   />
-                  <p className="mt-1 text-[11px] leading-snug text-gray-500">
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
                     {hasDeviceBills
                       ? "ডিভাইসগুলোর বিলের যোগফল"
                       : "ডিভাইসে বিল না দিলে এখানে লিখুন"}
@@ -851,11 +1111,11 @@ export function ServiceForm({
           </>
         )}
 
-        <div className="space-y-1.5 rounded-lg border border-orange-200 bg-orange-50/60 p-2">
+        <div className="space-y-1.5 rounded-lg border border-maher-money/30 bg-maher-money/10 p-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
-              <Label htmlFor="svc-expense" className="flex items-center gap-1.5 text-orange-950">
-                <KeyRound className="h-3.5 w-3.5 text-orange-700" />
+              <Label htmlFor="svc-expense" className="flex items-center gap-1.5 text-maher-money">
+                <KeyRound className="h-3.5 w-3.5 text-maher-money" />
                 দোকান খরচ (কোড বা সংখ্যা)
               </Label>
               <Input
@@ -870,7 +1130,7 @@ export function ServiceForm({
                 aria-describedby="svc-expense-help"
                 className={`h-9 xl:h-8 ${
                   normalizedExpense.kind === "invalid"
-                    ? "border-red-500 focus-visible:ring-red-500"
+                    ? "border-maher-due focus-visible:ring-maher-due"
                     : ""
                 }`}
               />
@@ -881,22 +1141,22 @@ export function ServiceForm({
               >
                 {normalizedExpense.kind === "code" &&
                 normalizedExpense.amount !== null ? (
-                  <span className="font-medium text-emerald-700">
+                  <span className="font-medium text-maher-done">
                     গোপন কোড: {normalizedExpense.stored} ➔{" "}
                     {formatTakaBn(normalizedExpense.amount)}
                   </span>
                 ) : normalizedExpense.kind === "number" &&
                   normalizedExpense.amount !== null ? (
-                  <span className="font-medium text-emerald-700">
+                  <span className="font-medium text-maher-done">
                     সেভ করলে কোড হবে: {normalizedExpense.stored} ➔{" "}
                     {formatTakaBn(normalizedExpense.amount)}
                   </span>
                 ) : normalizedExpense.kind === "invalid" ? (
-                  <span className="font-medium text-red-600">
+                  <span className="font-medium text-maher-due">
                     {normalizedExpense.error}
                   </span>
                 ) : (
-                  <span className="text-orange-900/70">
+                  <span className="text-maher-money/80">
                     খালি রাখলে দোকান খরচ ০ ধরা হবে।
                   </span>
                 )}
@@ -921,7 +1181,7 @@ export function ServiceForm({
               </datalist>
             </div>
           </div>
-          <p className="flex items-start gap-1.5 text-xs leading-snug text-orange-900/80">
+          <p className="flex items-start gap-1.5 text-xs leading-snug text-maher-money/80">
             <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               এই খরচ ও দোকানের নাম শুধু দোকানের হিসাবের জন্য — কাস্টমার
@@ -948,10 +1208,10 @@ export function ServiceForm({
           </div>
         ) : null}
 
-        <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 border-t border-slate-200 bg-white/95 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="sticky bottom-0 z-10 -mx-2.5 -mb-2.5 border-t border-maher-border bg-card/95 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/80">
           {editing ? (
             <div className="flex gap-2">
-              <Button type="submit" className="flex-1 bg-blue-700 hover:bg-blue-800" disabled={saving}>
+              <Button type="submit" className="flex-1 bg-maher-navy hover:bg-maher-navy-light" disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "আপডেট করুন"}
               </Button>
               <Button type="button" variant="outline" onClick={onCancelEdit}>
@@ -961,7 +1221,7 @@ export function ServiceForm({
           ) : (
             <Button
               type="submit"
-              className="w-full bg-blue-700 text-base hover:bg-blue-800"
+              className="w-full bg-maher-navy text-base hover:bg-maher-navy-light"
               disabled={saving}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "সেভ করুন"}

@@ -32,6 +32,13 @@ model Service {
   /// A return can cancel the parts cost too (parts unused/returned). Reports
   /// skip that amount while the code/amount stay on the row for audit.
   expenseWrittenOff Boolean @default(false)
+  /// Optional handset IMEI, stored exactly as typed. Never printed on a
+  /// receipt and never shown in the service list.
+  imei          String?
+  /// Client-generated idempotency key for a product sale. A retried submit
+  /// resolves to the existing row instead of deducting stock twice. Old
+  /// service jobs keep NULL.
+  saleRef       String?  @unique
   /// Multiple devices from one customer visit share this opaque group id.
   groupId       String?
   /// Expected handover date shown on the form/list.
@@ -60,4 +67,91 @@ model Technician {
   createdAt DateTime @default(now())
 
   @@index([isActive])
+}
+
+/* ------------------------------------------------------------------ */
+/* Inventory (products, stock movements, product sale lines)            */
+/* ------------------------------------------------------------------ */
+
+/// Product grouping. `nameKey` is the lowercased/trimmed name so "Charger"
+/// and "charger" cannot both be created in a shop that only has one.
+model ProductCategory {
+  id        Int      @id @default(autoincrement())
+  name      String
+  nameKey   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products  Product[]
+}
+
+/// A sellable item. Stock is only ever changed through a StockMovement —
+/// editing a product never rewrites history. Deleting in the UI archives.
+model Product {
+  id                Int      @id @default(autoincrement())
+  name              String
+  /// Uppercased on write so the UNIQUE index is effectively case-insensitive.
+  sku               String?  @unique
+  barcode           String?  @unique
+  categoryId        Int
+  category          ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand             String?
+  description       String?
+  supplier          String?
+  sellingPrice      Int      @default(0)
+  /// Internal cost. Never printed on a customer receipt.
+  purchasePrice     Int      @default(0)
+  /// Current on-hand quantity. Never negative.
+  stock             Int      @default(0)
+  /// Low-stock threshold: 0 < stock <= threshold is "low".
+  lowStockThreshold Int      @default(3)
+  archived          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([archived])
+  @@index([name])
+}
+
+/// One product line on a sale. `serviceId` deliberately has NO foreign key:
+/// restoring an older snapshot may swap the Service table while these rows
+/// stay, and a dangling reference must never abort a restore. Name/SKU are
+/// snapshots so history survives a later product rename/archive.
+model SaleItem {
+  id           Int      @id @default(autoincrement())
+  serviceId    Int
+  productId    Int?
+  nameSnapshot String
+  skuSnapshot  String?
+  quantity     Int
+  unitPrice    Int
+  lineTotal    Int
+  /// Cost at sale time, internal only.
+  unitCost     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([serviceId])
+  @@index([productId])
+}
+
+/// Append-only stock ledger. `quantity` is the signed delta; previous/new
+/// stock are stored so a historical row still explains itself after edits.
+model StockMovement {
+  id               Int      @id @default(autoincrement())
+  productId        Int
+  /// OPENING, STOCK_IN, STOCK_OUT, ADJUSTMENT, SALE, RETURN
+  movementType     String
+  quantity         Int
+  previousStock    Int
+  newStock         Int
+  reason           String?
+  /// Sale/return row this movement belongs to (no FK, see SaleItem).
+  relatedServiceId Int?
+  createdAt        DateTime @default(now())
+
+  // Dedupe guard: one SALE and one RETURN movement per product per sale.
+  @@unique([relatedServiceId, productId, movementType])
+  @@index([productId])
+  @@index([createdAt])
 }

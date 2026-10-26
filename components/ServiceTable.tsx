@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Archive,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   Eye,
   EyeOff,
@@ -47,12 +55,62 @@ import {
   isReturned,
   STATUS_BN,
   STATUSES,
+  toBnDigits,
   type ServiceStatus,
 } from "@/lib/utils";
 import { isShopExpenseCode } from "@/lib/expense-code";
 import { dhakaDateKey } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ServiceDTO } from "@/lib/types";
+
+/**
+ * One customer visit: either a plain single-device job or every device row that
+ * shares a `groupId`. The daily list renders one entry per visit so a customer
+ * who brought three phones does not fill three rows.
+ */
+type Visit = {
+  key: string;
+  customerName: string;
+  phone: string;
+  devices: ServiceDTO[];
+  /** Devices that matched the active status filter/search (all when unfiltered). */
+  matched: number;
+};
+
+/** Rows arrive grouped already (same groupId sits together), so a single pass in
+ *  source order keeps the list stable while collecting each visit's devices. */
+function groupVisits(rows: ServiceDTO[]): Visit[] {
+  const visits: Visit[] = [];
+  const byGroup = new Map<string, Visit>();
+  for (const row of rows) {
+    if (!row.groupId) {
+      visits.push({
+        key: `row-${row.id}`,
+        customerName: row.customerName,
+        phone: row.phone,
+        devices: [row],
+        matched: 1,
+      });
+      continue;
+    }
+    const existing = byGroup.get(row.groupId);
+    if (existing) {
+      existing.devices.push(row);
+      existing.matched += 1;
+      continue;
+    }
+    const visit: Visit = {
+      key: `group-${row.groupId}`,
+      customerName: row.customerName,
+      phone: row.phone,
+      devices: [row],
+      matched: 1,
+    };
+    byGroup.set(row.groupId, visit);
+    visits.push(visit);
+  }
+  return visits;
+}
 
 export function ServiceTable({
   services,
@@ -153,11 +211,29 @@ export function ServiceTable({
     []
   );
   const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>("All");
+  // Multi-device visits can be folded to their summary strip. Keyed by the
+  // stable visit key (group id / row id) so an edit or a refresh keeps the
+  // choice. A search or status filter always expands, otherwise a matching
+  // device could exist in the list while staying invisible.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sharingId, setSharingId] = useState<number | null>(null);
   const sharingRef = useRef(false);
   // Desktop table is the default so the existing desktop test suites see it
   // immediately; on phones/tablets the effect switches to the card list.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  // A multi-device visit lives inside ONE colSpan cell, so it cannot inherit
+  // the table's column widths the way a normal row does. The inner grid copies
+  // the measured header widths, otherwise the device lines drift away from
+  // their column titles (status/money/cost ended up ~50-100px off).
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const [deviceCols, setDeviceCols] = useState("");
+  /** Fallback tracks for the very first paint, before measurement lands. */
+  const DEVICE_GRID_FALLBACK =
+    "grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.6fr)]";
+  const deviceGridStyle = deviceCols
+    ? { gridTemplateColumns: deviceCols }
+    : undefined;
 
   const loadArchived = async () => {
     setArchLoading(true);
@@ -193,28 +269,85 @@ export function ServiceTable({
     );
   }, [source, technicianFilter]);
 
+  const visitsAll = useMemo(() => groupVisits(techFiltered), [techFiltered]);
+
+  /**
+   * Counts describe entries, not devices: clicking "ডেলিভারি (২)" must show two
+   * visits, even if one of them carries three devices. A visit counts once for
+   * a status as soon as any of its devices is in that status.
+   */
   const counts = useMemo(() => {
-    const c: Record<string, number> = { All: techFiltered.length };
+    const c: Record<string, number> = { All: visitsAll.length };
     for (const st of STATUSES) {
-      c[st] = techFiltered.filter((s) => s.status === st).length;
+      c[st] = visitsAll.filter((v) =>
+        v.devices.some((d) => d.status === st)
+      ).length;
     }
     return c;
-  }, [techFiltered]);
+  }, [visitsAll]);
 
+  /**
+   * Filtering is visit-level: a match on any device keeps the whole visit so no
+   * device of the same customer disappears. `matched` records how many devices
+   * actually matched so the list can say so instead of silently hiding detail.
+   */
   const filtered = useMemo(() => {
-    const byStatus =
-      statusFilter === "All"
-        ? techFiltered
-        : techFiltered.filter((s) => s.status === statusFilter);
     const q = search.trim().toLowerCase();
-    if (!q) return byStatus;
-    return byStatus.filter((s) =>
-      [s.customerName, String(s.id), s.phone, s.model, s.problem]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [techFiltered, search, statusFilter]);
+    const out: Visit[] = [];
+    for (const visit of visitsAll) {
+      let matched = visit.devices;
+      if (statusFilter !== "All") {
+        matched = matched.filter((d) => d.status === statusFilter);
+      }
+      if (q) {
+        matched = matched.filter((d) =>
+          [d.customerName, String(d.id), d.phone, d.model, d.problem]
+            .join(" ")
+            .toLowerCase()
+            .includes(q)
+        );
+      }
+      if (matched.length > 0) out.push({ ...visit, matched: matched.length });
+    }
+    return out;
+  }, [visitsAll, search, statusFilter]);
+
+  /** Any active filter forces groups open so every match stays visible. */
+  const filterActive = search.trim().length > 0 || statusFilter !== "All";
+  const isCollapsed = (visit: Visit) =>
+    !filterActive && visit.devices.length > 1 && !!collapsed[visit.key];
+  const toggleCollapsed = (key: string) =>
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Auto table layout re-distributes columns whenever the visible row set
+  // changes, so re-measure then and on container resizes; the px template is
+  // what keeps each device line under its own column title.
+  const rowCount = filtered.length;
+  useLayoutEffect(() => {
+    if (!isDesktop) return;
+    const table = tableRef.current;
+    if (!table) return;
+    const measure = () => {
+      const headerRow = table.querySelector("thead tr");
+      if (!headerRow) return;
+      // ID + (তারিখ) + কাস্টমার stay outside the spanning cell.
+      const offset = showArchived ? 3 : 2;
+      const widths = [...headerRow.children]
+        .slice(offset)
+        .map((cell) => cell.getBoundingClientRect().width);
+      if (widths.length !== 5 || widths.some((w) => w <= 0)) return;
+      // Fixed px tracks: fractional units take their minimum from the content,
+      // so a wide badge/date would widen one column and shift the rest.
+      const next = widths.map((w) => `${Math.round(w * 100) / 100}px`).join(" ");
+      setDeviceCols((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    // Observe the header cells themselves: switching the template can nudge
+    // the auto layout, so keep re-measuring until the columns settle.
+    const observer = new ResizeObserver(measure);
+    for (const th of table.querySelectorAll("thead th")) observer.observe(th);
+    return () => observer.disconnect();
+  }, [isDesktop, showArchived, rowCount]);
 
   /** Rapid taps must not fire overlapping PUTs — the state update alone
    *  arrives a tick too late, so a ref guards the window synchronously. */
@@ -319,14 +452,14 @@ export function ServiceTable({
       </button>
       {s.damageLoss > 0 ? (
         <div
-          className="mt-1 whitespace-nowrap text-xs font-bold text-orange-700"
+          className="mt-1 whitespace-nowrap text-xs font-bold text-maher-money"
           title={`ড্যামেজ ক্ষতি: ${formatTaka(s.damageLoss)}`}
         >
           ⚠️ ড্যামেজ ক্ষতি
         </div>
       ) : null}
       {s.status === "Delivered" && s.due > 0 && !isReturned(s.status) ? (
-        <div className="mt-1 whitespace-nowrap text-xs font-bold text-red-600">
+        <div className="mt-1 whitespace-nowrap text-xs font-bold text-maher-due">
           ⚠️ টাকা বাকি
         </div>
       ) : null}
@@ -337,7 +470,7 @@ export function ServiceTable({
   const renderDelivery = (s: ServiceDTO) => {
     if (s.deliveredAt) {
       return (
-        <div className="mt-0.5 text-[11px] font-medium text-emerald-700">
+        <div className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-maher-done">
           ✅ ডেলিভারি: {dhakaDateKey(s.deliveredAt)}
         </div>
       );
@@ -347,8 +480,8 @@ export function ServiceTable({
     const overdue = key < dhakaDateKey(new Date()) && !isReturned(s.status);
     return (
       <div
-        className={`mt-0.5 text-[11px] ${
-          overdue ? "font-semibold text-red-600" : "text-gray-500"
+        className={`mt-0.5 whitespace-nowrap text-[11px] ${
+          overdue ? "font-semibold text-maher-due" : "text-muted-foreground"
         }`}
       >
         {overdue ? "⚠️ " : ""}ডেলিভারি: {key}
@@ -361,7 +494,7 @@ export function ServiceTable({
       <span
         data-testid={`group-badge-${s.id}`}
         title="একই কাস্টমারের একাধিক ডিভাইস — বিল প্রিভিউতে সব ডিভাইস একসাথে দেখা যাবে"
-        className="rounded bg-blue-100 px-1 py-0.5 text-[10px] font-semibold text-blue-700"
+        className="rounded bg-maher-surface px-1 py-0.5 text-[10px] font-semibold text-maher-navy"
       >
         👥 গ্রুপ
       </span>
@@ -372,16 +505,16 @@ export function ServiceTable({
       <div>
         বিল: <span className="font-semibold">{formatTaka(s.totalBill)}</span>
       </div>
-      <div className="text-green-700">
+      <div className="text-maher-done">
         জমা: <span className="font-semibold">{formatTaka(s.advance)}</span>
       </div>
       {isReturned(s.status) ? (
-        <div className="text-amber-700">
+        <div className="text-maher-money">
           ফেরত:{" "}
           <span className="font-semibold">{formatTaka(s.refundAmount)}</span>
         </div>
       ) : (
-        <div className={s.due > 0 ? "text-red-600" : "text-gray-500"}>
+        <div className={s.due > 0 ? "text-maher-due" : "text-muted-foreground"}>
           বাকি: <span className="font-semibold">{formatTaka(s.due)}</span>
         </div>
       )}
@@ -390,7 +523,7 @@ export function ServiceTable({
 
   const renderCost = (s: ServiceDTO) => {
     if (!s.shopExpense && !s.partsShop && s.damageLoss <= 0) {
-      return <span className="text-gray-400">—</span>;
+      return <span className="text-muted-foreground">—</span>;
     }
     const amountVisible = showAllExpenses || !!revealedExpenses[s.id];
 
@@ -411,7 +544,7 @@ export function ServiceTable({
             {s.expenseWrittenOff ? (
               <span
                 data-testid={`expense-written-off-${s.id}`}
-                className="rounded bg-gray-200 px-1 py-0.5 text-[10px] font-semibold text-gray-600"
+                className="rounded bg-maher-border px-1 py-0.5 text-[10px] font-semibold text-muted-foreground"
                 title="ফেরতের সময় খরচ বাদ দেওয়া হয়েছে — রিপোর্টে যোগ হয় না"
               >
                 বাতিল
@@ -437,7 +570,7 @@ export function ServiceTable({
                     : "১০ সেকেন্ডের জন্য টাকা দেখুন"
               }
               onClick={() => toggleRowExpense(s.id)}
-              className="rounded p-0.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded p-0.5 text-muted-foreground transition hover:bg-maher-border/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               {amountVisible ? (
                 <EyeOff className="h-3.5 w-3.5" />
@@ -448,7 +581,7 @@ export function ServiceTable({
             {amountVisible ? (
               <span
                 data-testid={`expense-amount-${s.id}`}
-                className="text-xs font-semibold text-emerald-700"
+                className="text-xs font-semibold text-maher-money"
               >
                 {formatTaka(s.expenseAmount)}
               </span>
@@ -457,7 +590,7 @@ export function ServiceTable({
         ) : null}
         {s.partsShop ? (
           <div
-            className="max-w-40 truncate text-xs text-blue-700"
+            className="max-w-40 truncate text-xs text-maher-navy"
             title={s.partsShop}
           >
             {s.partsShop}
@@ -465,7 +598,7 @@ export function ServiceTable({
         ) : null}
         {s.damageLoss > 0 ? (
           <div
-            className="whitespace-nowrap text-xs font-semibold text-orange-700"
+            className="whitespace-nowrap text-xs font-semibold text-maher-money"
             title={s.damageNote ?? "ড্যামেজ ক্ষতি"}
           >
             ক্ষতি: {formatTaka(s.damageLoss)}
@@ -482,7 +615,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
+          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -495,7 +628,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="বিল প্রিন্ট"
-            className="h-10 w-10 text-blue-700 lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-navy lg:h-8 lg:w-8"
             title="বিল প্রিন্ট"
             onClick={() => onReceipt(s)}
           >
@@ -506,7 +639,7 @@ export function ServiceTable({
               asChild
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
+              className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
               title="WhatsApp (chat/call)"
             >
               <a
@@ -523,7 +656,7 @@ export function ServiceTable({
               variant="ghost"
               size="icon"
               aria-label="ফোন নম্বর নেই"
-              className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
+              className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
               title="ফোন নম্বর নেই"
               disabled
             >
@@ -534,7 +667,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="PDF শেয়ার"
-            className="h-10 w-10 text-green-700 lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
             title="PDF শেয়ার"
             disabled={!s.phone.trim() || sharingId !== null}
             onClick={() => void sharePdf(s)}
@@ -553,7 +686,7 @@ export function ServiceTable({
                 ? "ড্যামেজ ক্ষতি"
                 : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-amber-700 lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-money lg:h-8 lg:w-8"
             title={
               isReturned(s.status)
                 ? "ড্যামেজ ক্ষতি"
@@ -581,7 +714,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-red-600 lg:h-8 lg:w-8"
+            className="h-10 w-10 text-maher-due lg:h-8 lg:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -592,22 +725,580 @@ export function ServiceTable({
     </div>
   );
 
+  /** Visit totals: one combined figure for the whole customer drop-off. */
+  const visitTotals = (devices: ServiceDTO[]) => {
+    let bill = 0;
+    let advance = 0;
+    let due = 0;
+    let refund = 0;
+    for (const device of devices) {
+      bill += device.totalBill;
+      advance += device.advance;
+      due += device.due;
+      refund += device.refundAmount;
+    }
+    return { bill, advance, due, refund };
+  };
+
+  /** A filtered visit keeps every device, so say how many actually matched. */
+  const filterHint = (visit: Visit) =>
+    visit.matched < visit.devices.length ? (
+      <p
+        data-testid="visit-filter-hint"
+        className="mt-0.5 text-[11px] font-medium text-maher-money"
+      >
+        এই ফিল্টারে {toBnDigits(visit.matched)}টি ডিভাইস মিলেছে
+      </p>
+    ) : null;
+
+  /**
+   * Group rows stay neutral so the device lines read as the content. Only a
+   * thin left accent survives the status/due colouring — enough to spot a
+   * returned job or an unpaid visit when scanning the list.
+   */
+  const visitAccent = (visit: Visit) =>
+    visit.devices.some((d) => isReturned(d.status))
+      ? "border-l-[3px] border-l-maher-money"
+      : visit.devices.some((d) => d.due > 0)
+        ? "border-l-[3px] border-l-maher-due"
+        : "border-l-[3px] border-l-transparent";
+
+  const visitRowTint = () => "hover:bg-muted/40";
+
+  const visitCardTint = (visit: Visit) =>
+    `border-maher-border bg-card ${visitAccent(visit)}`;
+
+  /** The customer's money, printed once at the top of the visit block. */
+  const visitMoney = (visit: Visit, layout: "stack" | "columns" = "stack") => {
+    const totals = visitTotals(visit.devices);
+    const rows = [
+      { label: "বিল", value: totals.bill, tone: "" },
+      { label: "জমা", value: totals.advance, tone: "text-maher-done" },
+      ...(totals.refund > 0
+        ? [{ label: "ফেরত", value: totals.refund, tone: "text-maher-money" }]
+        : []),
+      {
+        label: "বাকি",
+        value: totals.due,
+        tone: totals.due > 0 ? "text-maher-due" : "text-muted-foreground",
+      },
+    ];
+    return (
+      <div
+        data-testid={`visit-total-${visit.devices[0].id}`}
+        className={
+          layout === "columns"
+            ? "grid grid-cols-3 gap-1 text-xs tabular-nums"
+            : "space-y-0.5 text-xs tabular-nums"
+        }
+      >
+        {rows.map((row) =>
+          layout === "columns" ? (
+            <div key={row.label} className={row.tone}>
+              <div className="text-[11px] leading-tight text-muted-foreground">
+                {row.label}
+              </div>
+              <div className="font-semibold">{formatTaka(row.value)}</div>
+            </div>
+          ) : (
+            <div key={row.label} className={row.tone}>
+              {row.label}:{" "}
+              <span className="font-semibold">{formatTaka(row.value)}</span>
+            </div>
+          )
+        )}
+      </div>
+    );
+  };
+
+  /** One set of customer-level actions per visit: one bill, one chat, one PDF. */
+  const renderVisitActions = (s: ServiceDTO) => (
+    <div className="flex flex-wrap justify-end gap-1 print:hidden">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="বিল প্রিন্ট"
+        className="h-10 w-10 text-maher-navy lg:h-8 lg:w-8"
+        title="বিল প্রিন্ট"
+        onClick={() => onReceipt(s)}
+      >
+        <ReceiptText />
+      </Button>
+      {s.phone.trim() ? (
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          title="WhatsApp (chat/call)"
+        >
+          <a
+            href={whatsAppHref(s)}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`WhatsApp: ${s.customerName}`}
+          >
+            <MessageCircle />
+          </a>
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="ফোন নম্বর নেই"
+          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          title="ফোন নম্বর নেই"
+          disabled
+        >
+          <MessageCircle />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="PDF শেয়ার"
+        className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+        title="PDF শেয়ার"
+        disabled={!s.phone.trim() || sharingId !== null}
+        onClick={() => void sharePdf(s)}
+      >
+        {sharingId === s.id ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Share2 />
+        )}
+      </Button>
+    </div>
+  );
+
+  /** Per-device maintenance stays on each device line. */
+  const renderDeviceActions = (s: ServiceDTO) => (
+    <div className="flex flex-wrap justify-end gap-1 print:hidden">
+      {showArchived ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="ফিরিয়ে আনুন"
+          className="h-10 w-10 text-maher-done lg:h-8 lg:w-8"
+          title="ফিরিয়ে আনুন"
+          disabled={restoring === s.id}
+          onClick={() => void restore(s.id)}
+        >
+          <RotateCcw />
+        </Button>
+      ) : (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={
+              isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
+            }
+            className="h-10 w-10 text-maher-money lg:h-8 lg:w-8"
+            title={
+              isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
+            }
+            onClick={() => setAdjustTarget(s)}
+          >
+            <Scale />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="এডিট"
+            className="h-10 w-10 lg:h-8 lg:w-8"
+            title={
+              isReturned(s.status)
+                ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
+                : "এডিট"
+            }
+            onClick={() => onEdit(s)}
+          >
+            <Pencil />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="ডিলিট"
+            className="h-10 w-10 text-maher-due lg:h-8 lg:w-8"
+            title="ডিলিট"
+            onClick={() => setDeleteTarget(s)}
+          >
+            <Trash2 />
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
+  const deviceCountBadge = (visit: Visit) => (
+    <span
+      data-testid={`visit-badge-${visit.devices[0].id}`}
+      title="একই কাস্টমারের একাধিক ডিভাইস — বিল প্রিভিউতে সব ডিভাইস একসাথে দেখা যাবে"
+      className="rounded bg-maher-surface px-1 py-0.5 text-[10px] font-semibold text-maher-navy"
+    >
+      👥 {toBnDigits(visit.devices.length)}টি ডিভাইস
+    </span>
+  );
+
+  /** Device position inside the visit: "ডিভাইস ১", "ডিভাইস ২" … */
+  const deviceLabel = (index: number, id: number) => (
+    <span
+      data-testid={`visit-dev-num-${id}`}
+      className="text-[11px] font-medium text-muted-foreground"
+    >
+      ডিভাইস {toBnDigits(index + 1)}
+    </span>
+  );
+
+  /** Fold/unfold a multi-device visit. A filter pins it open and says why. */
+  const collapseToggle = (visit: Visit) => {
+    const open = !isCollapsed(visit);
+    const id = visit.devices[0].id;
+    return (
+      <button
+        type="button"
+        data-testid={`visit-toggle-${id}`}
+        aria-expanded={open}
+        aria-controls={`visit-devices-${id}`}
+        aria-label={open ? "ডিভাইসগুলো লুকান" : "ডিভাইসগুলো দেখান"}
+        title={
+          filterActive
+            ? "ফিল্টার চলছে — সব ডিভাইস খোলা আছে"
+            : open
+              ? "ডিভাইসগুলো লুকান"
+              : "ডিভাইসগুলো দেখান"
+        }
+        disabled={filterActive}
+        onClick={() => toggleCollapsed(visit.key)}
+        className="rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5" />
+        )}
+      </button>
+    );
+  };
+
+  /** Each device keeps its own bill/paid/due, set small so the visit total
+   *  above stays the headline figure. */
+  const deviceMoney = (d: ServiceDTO) => (
+    <div
+      data-testid={`visit-dev-money-${d.id}`}
+      className="text-[11px] leading-tight tabular-nums"
+    >
+      {renderMoney(d)}
+    </div>
+  );
+
+  const renderSingleRow = (s: ServiceDTO) => (
+    <TableRow
+      key={s.id}
+      className={
+        isReturned(s.status)
+          ? "bg-maher-money/10 hover:bg-maher-money/20"
+          : s.due > 0
+            ? "bg-maher-due/10 hover:bg-maher-due/20"
+            : ""
+      }
+    >
+      <TableCell className="font-mono font-semibold">
+        <div>{s.id}</div>
+        {groupBadge(s)}
+      </TableCell>
+      {showArchived ? (
+        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+          {dhakaDateKey(s.serviceDate)}
+        </TableCell>
+      ) : null}
+      <TableCell>
+        <div className="font-medium">{s.customerName}</div>
+        <div className="text-xs text-muted-foreground">{s.phone}</div>
+      </TableCell>
+      <TableCell>
+        <div className="font-medium">{s.model}</div>
+        <div
+          className="max-w-44 truncate text-xs text-muted-foreground"
+          title={s.problem}
+        >
+          {s.problem}
+        </div>
+        {renderDelivery(s)}
+      </TableCell>
+      <TableCell>{renderStatus(s)}</TableCell>
+      <TableCell className="whitespace-nowrap text-sm tabular-nums">
+        {renderMoney(s)}
+      </TableCell>
+      <TableCell className="align-top">{renderCost(s)}</TableCell>
+      <TableCell
+        className={`sticky right-0 z-10 border-l border-maher-border print:hidden ${
+          isReturned(s.status)
+            ? "bg-maher-money/10"
+            : s.due > 0
+              ? "bg-maher-due/10"
+              : "bg-white"
+        }`}
+      >
+        {renderActions(s)}
+      </TableCell>
+    </TableRow>
+  );
+
+  /**
+   * One row per visit: a customer group header (ID, name, phone, device count,
+   * fold control) with the visit's money, then one indented line per device so
+   * each job keeps its own status, bill and balance.
+   */
+  const renderVisitRow = (visit: Visit) => {
+    const first = visit.devices[0];
+    const gridClass = deviceCols ? "" : DEVICE_GRID_FALLBACK;
+    const open = !isCollapsed(visit);
+    return (
+      <TableRow
+        key={visit.key}
+        data-testid={`visit-row-${first.id}`}
+        data-customer={visit.customerName}
+        data-devices={visit.devices.length}
+        className={visitRowTint()}
+      >
+        <TableCell
+          className={`align-top font-mono font-semibold ${visitAccent(visit)}`}
+        >
+          <div data-testid={`visit-id-${first.id}`}>#{first.id}</div>
+          <div className="mt-0.5 flex items-center gap-1">
+            {collapseToggle(visit)}
+            {deviceCountBadge(visit)}
+          </div>
+        </TableCell>
+        {showArchived ? (
+          <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">
+            {dhakaDateKey(first.serviceDate)}
+          </TableCell>
+        ) : null}
+        <TableCell className="align-top">
+          <div className="font-medium">{visit.customerName}</div>
+          <div className="text-xs text-muted-foreground">{visit.phone}</div>
+          {filterHint(visit)}
+        </TableCell>
+        <TableCell colSpan={5} className="p-0 align-top">
+          <div
+            data-testid={`visit-summary-${first.id}`}
+            className={`grid items-center border-b border-maher-border bg-maher-surface/40 ${gridClass}`}
+            style={deviceGridStyle}
+          >
+            <div className="col-span-2 px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+              ভিজিটের মোট
+            </div>
+            <div className="px-2 py-1.5">{visitMoney(visit)}</div>
+            <div className="px-2 py-1" />
+            <div className="px-2 py-1">
+              {showArchived ? null : renderVisitActions(first)}
+            </div>
+          </div>
+          {open ? (
+            <div
+              id={`visit-devices-${first.id}`}
+              className={`grid ${gridClass}`}
+              style={deviceGridStyle}
+            >
+              {visit.devices.map((d, index) => (
+                <div
+                  key={d.id}
+                  data-testid={`visit-device-${d.id}`}
+                  className={`col-span-full grid items-start border-b border-maher-border/60 bg-background/40 py-1.5 last:border-b-0 ${gridClass}`}
+                  style={deviceGridStyle}
+                >
+                  <div className="min-w-0 px-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {deviceLabel(index, d.id)}
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        #{d.id}
+                      </span>
+                      <span className="font-medium">{d.model}</span>
+                    </div>
+                    <div
+                      className="mt-0.5 max-w-44 truncate text-xs text-muted-foreground"
+                      title={d.problem}
+                    >
+                      {d.problem}
+                    </div>
+                    {renderDelivery(d)}
+                  </div>
+                  <div className="px-2">{renderStatus(d)}</div>
+                  <div className="min-w-0 px-2">{deviceMoney(d)}</div>
+                  <div className="px-2">{renderCost(d)}</div>
+                  <div className="px-2">{renderDeviceActions(d)}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const renderSingleCard = (s: ServiceDTO) => (
+    <article
+      key={s.id}
+      data-testid={`service-card-${s.id}`}
+      data-customer={s.customerName}
+      className={`rounded-xl border p-3 ${
+        isReturned(s.status)
+          ? "border-maher-money/30 bg-maher-money/10"
+          : s.due > 0
+            ? "border-maher-due/30 bg-maher-due/10"
+            : "border-maher-border bg-white"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-mono font-semibold text-foreground">
+              #{s.id}
+            </span>
+            {groupBadge(s)}
+            {showArchived ? <span>{dhakaDateKey(s.serviceDate)}</span> : null}
+          </div>
+          <p
+            className="truncate font-semibold text-foreground"
+            title={s.customerName}
+          >
+            {s.customerName}
+          </p>
+          <p className="text-xs text-muted-foreground">{s.phone}</p>
+        </div>
+        <div className="shrink-0 text-right">{renderStatus(s)}</div>
+      </div>
+
+      <div className="mt-2">
+        <p className="break-words text-sm font-medium text-foreground">
+          {s.model}
+        </p>
+        <p className="break-words text-xs text-muted-foreground">{s.problem}</p>
+        {renderDelivery(s)}
+      </div>
+
+      <div className="mt-2 rounded-lg border border-maher-border bg-white/80 p-2 text-xs tabular-nums">
+        {renderMoney(s)}
+      </div>
+
+      <div className="mt-2 rounded-lg border border-dashed border-maher-border p-2 text-xs">
+        <p className="mb-1 font-semibold text-muted-foreground">
+          খরচ / পার্টস দোকান
+        </p>
+        {renderCost(s)}
+      </div>
+
+      <div className="mt-2 border-t border-maher-border pt-2">
+        {renderActions(s)}
+      </div>
+    </article>
+  );
+
+  /** One mobile card per visit, same information order as the table row. */
+  const renderVisitCard = (visit: Visit) => {
+    const first = visit.devices[0];
+    return (
+      <article
+        key={visit.key}
+        data-testid={`visit-card-${first.id}`}
+        data-customer={visit.customerName}
+        data-devices={visit.devices.length}
+        className={`rounded-xl border p-3 ${visitCardTint(visit)}`}
+      >
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span
+            data-testid={`visit-id-${first.id}`}
+            className="font-mono font-semibold text-foreground"
+          >
+            #{first.id}
+          </span>
+          {collapseToggle(visit)}
+          {deviceCountBadge(visit)}
+          {showArchived ? <span>{dhakaDateKey(first.serviceDate)}</span> : null}
+        </div>
+        <p
+          className="truncate font-semibold text-foreground"
+          title={visit.customerName}
+        >
+          {visit.customerName}
+        </p>
+        <p className="text-xs text-muted-foreground">{visit.phone}</p>
+        {filterHint(visit)}
+
+        <div
+          data-testid={`visit-summary-${first.id}`}
+          className="mt-2 overflow-hidden rounded-lg border border-maher-border bg-white/80 px-2 py-1.5"
+        >
+          <p className="text-[11px] font-semibold text-muted-foreground">
+            ভিজিটের মোট
+          </p>
+          <div className="mt-1">{visitMoney(visit, "columns")}</div>
+        </div>
+
+        {isCollapsed(visit) ? null : (
+          <div id={`visit-devices-${first.id}`} className="mt-2">
+            {visit.devices.map((d, index) => (
+              <div
+                key={d.id}
+                data-testid={`visit-device-${d.id}`}
+                className="border-t border-dashed border-maher-border pt-2 pb-1.5 first:border-t-0 first:pt-0"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {deviceLabel(index, d.id)}
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        #{d.id}
+                      </span>
+                      <span className="break-words text-sm font-medium text-foreground">
+                        {d.model}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                      {d.problem}
+                    </p>
+                    {renderDelivery(d)}
+                  </div>
+                  <div className="shrink-0 text-right">{renderStatus(d)}</div>
+                </div>
+                <div className="mt-1">{deviceMoney(d)}</div>
+                <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
+                  <div className="text-xs">{renderCost(d)}</div>
+                  {renderDeviceActions(d)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showArchived ? null : (
+          <div className="mt-2 border-t border-maher-border pt-2">
+            {renderVisitActions(first)}
+          </div>
+        )}
+      </article>
+    );
+  };
+
   return (
     <section
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
-      className="rounded-xl border border-slate-200 bg-white p-4"
+      className="rounded-xl border border-maher-border bg-card p-4"
     >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-gray-800">
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
           {showArchived ? (
             <>
-              <Archive className="h-4 w-4 text-gray-500" />
+              <Archive className="h-4 w-4 text-muted-foreground" />
               আর্কাইভ (মুছে ফেলা এন্ট্রি)
             </>
           ) : (
             <>
-              <ClipboardList className="h-4 w-4 text-gray-500" />
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
               সার্ভিস তালিকা ({date})
             </>
           )}
@@ -648,7 +1339,7 @@ export function ServiceTable({
             {showArchived ? "তালিকায় ফিরুন" : "আর্কাইভ দেখুন"}
           </Button>
           <div className="relative sm:w-72 print:hidden">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="svc-search"
               placeholder="নাম, আইডি, ফোন বা মডেল খুঁজুন..."
@@ -666,7 +1357,7 @@ export function ServiceTable({
       {technicianFilter ? (
         <div
           data-testid="tech-filter-notice"
-          className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900 print:hidden"
+          className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-maher-border bg-maher-surface/40 px-3 py-2 text-sm text-maher-navy print:hidden"
         >
           <span className="flex items-center gap-1.5">
             <Search className="h-4 w-4 shrink-0" />
@@ -694,8 +1385,8 @@ export function ServiceTable({
                   onClick={() => setStatusFilter(st)}
                   className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                     statusFilter === st
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700"
+                      ? "border-maher-navy bg-maher-navy text-white"
+                      : "border-maher-border bg-white text-foreground hover:border-maher-border hover:text-maher-navy"
                   }`}
                 >
                   {st === "All" ? "সব" : STATUS_BN[st]} ({counts[st] ?? 0})
@@ -705,8 +1396,8 @@ export function ServiceTable({
           ) : null}
           {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-12 text-center">
-          <ClipboardList className="h-8 w-8 text-gray-400" />
-          <p className="font-medium text-gray-700">
+          <ClipboardList className="h-8 w-8 text-muted-foreground" />
+          <p className="font-medium text-muted-foreground">
             {technicianFilter
               ? showArchived
                 ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
@@ -717,9 +1408,9 @@ export function ServiceTable({
           </p>
         </div>
       ) : isDesktop ? (
-        <Table>
+        <Table ref={tableRef}>
           <TableHeader>
-            <TableRow className="bg-gray-50 hover:bg-gray-50 [&_th]:text-xs [&_th]:font-semibold">
+            <TableRow className="bg-maher-surface/50 hover:bg-maher-surface [&_th]:text-xs [&_th]:font-semibold">
               <TableHead>ID</TableHead>
               {showArchived ? <TableHead>তারিখ</TableHead> : null}
               <TableHead>কাস্টমার</TableHead>
@@ -727,124 +1418,26 @@ export function ServiceTable({
               <TableHead>অবস্থা</TableHead>
               <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
               <TableHead>খরচ / পার্টস দোকান</TableHead>
-              <TableHead className="sticky right-0 z-10 border-l border-gray-200 bg-gray-50 text-right print:hidden">
+              <TableHead className="sticky right-0 z-10 border-l border-maher-border bg-maher-surface/50 text-right print:hidden">
                 অ্যাকশন
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((s) => (
-              <TableRow
-                key={s.id}
-                className={
-                  isReturned(s.status)
-                    ? "bg-amber-50/50 hover:bg-amber-50"
-                    : s.due > 0
-                      ? "bg-red-50/60 hover:bg-red-50"
-                      : ""
-                }
-              >
-                <TableCell className="font-mono font-semibold">
-                  <div>{s.id}</div>
-                  {groupBadge(s)}
-                </TableCell>
-                {showArchived ? (
-                  <TableCell className="whitespace-nowrap text-sm text-gray-600">
-                    {dhakaDateKey(s.serviceDate)}
-                  </TableCell>
-                ) : null}
-                <TableCell>
-                  <div className="font-medium">{s.customerName}</div>
-                  <div className="text-xs text-gray-500">{s.phone}</div>
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium">{s.model}</div>
-                  <div className="max-w-44 truncate text-xs text-gray-500" title={s.problem}>
-                    {s.problem}
-                  </div>
-                  {renderDelivery(s)}
-                </TableCell>
-                <TableCell>{renderStatus(s)}</TableCell>
-                <TableCell className="whitespace-nowrap text-sm tabular-nums">
-                  {renderMoney(s)}
-                </TableCell>
-                <TableCell className="align-top">{renderCost(s)}</TableCell>
-                <TableCell
-                  className={`sticky right-0 z-10 border-l border-gray-200 print:hidden ${
-                    isReturned(s.status)
-                      ? "bg-amber-50"
-                      : s.due > 0
-                        ? "bg-red-50"
-                        : "bg-white"
-                  }`}
-                >
-                  {renderActions(s)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {filtered.map((visit) =>
+              visit.devices.length > 1
+                ? renderVisitRow(visit)
+                : renderSingleRow(visit.devices[0])
+            )}
           </TableBody>
         </Table>
       ) : (
         <div className="space-y-2" data-testid="service-cards">
-          {filtered.map((s) => (
-            <article
-              key={s.id}
-              data-testid={`service-card-${s.id}`}
-              data-customer={s.customerName}
-              className={`rounded-xl border p-3 ${
-                isReturned(s.status)
-                  ? "border-amber-300 bg-amber-50/50"
-                  : s.due > 0
-                    ? "border-red-200 bg-red-50/40"
-                    : "border-gray-200 bg-white"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                    <span className="font-mono font-semibold text-gray-700">
-                      #{s.id}
-                    </span>
-                    {groupBadge(s)}
-                    {showArchived ? (
-                      <span>{dhakaDateKey(s.serviceDate)}</span>
-                    ) : null}
-                  </div>
-                  <p
-                    className="truncate font-semibold text-gray-900"
-                    title={s.customerName}
-                  >
-                    {s.customerName}
-                  </p>
-                  <p className="text-xs text-gray-500">{s.phone}</p>
-                </div>
-                <div className="shrink-0 text-right">{renderStatus(s)}</div>
-              </div>
-
-              <div className="mt-2">
-                <p className="break-words text-sm font-medium text-gray-800">
-                  {s.model}
-                </p>
-                <p className="break-words text-xs text-gray-500">{s.problem}</p>
-                {renderDelivery(s)}
-              </div>
-
-              <div className="mt-2 rounded-lg border border-gray-200 bg-white/80 p-2 text-xs tabular-nums">
-                {renderMoney(s)}
-              </div>
-
-              <div className="mt-2 rounded-lg border border-dashed border-gray-200 p-2 text-xs">
-                <p className="mb-1 font-semibold text-gray-500">
-                  খরচ / পার্টস দোকান
-                </p>
-                {renderCost(s)}
-              </div>
-
-              <div className="mt-2 border-t border-gray-200 pt-2">
-                {renderActions(s)}
-              </div>
-            </article>
-          ))}
+          {filtered.map((visit) =>
+            visit.devices.length > 1
+              ? renderVisitCard(visit)
+              : renderSingleCard(visit.devices[0])
+          )}
         </div>
       )}
         </>
@@ -877,7 +1470,7 @@ export function ServiceTable({
               (deleteTarget.refundAmount > 0 ||
                 deleteTarget.expenseAmount > 0 ||
                 deleteTarget.damageLoss > 0) ? (
-                <span className="mt-2 block font-medium text-red-700">
+                <span className="mt-2 block font-medium text-maher-due">
                   ⚠️ এই ফেরত কাজের রিফান্ড, খরচ ও ড্যামেজ ক্ষতিও সব রিপোর্ট ও
                   লাভের হিসাব থেকে বাদ যাবে। আর্কাইভ থেকে ফিরিয়ে আনলে আবার
                   হিসাবে যোগ হবে।
@@ -893,7 +1486,7 @@ export function ServiceTable({
                 e.preventDefault();
                 void confirmDelete();
               }}
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-maher-due text-white hover:bg-maher-due-light"
             >
               {deleting ? "হচ্ছে…" : "আর্কাইভ"}
             </AlertDialogAction>

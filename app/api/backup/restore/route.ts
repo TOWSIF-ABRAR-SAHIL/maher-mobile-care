@@ -41,6 +41,7 @@ const OPTIONAL_COLS = [
   "groupId",
   "deliveryDate",
   "deliveredAt",
+  "imei",
 ];
 
 /**

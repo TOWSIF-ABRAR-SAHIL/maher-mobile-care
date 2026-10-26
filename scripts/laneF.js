@@ -17,6 +17,9 @@ const {
 
 const BASE = resolveTestBase();
 const TODAY = dhakaToday();
+/** ISO timestamp from the API → its Dhaka calendar day ("YYYY-MM-DD"). */
+const isoDay = (value) =>
+  value ? new Date(value).toISOString().slice(0, 10) : "";
 const GROUP_CUSTOMER = uniqueName("GroupVisit");
 const UI_GROUP = uniqueName("UiGroupVisit");
 const RETURN_JOB = uniqueName("ReturnEdit");
@@ -67,6 +70,44 @@ async function closeDialog(page) {
   await page.waitForFunction(
     () => !document.querySelector('[role="dialog"]'),
     { polling: 100, timeout: 8000 }
+  );
+}
+
+/** One entry per customer visit: grouped devices live inside a single row. */
+function visitRows(page, customer) {
+  return page.evaluate(
+    (sel, name) =>
+      [...document.querySelectorAll(`${sel} tbody tr`)]
+        .filter((tr) => tr.getAttribute("data-customer") === name)
+        .map((tr) => ({
+          testid: tr.getAttribute("data-testid") || "",
+          devices: Number(tr.getAttribute("data-devices") || 0),
+          deviceLines: tr.querySelectorAll('[data-testid^="visit-device-"]')
+            .length,
+          total:
+            tr.querySelector('[data-testid^="visit-total-"]')?.textContent || "",
+          text: tr.textContent || "",
+        })),
+    '[data-testid="daily-services"]',
+    customer
+  );
+}
+
+/** Mobile card equivalent of visitRows(). */
+function visitCards(page, customer) {
+  return page.evaluate(
+    (sel, name) =>
+      [...document.querySelectorAll(`${sel} [data-testid^="visit-card-"]`)]
+        .filter((card) => card.getAttribute("data-customer") === name)
+        .map((card) => ({
+          testid: card.getAttribute("data-testid") || "",
+          id: card.querySelector('[data-testid^="visit-id-"]')?.textContent?.trim() || "",
+          deviceLines: card.querySelectorAll('[data-testid^="visit-device-"]')
+            .length,
+          text: card.textContent || "",
+        })),
+    '[data-testid="daily-services"]',
+    customer
   );
 }
 
@@ -152,6 +193,53 @@ async function closeDialog(page) {
       grouped.body.services?.length === 2 &&
       grouped.body.services[0].id < grouped.body.services[1].id,
     JSON.stringify({ ok: grouped.ok, count: grouped.body.services?.length })
+  );
+
+  // ---- F14: the expected delivery date is per device, not per visit ----
+  const PER_DEVICE = uniqueName("PerDeviceDate");
+  const perDevice = await api(page, "/api/services/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: PER_DEVICE,
+      phone: "01700000904",
+      technician: "NURUL",
+      serviceDate: TODAY,
+      // Older callers still send one shared date; a device-level date wins and
+      // a device without one inherits the shared value.
+      deliveryDate: shiftDay(TODAY, 3),
+      devices: [
+        {
+          model: "Date A",
+          problem: "প্রথম ডিভাইস",
+          status: "In-Progress",
+          totalBill: 100,
+          deliveryDate: shiftDay(TODAY, 5),
+        },
+        {
+          model: "Date B",
+          problem: "দ্বিতীয় ডিভাইস",
+          status: "In-Progress",
+          totalBill: 200,
+        },
+      ],
+    }),
+  });
+  const perDeviceRows = Array.isArray(perDevice.body.services)
+    ? perDevice.body.services
+    : [];
+  check(
+    "F14",
+    "batch create keeps a delivery date per device with a shared fallback",
+    perDevice.ok &&
+      perDeviceRows.length === 2 &&
+      isoDay(perDeviceRows[0].deliveryDate) === shiftDay(TODAY, 5) &&
+      isoDay(perDeviceRows[1].deliveryDate) === shiftDay(TODAY, 3),
+    JSON.stringify({
+      ok: perDevice.ok,
+      dates: perDeviceRows.map((r) => isoDay(r.deliveryDate)),
+      expected: [shiftDay(TODAY, 5), shiftDay(TODAY, 3)],
+    })
   );
 
   // ---- F3: deliveredAt follows the status; expected date stays editable ----
@@ -264,6 +352,14 @@ async function closeDialog(page) {
     () => document.querySelector("#svc-tech")?.textContent?.includes("NURUL"),
     { polling: 200, timeout: 15000 }
   );
+  // Each device card owns a date input, defaulted to the selected entry day.
+  const formDefaults = await page.evaluate(() => ({
+    device1: document.querySelector("#svc-delivery-date")?.value || "",
+    inDeviceCard: !!document.querySelector('[data-testid="device-delivery-0"]'),
+    insideDeviceCard: !!document.querySelector(
+      '[data-testid="device-1"] #svc-delivery-date'
+    ),
+  }));
   await typeInto(page, "svc-name", UI_GROUP);
   await typeInto(page, "svc-phone", "01700000903");
   await typeInto(page, "svc-model", "UI Primary");
@@ -277,9 +373,14 @@ async function closeDialog(page) {
   );
   await page.click('[data-testid="add-device"]');
   await page.waitForSelector("#svc-device-1-model", { timeout: 5000 });
+  const secondDeviceDefault = await page.$eval(
+    "#svc-device-1-delivery-date",
+    (el) => el.value
+  );
   await typeInto(page, "svc-device-1-model", "UI Secondary");
   await typeInto(page, "svc-device-1-problem", "দ্বিতীয় ডিভাইস");
   await typeInto(page, "svc-device-1-bill", "800");
+  await typeInto(page, "svc-device-1-delivery-date", shiftDay(TODAY, 6));
   // Money, status and shop cost are entered once for the whole visit.
   await typeInto(page, "svc-adv", "500");
   await typeInto(page, "svc-expense", "*J#");
@@ -338,6 +439,23 @@ async function closeDialog(page) {
     })
   );
 
+  check(
+    "F15",
+    "each device has its own delivery date, defaulted to the entry day",
+    formDefaults.device1 === TODAY &&
+      formDefaults.inDeviceCard &&
+      formDefaults.insideDeviceCard &&
+      secondDeviceDefault === TODAY &&
+      isoDay(uiRows[0].deliveryDate) === shiftDay(TODAY, 4) &&
+      isoDay(uiRows[1].deliveryDate) === shiftDay(TODAY, 6),
+    JSON.stringify({
+      formDefaults,
+      secondDeviceDefault,
+      dates: uiRows.map((r) => isoDay(r.deliveryDate)),
+      expected: [shiftDay(TODAY, 4), shiftDay(TODAY, 6)],
+    })
+  );
+
   // ---- F6: receipt shows both devices on separate rows with totals ----
   await waitDailyRow(page, UI_GROUP, true);
   await clickDailyRowButton(page, UI_GROUP, "বিল প্রিন্ট");
@@ -367,7 +485,484 @@ async function closeDialog(page) {
       !receiptText.includes("Group Parts"),
     receiptText.slice(0, 300)
   );
+  const receiptMeta = await page.evaluate(() => {
+    const bundle = document.querySelector(
+      '[role="dialog"] [data-receipt-group]'
+    );
+    const text = bundle?.textContent || "";
+    return {
+      billNo: text.match(/বিল নং:\s*(#[0-9]+)/)?.[1] || "",
+      hasBillList: text.includes(", #"),
+      perDeviceDates: (text.match(/প্রত্যাশিত ডেলিভারি:/g) || []).length,
+      headerDate: text.includes("ডেলিভারির তারিখ"),
+    };
+  });
+  check(
+    "F16",
+    "combined slip prints ONE bill number and each device's own delivery date",
+    receiptMeta.billNo === `#${uiRows[0].id}` &&
+      !receiptMeta.hasBillList &&
+      receiptMeta.perDeviceDates === 2 &&
+      !receiptMeta.headerDate,
+    JSON.stringify({ ...receiptMeta, expectedBill: `#${uiRows[0].id}` })
+  );
   await closeDialog(page);
+
+  // ---- F17: a grouped visit never flashes a single-device slip first ----
+  let slowGroupRequests = 0;
+  const slowGroupFetch = (request) => {
+    if (request.url().includes("/api/services?groupId=")) {
+      slowGroupRequests += 1;
+      setTimeout(() => request.continue().catch(() => {}), 500);
+    } else {
+      request.continue().catch(() => {});
+    }
+  };
+  await page.setRequestInterception(true);
+  page.on("request", slowGroupFetch);
+  await page.evaluate(() => {
+    window.__sawSingleReceipt = false;
+    const scan = () => {
+      if (
+        document.querySelector(
+          '[role="dialog"] [data-receipt]:not([data-receipt-group])'
+        )
+      ) {
+        window.__sawSingleReceipt = true;
+      }
+    };
+    scan();
+    const observer = new MutationObserver(scan);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.__receiptObserver = observer;
+  });
+  await clickDailyRowButton(page, UI_GROUP, "বিল প্রিন্ট");
+  await page.waitForFunction(
+    () => !!document.querySelector('[role="dialog"] [data-receipt-group]'),
+    { polling: 50, timeout: 15000 }
+  );
+  const flash = await page.evaluate(() => {
+    window.__receiptObserver?.disconnect();
+    return {
+      sawSingle: window.__sawSingleReceipt === true,
+      dialogs: document.querySelectorAll('[role="dialog"]').length,
+    };
+  });
+  page.off("request", slowGroupFetch);
+  await page.setRequestInterception(false);
+  check(
+    "F17",
+    "a 2-device visit opens straight as one slip (no single-device flash)",
+    slowGroupRequests === 1 && !flash.sawSingle && flash.dialogs === 1,
+    JSON.stringify({ slowGroupRequests, ...flash })
+  );
+
+  // ---- F18: toasts never print on a customer bill ----
+  await page.emulateMediaType("print");
+  const toastPrint = await page.evaluate(() => {
+    const section = document.querySelector("[data-sonner-toaster]");
+    if (!section) return { present: false, hidden: true };
+    for (let node = section; node; node = node.parentElement) {
+      if (getComputedStyle(node).display === "none") {
+        return { present: true, hidden: true };
+      }
+    }
+    return { present: true, hidden: false };
+  });
+  await page.emulateMediaType("screen");
+  check(
+    "F18",
+    "print paper hides toasts (never on a customer bill)",
+    toastPrint.hidden,
+    JSON.stringify(toastPrint)
+  );
+  await closeDialog(page);
+
+  // ---- F8: one list entry per visit, devices listed inside it ----
+  const uiVisit = await visitRows(page, UI_GROUP);
+  check(
+    "F8",
+    "one daily entry for a 2-device visit; both devices listed inside",
+    uiVisit.length === 1 &&
+      uiVisit[0].devices === 2 &&
+      uiVisit[0].deviceLines === 2 &&
+      uiVisit[0].text.includes("UI Primary") &&
+      uiVisit[0].text.includes("UI Secondary") &&
+      uiVisit[0].text.includes("২টি ডিভাইস"),
+    JSON.stringify({
+      rows: uiVisit.length,
+      devices: uiVisit[0]?.devices,
+      lines: uiVisit[0]?.deviceLines,
+    })
+  );
+
+  // ---- F9: one visit entry; group total + each device's own money ----
+  const uiVisitText = uiVisit[0]?.text ?? "";
+  const deviceMoneyCount = await page.evaluate(
+    (sel, name) => {
+      const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+        (tr) => tr.getAttribute("data-customer") === name
+      );
+      return row
+        ? row.querySelectorAll('[data-testid^="visit-dev-money-"]').length
+        : -1;
+    },
+    '[data-testid="daily-services"]',
+    UI_GROUP
+  );
+  check(
+    "F9",
+    "one visit entry: group total 2,300/1,800 plus each device's own 1,500 and 800",
+    uiVisit.length === 1 &&
+      uiVisitText.split(UI_GROUP).length - 1 === 1 &&
+      uiVisit[0].total.includes("2,300") &&
+      uiVisit[0].total.includes("1,800") &&
+      uiVisitText.includes("৳1,500") &&
+      uiVisitText.includes("৳800") &&
+      deviceMoneyCount === 2,
+    JSON.stringify({ total: uiVisit[0]?.total, deviceMoneyCount })
+  );
+
+  // ---- F13: one visit ID, numbered device lines, organised total strip ----
+  const visitLabels = await page.evaluate(
+    (sel, name) => {
+      const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+        (tr) => tr.getAttribute("data-customer") === name
+      );
+      if (!row) return { error: "visit row missing" };
+      const strip = row.querySelector('[data-testid^="visit-summary-"]');
+      return {
+        id: row.querySelector('[data-testid^="visit-id-"]')?.textContent?.trim() || "",
+        labels: [...row.querySelectorAll('[data-testid^="visit-dev-num-"]')].map(
+          (el) => el.textContent.trim()
+        ),
+        strip: strip?.textContent?.trim() || "",
+        oldHint: (row.textContent || "").includes("প্রতি ডিভাইসের হিসাব নিচে"),
+      };
+    },
+    '[data-testid="daily-services"]',
+    UI_GROUP
+  );
+  check(
+    "F13",
+    "one visit ID, each device numbered, total strip organised",
+    /^#\d+$/.test(visitLabels.id) &&
+      visitLabels.labels.length === 2 &&
+      visitLabels.labels[0].includes("ডিভাইস ১") &&
+      visitLabels.labels[1].includes("ডিভাইস ২") &&
+      visitLabels.strip.includes("ভিজিটের মোট") &&
+      !visitLabels.oldHint,
+    JSON.stringify(visitLabels)
+  );
+
+  // ---- F20: device lines sit exactly under their own column titles ----
+  const alignment = await page.evaluate(
+    (sel, name) => {
+      const section = document.querySelector(sel);
+      if (!section) return { error: "section missing" };
+      const heads = [...section.querySelectorAll("thead th")];
+      const row = [...section.querySelectorAll("tbody tr")].find(
+        (tr) => tr.getAttribute("data-customer") === name
+      );
+      if (!row) return { error: "visit row missing" };
+      // ID + কাস্টমার sit outside the spanning cell; the last five columns are
+      // the ones the device grid must mirror.
+      const expected = heads
+        .slice(-5)
+        .map((th) => th.getBoundingClientRect().x);
+      const lines = [...row.querySelectorAll('[data-testid^="visit-device-"]')];
+      const diffs = lines.map((line) =>
+        [...line.children].map((cell, i) =>
+          Math.abs(cell.getBoundingClientRect().x - expected[i])
+        )
+      );
+      const total = row.querySelector('[data-testid^="visit-total-"]');
+      const totalDiff = total
+        ? Math.abs(total.parentElement.getBoundingClientRect().x - expected[2])
+        : 999;
+      return {
+        expected: expected.map((x) => Math.round(x)),
+        diffs,
+        totalDiff,
+        lines: lines.length,
+      };
+    },
+    '[data-testid="daily-services"]',
+    UI_GROUP
+  );
+  check(
+    "F20",
+    "each device line is aligned under its own table column",
+    !alignment.error &&
+      alignment.lines === 2 &&
+      alignment.diffs.length === 2 &&
+      alignment.diffs.every((line) => line.every((d) => d <= 1.5)) &&
+      alignment.totalDiff <= 1.5,
+    JSON.stringify(alignment)
+  );
+
+  // ---- F21: the visit header folds and unfolds its device lines ----
+  const readVisit = () =>
+    page.evaluate(
+      (sel, name) => {
+        const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+          (tr) => tr.getAttribute("data-customer") === name
+        );
+        if (!row) return { error: "visit row missing" };
+        const toggle = row.querySelector('[data-testid^="visit-toggle-"]');
+        return {
+          lines: row.querySelectorAll('[data-testid^="visit-device-"]').length,
+          expanded: toggle?.getAttribute("aria-expanded") ?? null,
+          totals: row.textContent.includes("2,300"),
+          customer: row.textContent.includes(name),
+        };
+      },
+      '[data-testid="daily-services"]',
+      UI_GROUP
+    );
+  const clickToggle = () =>
+    page.evaluate(
+      (sel, name) => {
+        const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+          (tr) => tr.getAttribute("data-customer") === name
+        );
+        const btn = row?.querySelector('[data-testid^="visit-toggle-"]');
+        if (!btn) return false;
+        btn.click();
+        return true;
+      },
+      '[data-testid="daily-services"]',
+      UI_GROUP
+    );
+  const foldOpen = await readVisit();
+  const clickedClosed = await clickToggle();
+  await new Promise((r) => setTimeout(r, 350));
+  const foldClosed = await readVisit();
+  const clickedOpen = await clickToggle();
+  await new Promise((r) => setTimeout(r, 350));
+  const foldBack = await readVisit();
+  check(
+    "F21",
+    "visit header folds/unfolds its device lines and keeps the group total",
+    foldOpen.lines === 2 &&
+      foldOpen.expanded === "true" &&
+      clickedClosed &&
+      foldClosed.lines === 0 &&
+      foldClosed.expanded === "false" &&
+      foldClosed.totals &&
+      foldClosed.customer &&
+      clickedOpen &&
+      foldBack.lines === 2 &&
+      foldBack.expanded === "true",
+    JSON.stringify({ foldOpen, foldClosed, foldBack })
+  );
+
+
+  const deviceEdit = await page.evaluate(
+    (sel, name) => {
+      const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+        (tr) => tr.getAttribute("data-customer") === name
+      );
+      if (!row) return { error: "visit row missing" };
+      const lines = [...row.querySelectorAll('[data-testid^="visit-device-"]')];
+      const second = lines[1];
+      if (!second) return { error: "second device line missing" };
+      const edit = second.querySelector("button[title='এডিট']");
+      if (!edit) return { error: "device edit missing" };
+      edit.click();
+      return { lines: lines.length };
+    },
+    '[data-testid="daily-services"]',
+    UI_GROUP
+  );
+  if (!deviceEdit.error) {
+    await page.waitForFunction(
+      () => document.querySelector("#svc-model")?.value === "UI Secondary",
+      { polling: 100, timeout: 8000 }
+    );
+    await page.evaluate(() => {
+      const cancel = [...document.querySelectorAll("form button")].find((b) =>
+        b.textContent.trim() === "বাতিল"
+      );
+      if (cancel) cancel.click();
+    });
+  }
+  check(
+    "F10",
+    "each device line has its own status chip and edit opens that device",
+    deviceEdit.lines === 2 && !deviceEdit.error,
+    JSON.stringify(deviceEdit)
+  );
+
+  // ---- F12: mobile shows one card per visit too ----
+  await page.setViewport({ width: 390, height: 844 });
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="daily-services"]', {
+    timeout: 30000,
+  });
+  const mobileVisit = await visitCards(page, UI_GROUP);
+  check(
+    "F12",
+    "mobile: one card for the 2-device visit with numbered device lines",
+    mobileVisit.length === 1 &&
+      mobileVisit[0].deviceLines === 2 &&
+      /^#\d+$/.test(mobileVisit[0].id || "") &&
+      mobileVisit[0].text.includes("UI Primary") &&
+      mobileVisit[0].text.includes("UI Secondary") &&
+      mobileVisit[0].text.includes("ডিভাইস ১") &&
+      mobileVisit[0].text.includes("ডিভাইস ২") &&
+      mobileVisit[0].text.includes("ভিজিটের মোট"),
+    JSON.stringify({
+      cards: mobileVisit.length,
+      lines: mobileVisit[0]?.deviceLines,
+      id: mobileVisit[0]?.id,
+    })
+  );
+  await page.setViewport({ width: 1366, height: 900 });
+
+  // ---- F11: a status filter keeps the whole visit, with a hint ----
+  const MIXED_GROUP = uniqueName("MixedGroup");
+  const mixed = await api(page, "/api/services/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: MIXED_GROUP,
+      phone: "01700000911",
+      technician: "NURUL",
+      serviceDate: TODAY,
+      devices: [
+        { model: "Mixed A", problem: "প্রথম", status: "Delivered", totalBill: 500 },
+        { model: "Mixed B", problem: "দ্বিতীয়", status: "Delivered", totalBill: 500 },
+        { model: "Mixed C", problem: "তৃতীয়", status: "Pending", totalBill: 400 },
+      ],
+    }),
+  });
+  if (!mixed.ok) {
+    throw new Error("mixed group create failed: " + JSON.stringify(mixed.body));
+  }
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="daily-services"] tbody tr', {
+    timeout: 30000,
+  });
+  const chip = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('[data-testid="daily-services"] button')]
+      .find((b) => b.textContent.trim().startsWith("ডেলিভারি"));
+    if (!btn) return null;
+    const text = btn.textContent.trim();
+    btn.click();
+    return text;
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  const mixedRows = await visitRows(page, MIXED_GROUP);
+  const hint = await page.evaluate(
+    (sel, name) => {
+      const row = [...document.querySelectorAll(`${sel} tbody tr`)].find(
+        (tr) => tr.getAttribute("data-customer") === name
+      );
+      return (
+        row
+          ?.querySelector('[data-testid="visit-filter-hint"]')
+          ?.textContent?.trim() || ""
+      );
+    },
+    '[data-testid="daily-services"]',
+    MIXED_GROUP
+  );
+  check(
+    "F11",
+    "status chip counts visits; filtering keeps every device and hints the match",
+    !!chip &&
+      /ডেলিভারি \((?:2|২)\)/.test(chip) &&
+      mixedRows.length === 1 &&
+      mixedRows[0].deviceLines === 3 &&
+      mixedRows[0].text.includes("Mixed A") &&
+      mixedRows[0].text.includes("Mixed C") &&
+      hint.includes("২টি ডিভাইস মিলেছে"),
+    JSON.stringify({ chip, rows: mixedRows.length, lines: mixedRows[0]?.deviceLines, hint })
+  );
+
+  // ---- F19: the dues list shows one row per visit with ONE slip ----
+  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="daily-services"]', {
+    timeout: 30000,
+  });
+  await page.evaluate(() => {
+    const button = document.querySelector('[data-testid="open-dues"]');
+    if (!button) throw new Error("dues button missing");
+    button.click();
+  });
+  await page.waitForSelector('[data-testid="dues-dialog"]', { timeout: 15000 });
+  await page.waitForFunction(
+    (name) =>
+      [
+        ...document.querySelectorAll(
+          '[data-testid="dues-dialog"] [data-testid^="due-visit-"]:not([data-testid^="due-visit-card-"])'
+        ),
+      ].some((el) => el.textContent?.includes(name)),
+    { polling: 200, timeout: 15000 },
+    UI_GROUP
+  );
+  const duesRow = await page.evaluate((name) => {
+    const rows = [
+      ...document.querySelectorAll(
+        '[data-testid="dues-dialog"] [data-testid^="due-visit-"]:not([data-testid^="due-visit-card-"])'
+      ),
+    ].filter((el) => el.textContent?.includes(name));
+    const row = rows[0];
+    return {
+      rows: rows.length,
+      devices: Number(row?.getAttribute("data-devices") || 0),
+      text: row?.textContent || "",
+      receipts: row
+        ? [...row.querySelectorAll("button")].filter(
+            (b) => b.getAttribute("title") === "বিল প্রিন্ট"
+          ).length
+        : 0,
+    };
+  }, UI_GROUP);
+  await page.evaluate((name) => {
+    const row = [
+      ...document.querySelectorAll(
+        '[data-testid="dues-dialog"] [data-testid^="due-visit-"]:not([data-testid^="due-visit-card-"])'
+      ),
+    ].find((el) => el.textContent?.includes(name));
+    row?.querySelector('button[title="বিল প্রিন্ট"]')?.click();
+  }, UI_GROUP);
+  await page.waitForFunction(
+    () => !!document.querySelector('[role="dialog"] [data-receipt-group]'),
+    { polling: 100, timeout: 15000 }
+  );
+  const duesSlip = await page.evaluate(() => {
+    const text =
+      document.querySelector('[role="dialog"] [data-receipt-group]')
+        ?.textContent || "";
+    return {
+      text,
+      hasBillList: text.includes(", #"),
+    };
+  });
+  await closeDialog(page);
+  check(
+    "F19",
+    "dues list: one row per visit, summed money, one receipt button",
+    duesRow.rows === 1 &&
+      duesRow.devices === 2 &&
+      duesRow.receipts === 1 &&
+      duesRow.text.includes("UI Primary") &&
+      duesRow.text.includes("UI Secondary") &&
+      duesRow.text.includes("2,300") &&
+      duesRow.text.includes("1,800") &&
+      duesRow.text.includes("2টি ডিভাইসের মোট") &&
+      !duesSlip.hasBillList &&
+      duesSlip.text.includes("UI Primary") &&
+      duesSlip.text.includes("UI Secondary"),
+    JSON.stringify({
+      rows: duesRow.rows,
+      devices: duesRow.devices,
+      receipts: duesRow.receipts,
+      hasBillList: duesSlip.hasBillList,
+    })
+  );
 
   // ---- F7: returned-row Edit stays available; ledger fields are locked ----
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });

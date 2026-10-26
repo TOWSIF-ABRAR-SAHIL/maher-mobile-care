@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Settings,
 } from "lucide-react";
+import { AppNavLinks } from "@/components/AppNavLinks";
 import { Button } from "@/components/ui/button";
 import { HeaderDatePicker } from "@/components/HeaderDatePicker";
 import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
@@ -52,7 +53,7 @@ export function Header({
   onSearchReceipt: (service: ServiceDTO) => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 rounded-xl border-b border-blue-950/60 bg-[#0b2a4a] px-3 py-2.5 text-white shadow-sm xl:py-1.5 print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
+    <header className="sticky top-0 z-40 rounded-xl border-b border-maher-navy/60 bg-maher-navy px-3 py-2.5 text-white shadow-sm xl:py-1.5 print:static print:rounded-none print:border print:border-gray-300 print:bg-white print:text-black print:shadow-none">
       <div className="flex flex-col gap-2 xl:gap-1.5">
         {/* Row 1: title + search. Below xl this is the phone/tablet header. */}
         <div className="flex items-start justify-between gap-3 xl:items-center">
@@ -61,13 +62,16 @@ export function Header({
               <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl xl:text-xl print:text-black">
                 MAHER MOBILE CARE
               </h1>
-              <p className="text-xs text-blue-100 sm:text-sm xl:text-xs print:text-gray-600">
+              <p className="hidden text-xs text-white/75 sm:text-sm md:block xl:text-xs print:text-gray-600">
                 দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
               </p>
             </div>
+            {/* Module switcher. On phones it replaces the subtitle line so the
+                header keeps its measured height; from md both fit. */}
+            <AppNavLinks className="mt-0.5 md:mt-1" />
             {/* Desktop keeps the header to two lines: the backup time moves
                 into the Backup button's tooltip instead of a third line. */}
-            <p className="text-xs text-blue-200 xl:hidden print:hidden">
+            <p className="text-xs text-white/60 xl:hidden print:hidden">
               {lastBackup
                 ? `সর্বশেষ ব্যাকআপ: ${lastBackup}`
                 : "এখনো ব্যাকআপ হয়নি"}
@@ -93,7 +97,7 @@ export function Header({
               variant="secondary"
               size="sm"
               aria-label="আগের দিন"
-              className="shrink-0 bg-white text-gray-800 hover:bg-blue-50"
+              className="shrink-0 bg-white text-foreground hover:bg-maher-surface"
               onClick={onPrev}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -106,7 +110,7 @@ export function Header({
               variant="secondary"
               size="sm"
               aria-label="পরের দিন"
-              className="shrink-0 bg-white text-gray-800 hover:bg-blue-50"
+              className="shrink-0 bg-white text-foreground hover:bg-maher-surface"
               onClick={onNext}
             >
               <span className="hidden sm:inline">পরের দিন</span>
@@ -122,7 +126,7 @@ export function Header({
             <Button
               variant="secondary"
               size="sm"
-              className="bg-white text-gray-800 hover:bg-blue-50"
+              className="bg-white text-foreground hover:bg-maher-surface"
               onClick={onToday}
             >
               <CalendarDays className="mr-1 h-4 w-4" />
@@ -184,7 +188,7 @@ export function Header({
             </Button>
             <Button
               size="sm"
-              className="bg-white text-gray-800 hover:bg-blue-50"
+              className="bg-white text-foreground hover:bg-maher-surface"
               onClick={onPrint}
             >
               <Printer className="mr-1 h-4 w-4" />
