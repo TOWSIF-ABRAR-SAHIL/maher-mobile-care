@@ -12,6 +12,7 @@ const {
   dhakaToday,
   launchBrowser,
   resolveTestBase,
+  shiftDay,
   trackErrors,
   typeInto,
   uniqueName,
@@ -161,6 +162,79 @@ let browser = null;
   );
   if (!refunded.ok) {
     throw new Error("refund seed failed: " + JSON.stringify(refunded.body));
+  }
+
+  // ---- delivery-rule matrix (all on TODAY): late, due-today, handed over ----
+  const yesterday = shiftDay(TODAY, -1);
+  const matrixSeeds = [
+    [uniqueName("DesignLate"), { status: "Pending", deliveryDate: yesterday }, "01722220005"],
+    [uniqueName("DesignDueToday"), { status: "In-Progress", deliveryDate: TODAY }, "01722220006"],
+    [uniqueName("DesignHanded"), { status: "Delivered", deliveryDate: yesterday }, "01722220007"],
+    [uniqueName("DesignArch"), { status: "Pending" }, "01722220008"],
+  ];
+  for (const [name, extra, phone] of matrixSeeds) {
+    const seeded = await post("/api/services", {
+      customerName: name,
+      phone,
+      model: "Design Matrix",
+      technician: "NURUL",
+      problem: "Delivery rule check",
+      totalBill: 700,
+      advance: 0,
+      serviceDate: TODAY,
+      ...extra,
+    });
+    if (!seeded.ok) {
+      throw new Error(`matrix seed ${name} failed: ` + JSON.stringify(seeded.body));
+    }
+  }
+  const ARCH_ID = (await get(`/api/services?date=${TODAY}`)).services.find(
+    (s) => s.customerName === matrixSeeds[3][0]
+  )?.id;
+  if (!ARCH_ID) throw new Error("archive seed not found after seeding");
+
+  // ---- reference-shape day (tomorrow): 3 tickets, 4 devices, computed live ----
+  const REF_DATE = shiftDay(TODAY, 1);
+  const REF_A = uniqueName("RefA");
+  const REF_B = uniqueName("RefB");
+  const REF_C = uniqueName("RefC");
+  const refBatch = await post("/api/services/batch", {
+    customerName: REF_A,
+    phone: "01722220011",
+    technician: "NURUL",
+    serviceDate: REF_DATE,
+    devices: [
+      { model: "Ref Ultra", problem: "Ref screen fault", totalBill: 11000, advance: 6000, status: "In-Progress" },
+      { model: "Ref Pro", problem: "Ref battery fault", totalBill: 15000, advance: 0, status: "In-Progress" },
+    ],
+  });
+  if (!refBatch.ok) {
+    throw new Error("reference group seed failed: " + JSON.stringify(refBatch.body));
+  }
+  const refB = await post("/api/services", {
+    customerName: REF_B,
+    phone: "01722220012",
+    model: "Ref Lite",
+    technician: "NURUL",
+    problem: "Ref charging fault",
+    totalBill: 1500,
+    advance: 1000,
+    status: "Pending",
+    serviceDate: REF_DATE,
+  });
+  const refC = await post("/api/services", {
+    customerName: REF_C,
+    phone: "01722220013",
+    model: "Ref Max",
+    technician: "NURUL",
+    problem: "Ref camera fault",
+    totalBill: 10000,
+    advance: 7000,
+    status: "Completed",
+    serviceDate: REF_DATE,
+  });
+  if (!refB.ok || !refC.ok) {
+    throw new Error("reference single seed failed: " + JSON.stringify([refB.body, refC.body]));
   }
 
   const services = (await get(`/api/services?date=${TODAY}`)).services;
@@ -520,7 +594,7 @@ let browser = null;
     "D7",
     "search keeps its id/placeholder and has a working clear button",
     searchState.value === PAID_NAME &&
-      searchState.placeholder === "নাম, আইডি, ফোন বা মডেল খুঁজুন..." &&
+      searchState.placeholder === "নাম, আইডি, ফোন, মডেল বা সমস্যা খুঁজুন..." &&
       searchState.clear &&
       restoredRows === visitList.length,
     JSON.stringify({ searchState, restoredRows })
@@ -637,6 +711,317 @@ let browser = null;
       tablet.cards[0].x !== tablet.cards[1].x &&
       !tablet.overflow,
     JSON.stringify(tablet)
+  );
+
+  // ---------- D10: overdue = delivery day passed, still with the shop ------
+  const loadDay = async (day) => {
+    await page.goto(`${BASE}/service?date=${day}`, {
+      waitUntil: "networkidle0",
+      timeout: 60000,
+    });
+    await page.waitForFunction(
+      (d) =>
+        document.querySelector('[data-testid="daily-services"]')?.dataset.date === d,
+      { polling: 200, timeout: 20000 },
+      day
+    );
+    await page.waitForSelector('[data-testid="daily-services"] tbody tr', {
+      timeout: 20000,
+    });
+  };
+
+  await page.setViewport({ width: 1440, height: 900 });
+  await loadDay(TODAY);
+  const [LATE_NAME, DUE_TODAY_NAME, HANDED_NAME] = [
+    matrixSeeds[0][0],
+    matrixSeeds[1][0],
+    matrixSeeds[2][0],
+  ];
+  const deliveryLines = await page.evaluate((names) => {
+    const out = {};
+    for (const name of names) {
+      const row = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')].find(
+        (tr) => tr.textContent.includes(name)
+      );
+      if (!row) {
+        out[name] = null;
+        continue;
+      }
+      const leaf = [...row.querySelectorAll("div")].find(
+        (d) => d.children.length === 0 && d.textContent.includes("ডেলিভারি:")
+      );
+      out[name] = leaf
+        ? { text: leaf.textContent.trim(), color: getComputedStyle(leaf).color }
+        : "no-line";
+    }
+    return out;
+  }, [LATE_NAME, DUE_TODAY_NAME, HANDED_NAME]);
+  const late = deliveryLines[LATE_NAME];
+  const dueTodayLine = deliveryLines[DUE_TODAY_NAME];
+  const handed = deliveryLines[HANDED_NAME];
+  check(
+    "D10",
+    "late row is red with ⚠️; due-today and handed-over rows are not overdue",
+    !!late &&
+      !!dueTodayLine &&
+      !!handed &&
+      typeof late === "object" &&
+      typeof dueTodayLine === "object" &&
+      typeof handed === "object" &&
+      late.text.startsWith("⚠️") &&
+      late.text.includes(yesterday) &&
+      late.color === "rgb(229, 72, 77)" &&
+      !dueTodayLine.text.includes("⚠️") &&
+      dueTodayLine.text.includes(TODAY) &&
+      dueTodayLine.color !== "rgb(229, 72, 77)" &&
+      handed.text.startsWith("✅") &&
+      !handed.text.includes("⚠️"),
+    JSON.stringify({ late, dueTodayLine, handed })
+  );
+
+  // ---------- D11: reference day computes 37,500 / 14,000 / 23,500 -------
+  const refStats = (await get(`/api/stats?date=${REF_DATE}`)).today;
+  await loadDay(REF_DATE);
+  const reference = await page.evaluate(
+    (aName, bName, cName) => {
+      const rows = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')];
+      const facts =
+        document.querySelector('[data-testid="service-list-facts"]')?.textContent ?? "";
+      const visitRow = rows.find((tr) => tr.textContent.includes(aName));
+      const total = visitRow?.querySelector('[data-testid^="visit-total-"]');
+      const deviceMoney = visitRow
+        ? [...visitRow.querySelectorAll('[data-testid^="visit-dev-money-"]')].map((el) =>
+            el.textContent.replace(/\s+/g, " ").trim()
+          )
+        : [];
+      const rowWith = (name) => rows.find((tr) => tr.textContent.includes(name));
+      return {
+        facts: facts.replace(/\s+/g, " ").trim(),
+        nameCount: visitRow ? visitRow.textContent.split(aName).length - 1 : -1,
+        total: total ? total.textContent.replace(/\s+/g, " ").trim() : null,
+        deviceMoney,
+        billB: rowWith(bName)?.textContent.includes("৳1,500") ?? false,
+        dueC: rowWith(cName)?.textContent.includes("৳3,000") ?? false,
+      };
+    },
+    REF_A,
+    REF_B,
+    REF_C
+  );
+  check(
+    "D11",
+    "reference day: 3 visits / 4 devices, ticket total separate from device lines, 37,500-14,000-23,500 computed live",
+    !!refStats &&
+      refStats.bill === 37500 &&
+      refStats.advance === 14000 &&
+      refStats.due === 23500 &&
+      reference.facts.includes(`${bn(3)}টি ভিজিট`) &&
+      reference.facts.includes(`${bn(4)}টি ডিভাইস`) &&
+      reference.nameCount === 1 &&
+      !!reference.total &&
+      reference.total.includes("৳26,000") &&
+      reference.total.includes("৳6,000") &&
+      reference.total.includes("৳20,000") &&
+      reference.deviceMoney.some((m) => m.includes("৳11,000")) &&
+      reference.deviceMoney.some((m) => m.includes("৳15,000")) &&
+      reference.billB &&
+      reference.dueC,
+    JSON.stringify({ refStats, reference })
+  );
+
+  // ---------- D12: one top edge, one-line status pill, pinned actions ------
+  await loadDay(TODAY);
+  const structure = await page.evaluate((name) => {
+    const rows = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')];
+    const single = rows.find(
+      (tr) =>
+        !(tr.getAttribute("data-testid") || "").startsWith("visit-row") &&
+        tr.textContent.includes(name)
+    );
+    const visit = rows.find((tr) =>
+      (tr.getAttribute("data-testid") || "").startsWith("visit-row")
+    );
+    const badge = single?.querySelector('button[aria-label^="অবস্থা"]');
+    const stickyInVisit = visit
+      ? [...visit.querySelectorAll("div")].filter(
+          (d) => getComputedStyle(d).position === "sticky"
+        ).length
+      : 0;
+    return {
+      aligns: single
+        ? [...single.children].map((td) => getComputedStyle(td).verticalAlign)
+        : null,
+      badgeWs: badge ? getComputedStyle(badge).whiteSpace : null,
+      badgeH: badge ? Math.round(badge.getBoundingClientRect().height) : null,
+      stickyInVisit,
+    };
+  }, DUE_NAME);
+  check(
+    "D12",
+    "every single-row cell aligns top, the status pill stays on one line, grouped actions are pinned",
+    !!structure.aligns &&
+      structure.aligns.length > 0 &&
+      structure.aligns.every((a) => a === "top") &&
+      structure.badgeWs === "nowrap" &&
+      structure.badgeH <= 26 &&
+      structure.stickyInVisit >= 2,
+    JSON.stringify(structure)
+  );
+
+  // ---------- D13: phone/model/problem search + a live filter count --------
+  const expectRows = async (query, count, name) => {
+    await typeInto(page, "svc-search", query);
+    await page.waitForFunction(
+      (n) =>
+        document.querySelectorAll('[data-testid="daily-services"] tbody tr').length === n,
+      { polling: 200, timeout: 8000 },
+      count
+    );
+    return page.evaluate((needle) => {
+      const rows = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')];
+      const fc = document.querySelector('[data-testid="filter-count"]');
+      return {
+        hits: rows.filter((r) => r.textContent.includes(needle)).length,
+        filterCount: fc ? fc.textContent.replace(/\s+/g, " ").trim() : null,
+      };
+    }, name);
+  };
+  const byPhone = await expectRows("01722220002", 1, DUE_NAME);
+  const byModel = await expectRows("Design Paid", 1, PAID_NAME);
+  const byProblem = await expectRows("Charging port", 1, DUE_NAME);
+  const clearState = await page.evaluate(() => {
+    document.querySelector('[data-testid="svc-search-clear"]')?.click();
+    return { hadClear: !!document.querySelector('[data-testid="svc-search-clear"]') };
+  });
+  await page.waitForFunction(
+    (n) =>
+      document.querySelectorAll('[data-testid="daily-services"] tbody tr').length === n,
+    { polling: 200, timeout: 8000 },
+    visitList.length
+  );
+  const countAfterClear = await page.evaluate(
+    () => !!document.querySelector('[data-testid="filter-count"]')
+  );
+  check(
+    "D13",
+    "phone, model and problem searches each isolate one row, with a filter count that clears away",
+    byPhone.hits === 1 &&
+      byModel.hits === 1 &&
+      byProblem.hits === 1 &&
+      !!byPhone.filterCount &&
+      byPhone.filterCount.includes("/") &&
+      clearState.hadClear &&
+      !countAfterClear,
+    JSON.stringify({ byPhone, byModel, byProblem, countAfterClear })
+  );
+
+  // ---------- D14: the no-match state explains itself and can be cleared --
+  await typeInto(page, "svc-search", "ZZZ_NO_MATCH_XYZ");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="daily-services"] tbody tr').length === 0,
+    { polling: 200, timeout: 8000 }
+  );
+  const empty = await page.evaluate(() => {
+    const box = document.querySelector('[data-testid="daily-services"]');
+    const clear = document.querySelector('[data-testid="empty-clear-filters"]');
+    clear?.click();
+    return {
+      text: box?.textContent ?? "",
+      hasClear: !!clear,
+    };
+  });
+  await page.waitForFunction(
+    (n) =>
+      document.querySelectorAll('[data-testid="daily-services"] tbody tr').length === n,
+    { polling: 200, timeout: 8000 },
+    visitList.length
+  );
+  check(
+    "D14",
+    "no-match state says a filter is active and its clear button restores the full list",
+    empty.text.includes("কোন সার্ভিস এন্ট্রি নেই") &&
+      empty.text.includes("খোঁজ") &&
+      empty.hasClear,
+    JSON.stringify({ hasClear: empty.hasClear })
+  );
+
+  // ---------- D15: the live status filter must not leak into the archive ---
+  const archRow = await page.evaluate((name) => {
+    const row = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')].find(
+      (tr) => tr.textContent.includes(name)
+    );
+    const del = row?.querySelector('button[aria-label="ডিলিট"]');
+    del?.click();
+    return !!del;
+  }, matrixSeeds[3][0]);
+  await page.waitForSelector('[role="alertdialog"], [role="dialog"]', { timeout: 8000 });
+  await page.evaluate(() => {
+    const confirm = [
+      ...document.querySelectorAll('[role="alertdialog"] button, [role="dialog"] button'),
+    ].find((b) => b.textContent.trim() === "আর্কাইভ");
+    confirm?.click();
+  });
+  await page.waitForFunction(
+    (name) =>
+      ![...document.querySelectorAll('[data-testid="daily-services"] tbody tr')].some((tr) =>
+        tr.textContent.includes(name)
+      ),
+    { polling: 200, timeout: 10000 },
+    matrixSeeds[3][0]
+  );
+  await page.evaluate(() => {
+    [...document.querySelectorAll('[data-testid="svc-status-tabs"] button')]
+      .find((b) => b.textContent.trim().startsWith("ফেরত"))
+      ?.click();
+  });
+  await sleep(400);
+  const liveFiltered = await page.evaluate(
+    (keptName, hiddenName) => {
+      const rows = [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')];
+      return {
+        kept: rows.some((tr) => tr.textContent.includes(keptName)),
+        hidden: rows.some((tr) => tr.textContent.includes(hiddenName)),
+      };
+    },
+    RETURN_NAME,
+    DUE_NAME
+  );
+  await page.evaluate(() => {
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent.includes("আর্কাইভ দেখুন"))
+      ?.click();
+  });
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')].some((tr) =>
+        tr.textContent.includes(name)
+      ),
+    { polling: 200, timeout: 15000 },
+    matrixSeeds[3][0]
+  );
+  const archivedVisible = await page.evaluate(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="daily-services"] tbody tr')].some((tr) =>
+        tr.textContent.includes(name)
+      ),
+    matrixSeeds[3][0]
+  );
+  const restoredArchive = await post(`/api/services/${ARCH_ID}/restore`, {});
+  await page.evaluate(() => {
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent.includes("তালিকায় ফিরুন"))
+      ?.click();
+  });
+  check(
+    "D15",
+    "status chips filter the live list only; the archive still shows its own rows",
+    archRow &&
+      liveFiltered.kept &&
+      !liveFiltered.hidden &&
+      archivedVisible &&
+      restoredArchive.ok,
+    JSON.stringify({ archRow, liveFiltered, archivedVisible, restored: restoredArchive.ok })
   );
 
   check("Z", "zero JS errors", errors.length === 0, errors.slice(0, 3).join(" | "));

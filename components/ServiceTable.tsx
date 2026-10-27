@@ -314,13 +314,26 @@ export function ServiceTable({
    * Filtering is visit-level: a match on any device keeps the whole visit so no
    * device of the same customer disappears. `matched` records how many devices
    * actually matched so the list can say so instead of silently hiding detail.
+   *
+   * The archived view hides the status chips, so a leftover status filter must
+   * not silently hide archived rows — there would be no control to undo it.
+   * Status therefore only applies to the live list.
    */
+  const searchActive = search.trim().length > 0;
+  const statusActive = !showArchived && statusFilter !== "All";
+  /** Any active filter forces groups open so every match stays visible. */
+  const filterActive = searchActive || statusActive;
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("All");
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out: Visit[] = [];
     for (const visit of visitsAll) {
       let matched = visit.devices;
-      if (statusFilter !== "All") {
+      if (statusActive) {
         matched = matched.filter((d) => d.status === statusFilter);
       }
       if (q) {
@@ -334,10 +347,8 @@ export function ServiceTable({
       if (matched.length > 0) out.push({ ...visit, matched: matched.length });
     }
     return out;
-  }, [visitsAll, search, statusFilter]);
+  }, [visitsAll, search, statusFilter, statusActive]);
 
-  /** Any active filter forces groups open so every match stays visible. */
-  const filterActive = search.trim().length > 0 || statusFilter !== "All";
   const isCollapsed = (visit: Visit) =>
     !filterActive && visit.devices.length > 1 && !!collapsed[visit.key];
   const toggleCollapsed = (key: string) =>
@@ -470,7 +481,7 @@ export function ServiceTable({
             ? "ডেলিভারি সম্পন্ন"
             : "ক্লিক করলে পরের অবস্থায় যাবে"
         }
-        className="cursor-pointer rounded-full transition hover:opacity-75 active:scale-95"
+        className="cursor-pointer whitespace-nowrap rounded-full transition hover:opacity-75 active:scale-95"
       >
         <StatusBadge status={s.status} />
       </button>
@@ -1098,8 +1109,11 @@ export function ServiceTable({
       data-tone={rowTone(s)}
       className={`group ${toneWash(rowTone(s))}`}
     >
+      {/* Every cell hangs from the top edge: money/cost already did, so the
+          four-line model cell used to pull the status and customer columns
+          out of line with their own money column. */}
       <TableCell
-        className={`font-mono text-[13px] font-semibold tabular-nums ${toneEdge(
+        className={`align-top font-mono text-[13px] font-semibold tabular-nums ${toneEdge(
           rowTone(s)
         )}`}
       >
@@ -1107,11 +1121,11 @@ export function ServiceTable({
         {groupBadge(s)}
       </TableCell>
       {showArchived ? (
-        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+        <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">
           {dhakaDateKey(s.serviceDate)}
         </TableCell>
       ) : null}
-      <TableCell>
+      <TableCell className="align-top">
         <div
           className="max-w-[8.5rem] truncate font-semibold text-foreground"
           title={s.customerName}
@@ -1122,7 +1136,7 @@ export function ServiceTable({
           {s.phone}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top">
         <div className="font-medium">{s.model}</div>
         <div
           className="max-w-44 truncate text-xs text-muted-foreground"
@@ -1132,12 +1146,12 @@ export function ServiceTable({
         </div>
         {renderDelivery(s)}
       </TableCell>
-      <TableCell>{renderStatus(s)}</TableCell>
+      <TableCell className="align-top">{renderStatus(s)}</TableCell>
       <TableCell className="whitespace-nowrap align-top text-sm">
         {renderMoney(s)}
       </TableCell>
       <TableCell className="align-top">{renderCost(s)}</TableCell>
-      <TableCell className="sticky right-0 z-10 border-l border-maher-border bg-card px-1 group-hover:bg-maher-surface print:hidden">
+      <TableCell className="sticky right-0 z-10 align-top border-l border-maher-border bg-card px-1 group-hover:bg-maher-surface print:hidden">
         {renderActions(s)}
       </TableCell>
     </TableRow>
@@ -1196,9 +1210,16 @@ export function ServiceTable({
             </div>
             <div className="px-2 py-1.5">{visitMoney(visit)}</div>
             <div className="px-2 py-1" />
-            <div className="px-2 py-1">
-              {showArchived ? null : renderVisitActions(first)}
-            </div>
+            {/* Sticky like the single-row action cell: the device grid spans
+                the whole table, so without this the grouped actions would
+                scroll away while single rows keep theirs pinned. */}
+            {showArchived ? (
+              <div className="px-2 py-1" />
+            ) : (
+              <div className="sticky right-0 z-10 bg-card px-2 py-1 group-hover:bg-maher-surface">
+                {renderVisitActions(first)}
+              </div>
+            )}
           </div>
           {open ? (
             <div
@@ -1232,7 +1253,9 @@ export function ServiceTable({
                   <div className="px-2">{renderStatus(d)}</div>
                   <div className="min-w-0 px-2">{deviceMoney(d)}</div>
                   <div className="px-2">{renderCost(d)}</div>
-                  <div className="px-2">{renderDeviceActions(d)}</div>
+                  <div className="sticky right-0 z-10 bg-card px-2 group-hover:bg-maher-surface">
+                    {renderDeviceActions(d)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1440,6 +1463,35 @@ export function ServiceTable({
                     </span>
                     টি ডিভাইস
                   </span>
+                  {filterActive ? (
+                    <>
+                      <span aria-hidden className="h-3 w-px bg-maher-border" />
+                      <span
+                        data-testid="filter-count"
+                        className="font-medium text-maher-navy"
+                      >
+                        দেখানো{" "}
+                        <span className="font-semibold tabular-nums">
+                          {toBnDigits(filtered.length)}/
+                          {toBnDigits(visitsAll.length)}
+                        </span>{" "}
+                        ভিজিট,{" "}
+                        <span className="font-semibold tabular-nums">
+                          {toBnDigits(
+                            filtered.reduce((sum, v) => sum + v.matched, 0)
+                          )}
+                          /
+                          {toBnDigits(
+                            visitsAll.reduce(
+                              (sum, v) => sum + v.devices.length,
+                              0
+                            )
+                          )}
+                        </span>{" "}
+                        ডিভাইস
+                      </span>
+                    </>
+                  ) : null}
                 </>
               )}
             </div>
@@ -1495,7 +1547,7 @@ export function ServiceTable({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="svc-search"
-              placeholder="নাম, আইডি, ফোন বা মডেল খুঁজুন..."
+              placeholder="নাম, আইডি, ফোন, মডেল বা সমস্যা খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={`h-9 bg-white pl-9 ${search ? "pr-9" : ""}`}
@@ -1613,9 +1665,29 @@ export function ServiceTable({
                     ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
                     : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
                   : showArchived
-                    ? "আর্কাইভ খালি।"
-                    : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
+                    ? filterActive
+                      ? "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
+                      : "আর্কাইভ খালি।"
+                    : filterActive
+                      ? searchActive && statusActive
+                        ? "খোঁজ ও অবস্থার সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
+                        : statusActive
+                          ? "এই অবস্থায় কোন সার্ভিস এন্ট্রি নেই।"
+                          : "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
+                      : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
               </p>
+              {filterActive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="empty-clear-filters"
+                  title="খোঁজ ও অবস্থার ফিল্টার সরিয়ে সব এন্ট্রি দেখুন"
+                  onClick={clearFilters}
+                >
+                  <X className="mr-1 h-4 w-4" />
+                  ফিল্টার সরান
+                </Button>
+              ) : null}
               {!showArchived && onNewEntry ? (
                 <Button size="sm" className="mt-1" onClick={onNewEntry}>
                   <Plus className="mr-1 h-4 w-4" />
