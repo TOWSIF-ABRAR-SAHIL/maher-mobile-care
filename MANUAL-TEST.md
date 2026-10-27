@@ -1,13 +1,17 @@
-# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.2.0
+# Manual A-to-Z Test Checklist - MAHER MOBILE CARE v1.2.0 + NOTUN (post-v1.2.0)
 
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 13 suites, 312 checks (see README §7).
-  E13–E20 below cover the return/refund and damage-loss ledger; B7/B7b, E1 and
-  L2 pin the automatic expense codes and the two cost-reveal scopes; K1–K10
-  cover the responsive header, cards/table and dialogs; **M1–M12 cover the
-  v1.2.0 grouped visits, delivery dates, returned-row edits and write-off**.
+- **Automated coverage:** `npm test` → 17 suites, 370 checks (see README §7);
+  the design contract runs separately → `MAHER_TEST_SUITES=scripts/service-list-design.js
+  npm test` → 19 checks. E13–E20 below cover the return/refund and damage-loss
+  ledger; B7/B7b, E1 and L2 pin the automatic expense codes and the two
+  cost-reveal scopes; K1–K10 cover the responsive header, cards/table and
+  dialogs; **M1–M12 cover the v1.2.0 grouped visits, delivery dates,
+  returned-row edits and write-off**; **N1–N10 cover the post-v1.2.0 look,
+  landing page, IMEI/no-lock, numbered device cards, the stock page and the
+  scroll-free service list**.
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -232,8 +236,8 @@ of this checklist **byte-identical** — see step L3.
 
 ## M. Grouped visits, delivery dates & returned edits (v1.2.0) — *risk: মাঝারি*
 
-- [ ] **M1** In the entry form, find **👥 এক কাস্টমারের একাধিক ডিভাইস** and press **＋ আরেকটি ডিভাইস**. Expect: device 2 appears with its own model/problem/bill/জমা/status/expense fields, while customer, phone, technician and delivery date stay shared. Add 7 extras; expect the add button disables at **8 devices total** — *risk: নেই*
-- [ ] **M2** Create a visit with two devices (`ZTEST Group A`, bill `1500`, জমা `500`; `ZTEST Group B`, bill `800`, জমা `800`) and a delivery date. Save. Expect: toast names **2টি ডিভাইস**, two rows appear on the same day, both show **👥 গ্রুপ**, and each keeps its own bill/status — *risk: মাঝারি*
+- [ ] **M1** In a new entry, find the numbered card headed **ডিভাইস ১** and press **আরেকটি ডিভাইস যোগ করুন** under it. Expect: card **ডিভাইস ২** appears with only মডেল / সমস্যা / বিল (ঐচ্ছিক) / ডেলিভারির সম্ভাব্য তারিখ / IMEI — customer, phone, technician, মোট বিল, জমা, কাজের অবস্থা and দোকান খরচ are entered **once for the visit**, not per device. Add 6 more; at 8 devices the button reads **সর্বোচ্চ ৮টি ডিভাইস** and is disabled — *risk: নেই*
+- [ ] **M2** Create a visit with two devices — ডিভাইস ১: model `ZTEST Group A`, bill `1500`; ডিভাইস ২: model `ZTEST Group B`, bill `800` — plus **one** জমা `500` and an expected delivery date in the shared block. Save. Expect: toast names **2টি ডিভাইস**, two rows appear on the same day with their own bills (1,500 / 800), the জমা is split across them so no row overpays, the shop cost lands only on the first row's খরচ column, and the **👥 গ্রুপ** / device-count text is **not visible** in the ID column (screen-reader only) — *risk: মাঝারি*
 - [ ] **M3** Open 🧾 on either grouped row. Expect: one dialog headed **একসাথে সব ডিভাইসের বিল** with both models on separate lines, per-device বিল/জমা/বাকি, a grand total, and the expected delivery date. No shop cost, code, parts shop or damage amount appears — *risk: নেই*
 - [ ] **M4** Press **PDF শেয়ার** on one grouped row. Expect: the generated PDF is the same combined slip with both devices and totals (not just that one row) — *risk: মাঝারি*
 - [ ] **M5** Look at the service list after setting a delivery date. Expect: `ডেলিভারি: YYYY-MM-DD` under the status. Set a past date on an unfinished row: expect **⚠️** and red text; open its receipt and expect the expected date to print — *risk: নেই*
@@ -244,6 +248,48 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **M10** Press the header **খরচ দেখান**. Expect: every row's decoded amount appears at once and the button becomes **খরচ লুকান**. Hide them, then click one row's own eye: only that row appears, for about 10 seconds. Customer bill/PDF still shows none of it — *risk: নেই*
 - [ ] **M11** Press **ব্যাকআপ** and open the CSV. Expect: `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` columns exist; the grouped rows share a `groupId`, the delivered row has a `deliveredAt`, and the written-off row says `YES` — *risk: মাঝারি*
 - [ ] **M12** Restore that snapshot and reopen the grouped/returned rows. Expect: group badge, expected/actual dates and write-off badge all return; an older pre-v1.2.0 snapshot still restores, with those fields blank/`0`/`false` — *risk: সবচেয়ে বেশি*
+
+---
+
+## N. NOTUN (post-v1.2.0) — look, landing, IMEI & stock — *risk: নেই*
+
+- [ ] **N1** Open `http://127.0.0.1:3000/`. Expect: it lands on the service desk
+  (a bookmarked `?date=` / `?edit=` still applies), and the header shows exactly
+  two destination links: **সার্ভিস** and **স্টক** — *risk: নেই*
+- [ ] **N2** Look over the whole page — header, cards, form panel, list panel,
+  footer. Expect: the Premium Glossy blue-and-white theme (royal blue chrome and
+  primary buttons, white cards on a pale blue page, soft blue shadows, rounded
+  corners) with **every Bengali label unchanged** — *risk: নেই*
+- [ ] **N3** At 1920×1080 with 150% Windows zoom (1280×720 CSS), try to scroll
+  the service list sideways. Expect: **no horizontal scrollbar anywhere** — all
+  columns fit, and header, daily cards, list and footer share one container
+  width — *risk: নেই*
+- [ ] **N4** Look at the ID column of a grouped visit row. Expect: **no visible
+  badge** (the “👥 গ্রুপ” / “Nটি ডিভাইস” text is screen-reader-only now), the
+  column stays narrow, row actions still work, and the combined receipt from
+  the same row is unchanged — *risk: নেই*
+- [ ] **N5** In a new entry, find **IMEI Number** (form + every device card).
+  Expect: optional, up to 32 chars, and **no Device Lock / PIN / Pattern /
+  Password block anywhere**. Save with an IMEI, then check: it appears in
+  neither the service list nor the customer receipt, but is present in the CSV
+  export — *risk: মাঝারি (adds a row)*
+- [ ] **N6** Click **স্টক** in the header. Expect: the “প্রোডাক্ট ও ইনভেন্টরি”
+  page with product list, search, summary cards and the category dialog; add
+  `ZTEST Cable` with a stock number and confirm it shows the count —
+  *risk: মাঝারি (adds stock data)*
+- [ ] **N7** With the service desk open, click the header calendar button twice.
+  Expect: first click opens it, the second closes it — *risk: নেই*
+- [ ] **N8** Filter the list into the empty state (search text with no match).
+  Expect: the empty state says a filter is active, offers a working
+  **নতুন এন্ট্রি** button that jumps to the form, and the masthead shows
+  “showing X of Y visits” — *risk: নেই*
+- [ ] **N9** If you rebuild the package (`npm run build:portable`), look at
+  `out\MAHER\data\shop.db` afterwards. Expect: it still exists with the shop's
+  rows — a rebuild no longer deletes the database — *risk: নেই*
+- [ ] **N10** Press **Ctrl+K**, then Escape, then `←`/`→` to change day, then
+  Tab through the new-entry form. Expect: everything is still reachable in the
+  new layout and the day changes only when focus is not in a text box —
+  *risk: নেই*
 
 ---
 

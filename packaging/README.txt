@@ -12,13 +12,37 @@ CHALANO
 3. Prothombar 4 jon technician dekhabe:
    ASRAFUL, NAYEM, NURUL, RONI.
 
+NOTUN (v1.2.0-er por)
+---------------------
+- Puro app-e notun rokom design: royal blue header/button, sada card
+  fakeska blue page-e. Bangla label sob age-r motoi — kichu badolini
+  hoyni.
+- App khullei service desk-e ashbe; upor-e duitai link: "সার্ভিস" ar
+  "স্টক". "স্টক"-e notun product/inventory page: product list, search,
+  stock ar kom-stock-er hisab.
+- Service talika ekhon kono screen-e side-e scroll kore na — puro table
+  fit dekhay. ID column-e "👥 গ্রুপ" / "২টি ডিভাইস" badge ar chokhe dekha
+  jay na (screen-reader jonno thake), kintu combined bill-e sob device
+  age-r motoi ashe.
+- Notun entry-e device card gulo "ডিভাইস ১", "ডিভাইস ২" ... number pay,
+  ar button "আরেকটি ডিভাইস যোগ করুন". Customer/phone/technician/মোট বিল/
+  জমা/কাজের অবস্থা/দোকান খরচ ekbar-i likhen; protyek device-r moddhe
+  shudhu model, problem, bill (ichche-moto), nijer delivery date ar IMEI.
+  Device bill likhle total auto-jog hoy; joma device-e bhag kore diben —
+  tai kono row-e joma, bill er beshi hobe na. Dokaner khoroch shudhu
+  "ডিভাইস ১"-e likhen, baaki device-e na (nahole ek-i khoroch bar bar
+  hisabe dhore nibe).
+- Device card-e ekhon "IMEI Number" field (32 okkhor porjonto, optional).
+  ETA list ba customer bill-e kokhono dekhay na, shudhu CSV backup-e thake.
+  Age chilo "Device Lock" (PIN/Pattern/Password) — oita purotai fela
+  diyeche: kono lock field ekhon na, API-te lock pathaleo ignore hoy.
+
 NOTUN (v1.2.0)
 --------------
-- Ek kastomerer ekadhik device: ek visit-e 8 ta porjonto device (primary +
-  7 extra) ek sathe save. Customer/phone/technician/date/delivery date
-  shared; protyek device-er nijer bill/joma/status/expense. List-e
-  "👥 গ্রুপ" badge, ar je kono row theke bill/PDF khulle sob device ek
-  combined receipt-e ashe.
+- Ek kastomerer ekadhik device: ek visit-e 8 ta porjonto device ek sathe
+  save. (Form-er bhag-ta poroborti update-e notun rokom hoyeche — dekhben
+  uporer "NOTUN (v1.2.0-er por)".) Je kono row theke bill/PDF khulle sob
+  device ek combined receipt-e ashe.
 - Delivery date: form-e "ডেলিভারির সম্ভাব্য তারিখ" (optional). List/receipt-e
   expected date dekhay; status "ডেলিভারি" hole actual date automatic, abar
   "চলছে" ba ferot korle actual date muchhe jay.
@@ -132,3 +156,5 @@ SOMOSSA HOLE
 2. Tao na hole "logs" folder-er "maher.log" file-ta support-ke pathan.
 
 Vershon: 1.2.0 (Windows 64-bit, offline)
+- Package version 1.2.0-i ache; v1.2.0-er porer notun kaj gulo uporer
+  "NOTUN (v1.2.0-er por)" section-e lekha.

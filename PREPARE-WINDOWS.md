@@ -8,8 +8,10 @@ Kono kichu install korte hobe na. Internet o lagbe na.
 ## Tumi Ja Pabe
 
 Ekta zip file: `MAHER-Windows-Client.zip` — local build
-`out\MAHER-Windows-Client.zip` (v1.2.0). Eta GitHub release `v1.2.0-windows`-e
-publish korte hobe. Entry form-e code (`*J#`) likhle raw code ar decoded taka
+`out\MAHER-Windows-Client.zip`. Eta GitHub release `v1.2.0-windows`-e publish
+korte hobe. Mone rakhben: `npm run build:portable` shudhu `out\MAHER\` folder
+banay — zip-ta alada kaj. Notun build korle **abar zip korte hobe**, nahole
+client-e purono zip-i jay. Entry form-e code (`*J#`) likhle raw code ar decoded taka
 (`৳১৫০০`) duitai dekha jay; shudhu number (`1500`) likhleo save-er shomoy seta
 **canonical code** (`*J#`) hoye jay. Privacy shudhu **service talika-r খরচ
 column**-e: column-ta **shob shomoy dekha jay** ar shudhu code dekhay; header-er
@@ -19,6 +21,34 @@ lukiye thake. Daily khoroch card ar monthly khoroch/labh age-r motoi khola.
 Customer receipt ba PDF-e cost, code, parts-shop ba profit kokhono jay na.
 Cash/change calculator, receipt address, PAID stamp, WhatsApp + **PDF শেয়ার** sob
 age-r motoi ache.
+
+Notun (v1.2.0-er por):
+- **landing = service desk**: `/` ekhon `/service`-e redirect kore (purono
+  bookmark-er date/edit/receipt/status param-o thik jaygay jay); header-e
+  duitai destination: **সার্ভিস** ar **স্টক**;
+- **Premium Glossy design**: royal blue header/button, sada card fakeska blue
+  page-e — kono label/testid badolini hoyni; design contract alada suite-e
+  (19 check);
+- **service talika side-e scroll kore na**: container 1280 → 1600 → 1840px
+  chole, form column 340px (1536px+ 380px), table-er floor 678px — 1280px
+  screen-e puro table fit; ID column-e group/device badge ekhon **sr-only**
+  (chokhe dekha jay na, screen reader-e shune);
+- **IMEI (optional)**: protyek device card-e IMEI (32 char porjonto), CSV
+  export-e thake kintu list ba customer receipt-e kokhono jay na; **device lock
+  field purotai fela** — kono PIN/pattern/password field nai, API-te lock
+  pathaleo ignore hoy;
+- **numbered device cards + ekta shared money block**: notun entry-e ডিভাইস ১
+  theke shuru, **আরেকটি ডিভাইস যোগ করুন** diye 8 porjonto; customer/phone/
+  technician/মোট বিল/জমা/অবস্থা/খরচ ekbar-i likhi, protyek card-e shudhu
+  model/problem/bill (optional)/nijer delivery date/IMEI. Device bill gulo
+  auto-sum hoye মোট বিল-e chole, joma device-e bhag hoy (konn-o row overpay
+  kore na), dokaner kharcha shudhu ডিভাইস ১-e (expense barbe na);
+- **স্টক page (`/products`)**: product ar category list, search, low-stock
+  alert; inventory-er `SaleItem`/`saleRef` ekhon foundation — app code ekhono
+  seta use kore nai;
+- **portable rebuild-e database thake**: `npm run build:portable` chalale-o
+  `data\shop.db` thake (portable-keep suite diye locked); delete na hole
+  build bolbe `MAHER STOP.bat` chalao.
 
 Notun v1.2.0:
 - **ek kastomerer ekadhik device**: ek visit-e 8 ta porjonto device (primary +
@@ -87,7 +117,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **13 suites, 312 checks**, live data er hash-o same ache.
+suite pass koreche — **17 suites, 370 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -138,7 +168,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **312/312 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **370/370 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -319,6 +349,12 @@ notun version chalanor shomoy migration **automatic** hoy; `data` folder same
 thake ar purono snapshot restore korleo notun column-gulo blank/`0`/`false`
 hoye safe thake. Upgrade-er age ekhon-o ekta backup niye rakha bhalo.
 
+v1.2.0-er por database-e **2 ta notun column** (`imei`, `saleRef`) ar **4 ta
+notun table** (`ProductCategory`, `Product`, `SaleItem`, `StockMovement`) add
+hoy. Eta-o migration automatic; purono snapshot restore korle imei/saleRef
+blank thakbe ar inventory table gulo shora-i thakbe (kono purono kaj er sathe
+takana nai). Backup niye chalanar niyom age-i moto.
+
 v1.1.4-e kono notun database column chilo na — shudhu UI/layout change. Tai
 v1.1.3 theke upgrade korle `data` folder same thake.
 
@@ -371,10 +407,13 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    safe edit save hobe. **⚖️** → **ড্যামেজ ক্ষতি**-te `500` likhe save koro;
    customer receipt/PDF-e “ড্যামেজ” ba 500-er kono mention thakbe na.
 
-7. Form-er **👥 এক কাস্টমারের একাধিক ডিভাইস** → **আরেকটি ডিভাইস** diye duita
-   device save koro (alada bill/status). List-e duita row **👥 গ্রুপ** badge
-   dekhabe; je kono row-er bill/PDF khulle **একসাথে সব ডিভাইসের বিল** combined
-   slip ashbe. Ekta row-e delivery date din, status **ডেলিভারি** korun: list-e
-   actual date ashbe, abar **চলছে** korle actual date muchhe jabe.
+7. Notun entry-e **ডিভাইস ১** card thakbe — **আরেকটি ডিভাইস যোগ করুন** diye
+   arekta device add koro (alada bill ar nijer delivery date din; joma/total
+   bill shared block-e ekbar). Save korle toast **2টি ডিভাইস** bolbe ar list-e
+   duita row ashbe. ID column-e kono badge dekha jabe **na** (sheta
+   screen-reader only), kintu je kono row-er bill/PDF khulle **একসাথে সব
+   ডিভাইসের বিল** combined slip ashbe. List-e oi row-er status badge-e click
+   kore **ডেলিভারি** korun: actual date ashbe, abar **চলছে** korle actual date
+   muchhe jabe.
 
 ---

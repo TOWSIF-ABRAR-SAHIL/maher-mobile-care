@@ -5,7 +5,8 @@ Bengali UI, local SQLite database, no cloud, no login, no internet needed
 (except WhatsApp/phone itself, which lives outside the app).
 
 ```
-http://localhost:3000   →   dashboard (one page, everything here)
+http://localhost:3000   →   /service — the service desk (the landing page)
+http://localhost:3000/products → the stock page (প্রোডাক্ট ও ইনভেন্টরি)
 ```
 
 ---
@@ -38,8 +39,9 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint and typecheck pass on it). The v1.2.0 312-check regression was also
-run on **Node 24.15.0 / npm 11.12.1** on the current Windows build host.
+(build, lint and typecheck pass on it). The current 370-check regression (and
+the earlier v1.2.0 312-check run) also ran on **Node 24.15.0 / npm 11.12.1**
+on the Windows build host.
 
 **Client PCs run Node 22 — and it is bundled.** The Windows package ships its own
 `runtime/node.exe` (Node 22.14.0) instead of asking the shop to install anything.
@@ -116,10 +118,12 @@ editing, and the CLI can no longer drift away from the running app.
 npm run build:portable     # → out/MAHER/  (zip it as out/MAHER-Windows-Client.zip)
 ```
 
-The client zip is built as `out/MAHER-Windows-Client.zip` (v1.2.0, test-data
-free) and should be published as release `v1.2.0-windows` - the repo is
-**private**, so the release URL needs a GitHub login and the file itself is what
-goes to the client (pen drive, chat, email). The client unpacks that folder on
+The client zip is `out/MAHER-Windows-Client.zip` (test-data free) and is
+published as release `v1.2.0-windows` - the repo is **private**, so the release
+URL needs a GitHub login and the file itself is what goes to the client (pen
+drive, chat, email). `build:portable` only builds the `out/MAHER/` folder —
+zipping it is a separate step, so re-zip after a rebuild if the handover should
+carry the latest changes. The client unpacks that folder on
 any **local fixed drive** — `C:\MAHER` and `D:\MAHER` both work, because every
 path is resolved relative to the launcher — and double-clicks
 **`MAHER MOBILE CARE.bat`**. No installer, no compiler, no Node install, no
@@ -147,6 +151,9 @@ MAHER\
 app folder, so an upgrade can replace `app\` and `runtime\` wholesale without ever
 touching the records. That was verified, not assumed: the `app\` folder was
 deleted and rebuilt, and the existing record, roster and backups all survived.
+Rebuilding the package itself also keeps them: `data\` and `logs\` are held
+outside the wipe and put back afterwards, so `npm run build:portable` can never
+delete the shop database (pinned by `scripts/portable-keep.test.js`).
 
 **A fresh PC needs nothing typed into it.** `scripts/first-run.mjs` applies the
 committed migrations on first launch. It uses `better-sqlite3` rather than
@@ -237,7 +244,15 @@ tsconfig.json / .eslintrc.json
 .env                        → DATABASE_URL only (git-ignored, never commit)
 .env.example                → committed template
 app/
-  page.tsx                 → whole dashboard (state, data wiring, footer)
+  page.tsx                 → thin redirect: `/` forwards date/edit/receipt/
+                              status/mode params to `/service` (old bookmarks
+                              keep working; the Home dashboard is gone)
+  service/
+    page.tsx               → the service desk route (parses + validates params)
+    ServiceWorkspace.tsx   → the real workspace: state, data wiring, layout
+                              (form column + list column, header, footer)
+  products/
+    page.tsx               → stock & product sales page (state + dialogs)
   layout.tsx               → Bengali metadata, font CSS, Toaster
   globals.css              → Tailwind + theme + overflow-x:clip (sticky-safe)
   icon.svg                 → favicon (local file, offline)
@@ -254,30 +269,50 @@ app/
     services/[id]/restore/route.ts → POST un-archive
     services/[id]/refund/route.ts → POST full-advance refund → status Returned
     services/dues/route.ts → GET = all-dates বাকি list + SQL-aggregate total
+    services/overdue/route.ts → GET = delivery-date overdue list (landing summary)
     services/search/route.ts → GET ?q= all-dates search (minimum 2 characters)
+    products/route.ts      → GET list / POST create, products/[id] → PUT / DELETE
+                              (DELETE refuses while sales still reference it)
+    product-categories/route.ts → GET / POST, [id] → PUT / DELETE (guard applies)
+    parts-shops/route.ts   → GET ?all=true parts-shop names for the form datalist
     stats/route.ts         → GET ?date= daily + per-technician totals
     stats/monthly/route.ts → GET ?date= (rolling 30d) or ?from=&to= range
     backup/route.ts        → GET = CSV download, POST = DB snapshot + prune
     backup/list/route.ts   → GET = snapshot list
     backup/restore/route.ts→ POST = restore snapshot (atomic + column-validated)
 components/
-  Header.tsx               → sticky navbar: date nav, আজ, Sync, Backup, Restore,
-                              ⚙️ technician, Print + inline search (Ctrl+K)
+  AppHeader.tsx            → the live header: sticky navbar, date nav, আজ,
+                             Sync, Backup, Restore, ⚙️ technician, Print,
+                             search (Ctrl+K) + nav links
+  AppNavLinks.tsx          → সার্ভিস / স্টক nav links (service desk is landing)
+  Header.tsx, ProductsHeader.tsx → legacy headers, currently unimported
   HeaderSearch.tsx         → navbar search: live dropdown; mobile 🔍 sheet
+  HeaderDatePicker.tsx     → calendar popover in the header (opens once,
+                             toggles closed on the second click)
+  PageLead.tsx             → page lead block under the header (title + sub)
+  BrandMark.tsx            → logo mark used by the header
+  DailySummary.tsx         → daily cards row (wraps TodayStats + TechnicianStats)
   TechnicianStats.tsx      → one card per roster technician (5-col desktop grid)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ) + refund/damage hints
   MonthlySummary.tsx       → range report cards/presets (dialog + hidden print copy)
   ServiceForm.tsx          → entry form (4/12): service/product toggle, live due,
-                             multi-device rows, expected delivery date
+                             numbered multi-device rows with one shared visit
+                             money block, optional IMEI per device, expected
+                             delivery date (no device-lock field)
   ServiceTable.tsx         → service list (8/12): search, chips, universal/row eye,
-                             1-click status, group badge, delivery dates
+                             1-click status, group/device badges (sr-only for
+                             screen readers), delivery dates, sticky actions
   ServiceAdjustDialog.tsx  → ⚖️ return/refund + parts-cost write-off + damage ledger
   OutstandingDues.tsx      → বাকি table rendered inside the dues dialog
   ContactButtons.tsx       → phone / WhatsApp links (message text from lib/contact.ts)
   StatusBadge.tsx          → colored Bengali status badges
   Receipt.tsx              → customer bill (single + combined group slip, print/PDF)
+                             + PaidStamp (জমা paid marker)
   RestoreDialog.tsx        → snapshot list + 2-step restore confirm
   TechnicianManager.tsx    → roster dialog: add / rename / deactivate / reactivate
+  ProductDialog.tsx        → product create/edit dialog (products page)
+  CategoryManagerDialog.tsx→ category add/rename/delete dialog (products page)
+  AutoBackup.tsx           → client-side backup nudge (mounted in app/layout)
   ui/                      → shadcn primitives (button, input, table, dialog…)
 lib/
   prisma.ts                → cached Prisma client + local SQLite adapter
@@ -289,18 +324,32 @@ lib/
   utils.ts                 → statuses (incl. Returned), Bengali-digit parse, due,
                              ৳ format (+ FALLBACK_TECHNICIANS, only used if the
                              roster request fails)
-  types.ts                 → shared DTOs (ServiceDTO, stats, RangeMode…)
+  types.ts                 → shared DTOs (ServiceDTO, stats, RangeMode,
+                             product/stock DTOs…)
+  inventory.ts             → stock rules: Bengali status labels, low-stock
+                             threshold, movement validation
+  inventory-data.ts        → product/category/stock read-write helpers used by
+                             the products API routes
+  expense-code.ts          → shop-expense keypad code (*J# ⇄ 1500) encode/decode,
+                             mirrored on server and form
   contact.ts               → WhatsApp/phone message text
   shop.ts                  → shop name/address/phone (receipt + footer source)
+  receipt-pdf.ts           → client-side receipt PDF file name + download
+  backup.ts                → shared localStorage keys/stamps for auto-backup
+  use-last-backup.ts       → hook: last-backup stamp (AutoBackup + utilities rail)
+  use-media-query.ts       → hook: CSS media query, SSR-safe (defaultValue first)
   generated/               → Prisma client output (generated, do not edit)
 prisma/
-  schema.prisma            → Service model (26 columns, incl. return/refund/damage,
-                              write-off, grouped visits, delivery dates + archived
-                              soft-delete) + Technician model (v1.1 roster)
+  schema.prisma            → Service model (28 columns, incl. return/refund/damage,
+                              write-off, grouped visits, delivery dates, optional
+                              IMEI + archived soft-delete) + Technician model
+                              (v1.1 roster) + inventory models: ProductCategory,
+                              Product, SaleItem, StockMovement
   dev.db                   → THE database (all shop records — back this up!)
   migrations/              → init + add_archived + add_technician + add_parts_shop
                               + add_return_refund_damage_loss
                               + add_group_delivery_expense_flag
+                              + add_service_imei + add_inventory
 backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
   run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
@@ -319,15 +368,25 @@ scripts/
   e2e-p0.js                → P0 features E2E (13 checks)
   laneA.js                 → Lane A audit (26 checks)
   laneBC.js                → Lanes B+C audit (24 checks)
-  laneD.js                 → redesign/search/product-sale audit (28 checks)
+  laneD.js                 → redesign/search/product-sale audit (29 checks)
   laneE.js                 → return/refund + damage-loss/write-off audit (18 checks)
   laneF.js                 → v1.2.0 grouped visits, delivery dates, returned-row
-                             edit + write-off audit (8 checks)
+                             edit + write-off audit (22 checks)
+  laneG.js                 → optional IMEI, posted lock fields ignored,
+                             multi-device independence (18 checks)
+  laneLanding.js           → `/` redirect, exactly two nav links, refresh +
+                             backup + restore on the Service page (10 checks)
   api-check.js             → API contract + validation + restore-guard + roster (59)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (25 checks)
   responsive-check.js      → 10 widths, 360–1920px: header, search, card/table,
                              grid, sticky actions + dialogs (74 checks)
   date-nav-flicker.js      → changing day keeps the list on screen, no skeletons (4)
+  header-calendar.js       → the navbar calendar closes on the 2nd click (5)
+  launcher-decide.test.js  → launcher reuse / takeover / refuse rules (14 checks)
+  portable-keep.test.js    → a portable rebuild keeps the shop DB intact (10 checks)
+  service-list-design.js   → Premium Glossy design contract (19 checks) — kept OUT
+                              of the default run; run it with MAHER_TEST_SUITES
+                              =scripts/service-list-design.js npm test
   seed-maher.ts            → 16 sample entries (tsx)
   cleanup-test-data.ts     → dry-run list + `--confirm` cleanup of leftover test rows
 out/                        → build output: MAHER/ package + zip (git-ignored)
@@ -340,7 +399,11 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 ## 4. Features (user manual, short)
 
-**Dashboard (one page):**
+**Service desk (the landing page):**
+- The shop opens on the service desk; `/` is a thin redirect that forwards any
+  bookmarked `date` / `edit` / `receipt` / `status` / `mode` params to it. The
+  header carries exactly two destinations: **সার্ভিস** (this page) and
+  **স্টক** (`/products`, the stock page).
 - Sticky blue-gradient navbar — date prev/next/picker, **আজ**, Sync, Backup,
   Restore, টেকনিশিয়ান, Print, plus the **navbar search**:
   `🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)`. Typing 2+ characters shows a
@@ -376,20 +439,45 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   badge previews the code and decoded amount (`গোপন কোড: *J# ➔ ৳১৫০০`). There is
   also a free-text **পার্টস কেনার দোকান** field with previous-name suggestions.
   Edit reuses the same form (incl. date correction — no delete+recreate).
-- **👥 এক কাস্টমারের একাধিক ডিভাইস (v1.2.0)** — a new visit can carry up to
-  **8 devices** (the primary row + 7 extra rows). Customer, phone, technician,
-  service date and expected delivery date are shared; every device keeps its
-  own model, problem, bill, advance, status, expense and parts shop. A grouped
-  save is one transaction with a shared `groupId`, and each row gets a **👥 গ্রুপ**
-  badge. Opening the bill or PDF from any row renders **one combined receipt**
-  with every device, per-device money and grand totals. Editing remains
-  per-device.
+- **👥 এক কাস্টমারের একাধিক ডিভাইস** — a new visit can carry up to **8
+  devices**, added one at a time from the inline control under the first card
+  (cards are numbered ডিভাইস ১, ডিভাইস ২, …; a blank extra card is ignored).
+  Entered **once for the visit**: customer, phone, technician, status, service
+  date, **মোট বিল** and **জমা**. Each device card keeps only model, problem and
+  an optional bill, plus its optional IMEI and its own expected delivery day.
+  Filled device bills auto-sum into the visit total (otherwise ডিভাইস ১ holds
+  the typed total), and জমা is waterfall-allocated across devices so no row
+  overpays. Shop cost and parts shop live on ডিভাইস ১ only, so a grouped visit
+  can never multiply the shop's expense. A grouped save is one transaction with
+  a shared `groupId`, and each row carries a **👥 গ্রুপ** badge (`sr-only`).
+  Opening the bill or PDF from any row renders **one combined receipt** with
+  every device, per-device money and grand totals. Editing remains per-device.
 - **ডেলিভারির সম্ভাব্য তারিখ (v1.2.0)** — an optional date on the entry form
-  (shared by a grouped visit). The list shows `ডেলিভারি: YYYY-MM-DD` and turns
+  (one per device in a grouped visit; a single shared date still works for
+  older API callers). The list shows `ডেলিভারি: YYYY-MM-DD` and turns
   it red with ⚠️ once the day has passed. The moment status becomes
   **ডেলিভারি**, the server stamps the actual `deliveredAt` and the list/receipt
   shows `✅ ডেলিভারি: YYYY-MM-DD`; reopening the job or returning it clears
   that stamp, so a stale handover date can never print.
+- **IMEI (optional, post-v1.2.0)** — every device row can carry an IMEI
+  (max 32 chars, stored exactly as typed). It is internal: the list and the
+  customer receipt never show it, but it is included in the CSV backup. The
+  former device-lock fields are gone from the form entirely — unlock
+  credentials are not stored anywhere, and lock fields posted by an API client
+  are ignored (`laneG.js` pins both rules).
+- **Premium Glossy look (post-v1.2.0)** — the whole app is a blue-and-white
+  dashboard: brand blues `#1748D8`/`#2863F5`/`#568BFF` on white, ink `#17233D`
+  headings, `#71819B` secondary text, `#E0E8F5` hairlines, 12–16px card radii
+  and 150–200ms transitions; status tones stay green `#16A36A`, amber `#E89A16`
+  and red `#E5484D`. `scripts/service-list-design.js` (19 checks) pins the
+  service-list half of that contract.
+- **স্টক page (`/products`)** — eyebrow “স্টক রুম”, title “প্রোডাক্ট ও
+  ইনভেন্টরি”: product list with search, price/stock, the category manager
+  dialog and low-stock warnings, all served from the live `ProductCategory` /
+  `Product` tables (creating a product logs its opening stock as a
+  `StockMovement`). The `SaleItem` sale-line table and the `saleRef` idempotency
+  key already exist in the schema as the foundation for linking product sales to
+  stock, but app code does not write them yet.
 - **🛍️ প্রোডাক্ট সেল** — a toggle at the top of the form switches between
   🛠️ সার্ভিসিং (default) and product sale. Product mode renames the fields to
   **প্রোডাক্টের নাম (যেমন: Charger, Cable)** and **বিবরণ (যেমন: 18W Type-C)**,
@@ -425,23 +513,31 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   Escape.
 - **Responsive dashboard** — navbar → report/dues buttons → technician cards →
   today's cards → form + service list → footer. Below 1280px the form and list
-  stack; at 1280px+ they sit side by side (380px form + remaining width), and
-  the page container widens at 1440px and 1600px. At 1920×1080 the complete
-  entry form and its save button fit without scrolling the page.
+  stack; at 1280px+ they sit side by side (340px form + the rest; 380px form
+  from 1536px), and the shared page container steps up 1280px → 1600px (xl) →
+  1840px (2xl) — header, cards, list and footer always share that width. At
+  1920×1080 the complete entry form and its save button fit without scrolling
+  the page.
 - **⚙️ টেকনিশিয়ান** (header) → **টেকনিশিয়ান ব্যবস্থাপনা** dialog: add, rename and
   deactivate technicians. Renaming asks first when it would rewrite history;
   deleting is a soft-delete that keeps every old record intact.
 - Service list — a table at 1024px+ and touch-friendly cards below 1024px, so
-  every action is reachable without sideways scrolling. The table's action
-  column stays pinned to the right when the table scrolls. Client-side filter
+  every action is reachable without sideways scrolling. On desktop the list
+  column never needs a sideways scroll of its own: the grid track is
+  `minmax(0, 1fr)`, so the table compresses to its content floor instead of
+  pushing the page wide (floor ≈ 678px, comfortable from 1280px up). The
+  table's action column stays pinned to the right when the table scrolls.
+  Client-side filter
   within the selected day (name / ID / phone / model / problem), status chips
   with counts. The **খরচ** column is always visible and shows the stored code.
   A header **খরচ দেখান** button reveals every row at once (and **খরচ লুকান**
   hides them again), while each row's own eye reveals **only that row's** amount
   for 10 seconds. A legacy plain-number value is masked as `৳••••` until it is
   converted, and a written-off cost carries a grey **বাতিল** badge. The
-  parts-shop name sits under the code. Grouped devices show a **👥 গ্রুপ** badge,
-  and the expected/actual delivery date sits under the status badge.
+  parts-shop name sits under the code. Grouped devices show a **👥 গ্রুপ** badge
+  (and a visit shows “Nটি ডিভাইস”); both sit in an `sr-only` wrapper, so screen
+  readers still announce them while the visible ID column stays narrow. The
+  expected/actual delivery date sits under the status badge.
   **1-click status advance**
   (badge click → next stage; ফেরত is terminal and skips this cycle),
   edit/delete(→archive), **⚖️ return/damage**, plus per-row **bill print**,
@@ -560,6 +656,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   /api/services/batch` creates up to **8** device rows in one transaction with a
   shared opaque `groupId`. Each row still owns its bill, advance, due, status,
   cost and technician performance, so daily/monthly totals remain per device.
+  The form enters the visit money once and allocates it down (device bills
+  auto-sum into the total, জমা is waterfall-allocated so no row overpays, and
+  shop cost/parts shop stay on ডিভাইস ১ so expenses are not multiplied); the
+  API and schema stay one-row-per-device.
   `groupId` is nullable free text (no foreign key), which keeps old snapshots
   restorable; `GET /api/services?groupId=` powers the combined receipt and never
   returns archived rows.
@@ -567,6 +667,11 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   so it buckets and prints unambiguously. `deliveredAt` is a real timestamp set
   only when status becomes `Delivered` (cleared on reopen/return), so reports
   never confuse an expected date with an actual handover.
+- **IMEI is internal; lock data does not exist.** `imei` is optional per device
+  (≤ 32 chars, stored exactly as typed), travels in the CSV backup but never in
+  the service list or a receipt, and a blank edit clears it. Device-unlock
+  credentials are not stored anywhere — no column, no export, no log — and lock
+  fields posted by an API client are ignored (`laneG.js` pins both rules).
 - Dates are Asia/Dhaka day boundaries; new entries stored ~midday +06:00.
 - Archived rows are excluded from every list/stat. Returned rows are not
   archived: they stay visible with a ফেরত badge, but are excluded from
@@ -593,8 +698,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - **Delivery dates follow the status.** Moving a row into `Delivered` stamps
   `deliveredAt` once on the server; moving it back to any flow status clears it.
   The expected `deliveryDate` is independent and stays editable (including after
-  delivery, for the record). A grouped visit shares one expected date at create
-  time, then each device's status/actual date moves independently.
+  delivery, for the record). In a grouped visit every device carries its own
+  expected date from create time (the API still accepts one shared date as a
+  fallback for older callers), and each device's status/actual date moves
+  independently.
 - **Cost-code privacy lives only in the service table.** The খরচ column is
   always visible and shows only the stored code (e.g. `*B#`); a legacy
   plain-number cost is rendered as `৳••••`. The header's **খরচ দেখান** button
@@ -608,7 +715,7 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 ### Data model (`prisma/schema.prisma`)
 
-One table, `Service`, 26 columns (grouped below by role):
+One table, `Service`, 28 columns (grouped below by role):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -627,6 +734,8 @@ One table, `Service`, 26 columns (grouped below by role):
 | `damageLoss` | Int | internal technician-damage cost; never printed |
 | `damageNote` | String? | internal damage description; never printed |
 | `expenseWrittenOff` | Boolean | returned job's parts cost cancelled from reports; code/amount stay for audit |
+| `imei` | String? | optional handset IMEI, ≤32 chars, stored exactly as typed; never in the list or a receipt |
+| `saleRef` | String? | unique client idempotency key for a product sale (schema foundation — app code does not write it yet) |
 | `groupId` | String? | opaque id shared by every device row of one customer visit |
 | `deliveryDate` | DateTime? | expected handover day (Dhaka key at ~midday) |
 | `deliveredAt` | DateTime? | actual handover timestamp, server-owned from the `Delivered` status |
@@ -650,6 +759,20 @@ A second, tiny table holds the roster (v1.1):
 
 `Service.technician` intentionally stays TEXT rather than a foreign key to this
 table, so restore's column validation is unaffected.
+
+Four more tables form the **inventory foundation** (added together with IMEI
+support):
+
+| Table | Role |
+|---|---|
+| `ProductCategory` | category with a unique normalized `nameKey` |
+| `Product` | name, unique `sku`/`barcode` (uppercased on write), category (`onDelete: Restrict`), brand/supplier, `sellingPrice` + internal `purchasePrice`, `stock` (never negative), `lowStockThreshold` (default 3), soft-delete `archived` |
+| `SaleItem` | one line of a product sale: `nameSnapshot`/`skuSnapshot` survive later renames; `serviceId` deliberately has **no** foreign key so a restore can swap the `Service` table |
+| `StockMovement` | append-only stock ledger (`OPENING`/`STOCK_IN`/`STOCK_OUT`/`ADJUSTMENT`/`SALE`/`RETURN`) with signed delta + previous/new stock, and one dedupe row per sale per product |
+
+Today the app writes `Product`, `ProductCategory` and the `OPENING` movement
+(creating a product); `SaleItem`, `SALE`/`RETURN` movements and `Service.saleRef`
+exist in the schema but are not yet driven by app code.
 
 ---
 
@@ -682,12 +805,12 @@ table, so restore's column validation is unaffected.
 
 ## 7. Test status
 
-`npm test` runs the full regression (13 suites, 312 checks) entirely on
+`npm test` runs the full regression (17 suites, 370 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (151 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (161 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -703,10 +826,20 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- v1.2.0 full run: **13/13 suites, 312/312 checks** — Launcher 14 · Expense
-  upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 · Lane E 18 ·
-  Lane F 8 · API 59 · Technician 25 · Responsive 74 · Date-nav 4, 0 FAIL,
-  0 JS errors; the live shop DB hash stayed unchanged.
+- Current full run (post-v1.2.0): **17/17 suites, 370/370 checks** — Launcher
+  decide 14 · Portable keep 10 · Expense upgrade 10 · E2E 9+13 · Lane A 26 ·
+  Lanes B+C 24 · Lane D 29 · Lane E 18 · Lane F 22 · Lane G 18 · Lane Landing
+  10 · API 59 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
+  0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
+- The Premium Glossy design contract runs **separately** (it is deliberately
+  not in the default 370): `MAHER_TEST_SUITES=scripts/service-list-design.js
+  npm test` → **19/19 checks**.
+- v1.2.0 release run (historical): **13/13 suites, 312/312 checks** — Launcher
+  14 · Expense upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 ·
+  Lane E 18 · Lane F 8 · API 59 · Technician 25 · Responsive 74 · Date-nav 4,
+  0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged. Since then:
+  portable-keep, Lane G, Lane Landing and header-calendar were added (+43
+  checks) and Lane D/F grew (+15).
 - v1.1.4 historical run: **11/11 suites, 298/298 checks** — same suites before
   Lane F and the date-nav regression were added.
 - v1.1.3 historical run: **11/11 suites, 230/230 checks** — same suites with
@@ -714,7 +847,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  151 steps, including a real PDF print/read-back; run it on the target PC after
+  161 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
@@ -799,10 +932,116 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   suite for the wrong reason.
 - **Crashed suites clean up after themselves.** `browser.close()` runs from the
   crash handler too, so a failing suite leaves no orphaned Chrome processes.
+- **The service list cannot scroll sideways.** The list column is
+  `minmax(0, 1fr)` and `ServiceTable`'s measured grid emits `minmax(0, Npx)`
+  tracks, so a spanning visit row can no longer pin the table to its
+  first-measured width: the table shrinks with its container (intrinsic floor
+  866px → **678px**, 188px of slack at a 1280px viewport, overflow 0 at every
+  tested width from 1265px to 1920px). The form column is 340px at 1280px
+  (380px from 1536px) and the shared container steps 1280 → 1600 → 1840px.
+- **List inspection pass (alignment + filter leaks).** Single-row cells now all
+  hang from the top edge (they used to mix middle/top alignment and drift on
+  multi-line rows), the archived view no longer applies a leftover status
+  filter that could silently hide archived rows, grouped-row action buttons are
+  sticky like single-row ones, and the status pill is `whitespace-nowrap` so it
+  cannot fold at a hyphen. The masthead shows a live “showing X of Y visits”
+  count while filtered.
+- **A portable rebuild keeps the shop database.** `build:portable` used to
+  delete `out/MAHER` wholesale — `data/shop.db` went with it. `data/` and
+  `logs/` are now held outside the package during the delete and restored
+  after the no-shop-data assertion (so the leak check still sees a clean
+  package); if the delete fails because MAHER is running, the data goes
+  straight back and the message says to run `MAHER STOP.bat`. Pinned by
+  `scripts/portable-keep.test.js` (PK-01…PK-10).
+- **No device-lock state anywhere.** The PIN/Pattern/Password picker was
+  removed from the form together with its component state and eye toggle — it
+  was never saved. `laneG.js` pins the field's absence, that a client posting
+  `lockType`/`lockValue` is ignored, and that no credential column exists.
+  `imei` is the only per-device identifier, capped at 32 chars.
+- **Landing and header regressions are pinned.** `/` redirects to the service
+  desk while forwarding `date`/`edit`/`receipt`/`status`/`mode`, the navbar
+  keeps exactly two destinations (`laneLanding.js`), and the header calendar
+  closes on a second click (`header-calendar.js`, 5 checks).
 
 ---
 
 ## 9. Changelog
+
+### Unreleased — NOTUN (v1.2.0-er por)
+
+> Everything below shipped after the v1.2.0 release; `package.json` still says
+> `1.2.0` until the next tagged release.
+
+**Added**
+- **IMEI per device** — optional field on every device card (max 32 chars,
+  stored exactly as typed), carried in the CSV backup, never shown in the
+  service list or on a receipt. `20261026140000_add_inventory` added the
+  column; `laneG.js` (18 checks) pins its rules.
+- **Inventory foundation** — models `ProductCategory`, `Product`, `SaleItem`
+  and `StockMovement` plus new routes `GET/POST /api/products`,
+  `PUT/DELETE /api/products/[id]`, `/api/product-categories` (+`[id]`) and
+  `/api/parts-shops`. The new **স্টক** page (`/products`) lists products with
+  search, price/stock, summary cards, low-stock warnings and a category
+  manager dialog; creating a product logs an `OPENING` `StockMovement`.
+  `SaleItem` and `Service.saleRef` exist in the schema but app code does not
+  write them yet (foundation for sale-to-stock).
+- **Service desk is the landing page** — `/` redirects to `/service` and
+  forwards bookmarked `date`/`edit`/`receipt`/`status`/`mode` params; the
+  navbar now has exactly two destinations (সার্ভিস / স্টক), with a slim
+  refresh/backup/restore rail on the desk. The old Home dashboard widgets are
+  retired; reports, dues, technicians and all data/backup behaviour are
+  unchanged (`laneLanding.js`).
+- **Premium Glossy blue-and-white redesign** — every briefed design value
+  lives in `app/globals.css`: royal `#1748D8` primary, `#2863F5` secondary,
+  `#568BFF` gloss, `#F3F7FD` page, white cards, `#17233D`/`#71819B` text,
+  `#E0E8F5` hairlines, `#16A36A`/`#E89A16`/`#E5484D` meaning colours, the
+  12–16 / 9–11 / 8–10px radius ladder, soft blue-tinted shadows, plus
+  `.gloss-chrome` / `.sheen` / `.gloss-primary` component classes and a
+  `prefers-reduced-motion` kill-switch. DOM, testids and Bengali labels were
+  deliberately left untouched; `scripts/service-list-design.js` (19 checks)
+  guards the service-list half of the contract.
+
+**Changed**
+- **Numbered device cards, one shared visit money block** — the first card is
+  always ডিভাইস ১ (add up to eight one at a time from an inline control); each
+  card keeps only model, problem and an optional bill (+ IMEI and its own
+  expected delivery day), while customer/phone/technician/status/service date/
+  মোট বিল/জমা are entered once. Device bills auto-sum into the visit total,
+  জমা is waterfall-allocated so no row overpays, and shop cost + parts shop
+  stay on ডিভাইস ১ so a grouped visit cannot multiply expenses. Batch API and
+  schema unchanged.
+- **Wider service list, no horizontal scroll** — the shared container caps
+  moved 1440/1600 → **1600/1840** (header, cards, list and footer stay aligned),
+  the form column is **340px** at 1280px (380px from 1536px), grid tracks are
+  `minmax(0, …)` so the table floor dropped **866 → 678px** (188px slack at
+  1280, overflow 0 from 1265px to 1920px), and the device-count / group badges
+  are `sr-only` (screen readers still announce them, the ID column stays 55px).
+- **Device lock field removed** — the PIN/Pattern/Password picker, its form
+  state and eye toggle are gone; API clients posting `lockType`/`lockValue` are
+  ignored and no credential column exists.
+- **Stage/overdue summary line dropped** from the desk — the daily cards and
+  list already carry the figures; `GET /api/services/overdue` still exists but
+  the UI no longer calls it.
+
+**Fixed**
+- **Service-list inspection pass** — single-row cells all hang from the top
+  edge (mixed alignment drifted columns on multi-line rows), the archived view
+  no longer applies a leftover status filter that hid archived rows silently,
+  grouped-row actions are sticky like single-row ones, the status pill cannot
+  fold at a hyphen, the search placeholder advertises problem search, the empty
+  state announces an active filter and offers clear-filters, and the masthead
+  shows a live “showing X of Y visits, X of Y devices” count.
+- **Portable rebuild keeps the shop database** — `data/` and `logs/` are held
+  outside the package while `build:portable` deletes `out/MAHER`, then put
+  back (after the no-shop-data leak assertion); a running MAHER now yields a
+  “run MAHER STOP.bat” message instead of an EPERM dump. Pinned by
+  `scripts/portable-keep.test.js` (PK-01…PK-10).
+- **Header calendar toggles closed** on a second click of its button.
+
+**Tests** — default suites 13 → **17** (312 → **370** checks: +portable-keep,
++laneG, +laneLanding, +header-calendar, Lane D 28→29, Lane F 8→22), design
+suite runs separately (19 checks). Full `npm test`: **17/17, 370/370, 0 FAIL**,
+live DB hash unchanged.
 
 ### v1.2.0 — grouped visits, delivery dates & safer returns
 
@@ -1082,8 +1321,8 @@ Windows as well; the run that proved it is at the end of this section.
 
 **Added**
 - `npm run build:portable` → `out/MAHER/`: a self-contained folder with a bundled
-  Node 22 runtime and a Windows `better-sqlite3` (ABI 127). About **119 MB**
-  unpacked, ~**46 MB** zipped, versus ~1 GB for `node_modules` + `.next`.
+  Node 22 runtime and a Windows `better-sqlite3` (ABI 127). About **122 MB**
+  unpacked, ~**43 MB** zipped, versus ~1 GB for `node_modules` + `.next`.
 - `scripts/first-run.mjs` — creates the shop database on a fresh PC with no
   install and no typing, without the Prisma CLI.
 - `scripts/launch.mjs` — waits for genuine readiness, then opens the shop in a
@@ -1105,7 +1344,8 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **312** automated checks pass, and the live database is byte-identical.
+- All **370** automated checks pass (17 suites), and the live database is
+  byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
@@ -1127,6 +1367,11 @@ screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
-`prisma/dev.db` byte-identical. The current v1.2.0 run is **13/13 suites,
-312/312 checks**; the earlier v1.1.2 packaged window was also driven by hand
-for the shop test above. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.
+`prisma/dev.db` byte-identical. The current run (post-v1.2.0) is **17/17
+suites, 370/370 checks** plus the separately-run design contract (19 checks);
+the earlier v1.1.2 packaged window was also driven by hand for the shop test
+above. Since v1.2.0 the package was rebuilt on Windows with the shop database
+preserved across rebuilds (`portable-keep` suite): `out/MAHER/` is 122.3 MB and
+served health/roster/stats when relaunched. Note `build:portable` only builds
+the folder — zipping `out/MAHER` is a separate step, so refresh the zip before
+handover. `PREPARE-WINDOWS.md` remains the first-run checklist for the client PC.
