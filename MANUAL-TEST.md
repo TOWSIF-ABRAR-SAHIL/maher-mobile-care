@@ -11,7 +11,9 @@ that nothing is broken before a busy day.
   dialogs; **M1–M12 cover the v1.2.0 grouped visits, delivery dates,
   returned-row edits and write-off**; **N1–N10 cover the post-v1.2.0 look,
   landing page, IMEI/no-lock, numbered device cards, the stock page and the
-  scroll-free service list**.
+  scroll-free service list**; **O1–O10 cover the date modes (একদিন/তারিখ
+  রেঞ্জ/সব তারিখ), the two search scopes, the report PDF/CSV/Excel export and
+  the date-grouped বাকি list**.
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -290,6 +292,56 @@ of this checklist **byte-identical** — see step L3.
   Tab through the new-entry form. Expect: everything is still reachable in the
   new layout and the day changes only when focus is not in a text box —
   *risk: নেই*
+
+---
+
+## O. NOTUN (post-v1.2.0) — date modes, search scope, report export & বাকি sections
+
+*O1–O8 risk: নেই • O9–O10 risk: মাঝারি (downloads a file / adds a row)*
+
+- [ ] **O1** On the service list masthead find the date-mode switch:
+  **একদিন | তারিখ রেঞ্জ | সব তারিখ**. Expect: **একদিন** is pressed by default and
+  the day nav (আগের দিন / date picker / পরের দিন / আজ) is exactly as before;
+  `←`/`→` still change the day — *risk: নেই*
+- [ ] **O2** Click **তারিখ রেঞ্জ**. Expect: the day nav is replaced by two date
+  pickers (শুরু/শেষ, both the same day at first), the masthead shows the Bengali
+  range plus “মোট X টি”, the daily cards switch to “নির্বাচিত সময়ের মোট …”, and
+  the report range/presets have **not** moved — *risk: নেই*
+- [ ] **O3** Widen the range over several days that have rows. Expect: rows are
+  grouped under **date section headers** (Bengali date + visit/device/৳ subtotal),
+  newest day first, and the same grouping appears between the mobile cards —
+  *risk: নেই*
+- [ ] **O4** Click **সব তারিখ**. Expect: masthead says “সব তারিখ”, every day gets a
+  section, `←`/`→` do nothing, and a `মোট X টি এন্ট্রি — দেখানো Y টি` notice with
+  **আরও দেখুন** appears when the list is capped (appends, never refetches) —
+  *risk: নেই*
+- [ ] **O5** In a range/all view use the status chips, technician card filter and
+  the list search. Expect: counts, filters, edit/receipt/advance/archive and the
+  খরচ reveal all still work on grouped rows; switching back to **একদিন** restores
+  the old single-day list byte-for-byte — *risk: নেই*
+- [ ] **O6** Compare the two search boxes. Expect: the header search shows a
+  **সব তারিখ** tag and finds rows from *other* days; the list search shows an
+  **এই তালিকায়** tag (swapped for the × once you type) and only filters what is
+  already on screen; both placeholders are unchanged (Ctrl+K still works) —
+  *risk: নেই*
+- [ ] **O7** Open **রিপোর্ট**. Expect: below the preset chips a new row
+  “এই রেঞ্জের এক্সপোর্ট:” with **PDF / CSV / Excel**; switch preset and confirm
+  the row's title shows the new range; the print output never contains these
+  buttons — *risk: নেই*
+- [ ] **O8** Open **বাকি তালিকা**. Expect: rows are grouped under date sections
+  with a per-day due subtotal, the header line is still
+  “Xটি ডিভাইস বাকি • মোট ৳Y”, বিল/জমা/বাকি values line up in one column, and
+  every icon button announces itself (এডিট / বিল প্রিন্ট) to screen readers —
+  *risk: নেই*
+- [ ] **O9** With a preset chosen, click **CSV** then **Excel** then **PDF**.
+  Expect: three files named `MAHER-Report-<from>_<to>.*`; CSV opens in Excel
+  with correct Bengali and the totals matching the cards (কাজ/বিল/খরচ/বাকি/লাভ),
+  Excel opens with 3 sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস), the PDF is readable
+  Bengali over multiple pages, and **no খরচের টাকা per row** appears in any file —
+  *risk: মাঝারি (downloads files)*
+- [ ] **O10** Add a `ZTEST` row inside the shown range and re-export. Expect: the
+  new row is in the CSV/Excel row sheet and the daily breakdown; then archive it
+  again — *risk: মাঝারি (adds a row)*
 
 ---
 

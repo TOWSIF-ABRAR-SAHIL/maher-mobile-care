@@ -18,6 +18,7 @@ import { MonthlySummary } from "@/components/MonthlySummary";
 import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
 import { PageLead } from "@/components/PageLead";
 import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
+import { ReportDocument } from "@/components/report/ReportDocument";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
 import { ServiceTable } from "@/components/ServiceTable";
@@ -33,13 +34,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { publishBackup } from "@/lib/backup";
-import { dhakaDateKey, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
+import { dhakaDateKey, dayLabel, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
 import { useLastBackup } from "@/lib/use-last-backup";
 import { cn, STATUSES, toBnDigits, type ServiceStatus } from "@/lib/utils";
+import type { ReportData } from "@/lib/export";
 import type {
+  ListMode,
   MonthlyResponse,
   RangeMode,
   ServiceDTO,
+  ServicesListResponse,
   StatsResponse,
 } from "@/lib/types";
 
@@ -131,6 +135,52 @@ export function ServiceWorkspace({
     if (mode !== "custom") setRange(computeRange(mode, nextDate));
   };
 
+  /* ------------------------------------------------------------------
+   * List date scope. `day` (default) is the untouched single-day desk;
+   * `range` opens a from/to window (starts at one day, widens freely);
+   * `all` shows the whole ledger, grouped by date. Kept separate from the
+   * report's `range` so report presets never move the list.
+   * ------------------------------------------------------------------ */
+  const LIST_PAGE = 300;
+  const [listMode, setListMode] = useState<ListMode>("day");
+  const [listRange, setListRange] = useState(() => {
+    const anchor = initialDate || dhakaDateKey(new Date());
+    return { from: anchor, to: anchor }; // starts as one day; widened freely
+  });
+  const [listTotal, setListTotal] = useState<number | null>(null);
+  const [listHasMore, setListHasMore] = useState(false);
+  const listModeRef = useRef(listMode);
+  const listRangeRef = useRef(listRange);
+  const servicesRef = useRef<ServiceDTO[]>([]);
+  useEffect(() => {
+    listModeRef.current = listMode;
+  }, [listMode]);
+  useEffect(() => {
+    listRangeRef.current = listRange;
+  }, [listRange]);
+  useEffect(() => {
+    servicesRef.current = services;
+  }, [services]);
+
+  const listUrl = useCallback((day: string, offset = 0) => {
+    const page = `limit=${LIST_PAGE}${offset ? `&offset=${offset}` : ""}`;
+    if (listModeRef.current === "all") return `/api/services?all=1&${page}`;
+    if (listModeRef.current === "range") {
+      const { from, to } = listRangeRef.current;
+      return `/api/services?from=${from}&to=${to}&${page}`;
+    }
+    return `/api/services?date=${day}`;
+  }, []);
+
+  const statsUrl = useCallback((day: string) => {
+    if (listModeRef.current === "all") return "/api/stats?all=1";
+    if (listModeRef.current === "range") {
+      const { from, to } = listRangeRef.current;
+      return `/api/stats?from=${from}&to=${to}`;
+    }
+    return `/api/stats?date=${day}`;
+  }, []);
+
   const loadTechnicians = useCallback(async () => {
     try {
       const res = await fetch("/api/technicians");
@@ -172,11 +222,13 @@ export function ServiceWorkspace({
     }
     try {
       const [svc, st] = await Promise.all([
-        getJSON<{ services: ServiceDTO[] }>(`/api/services?date=${day}`),
-        getJSON<StatsResponse>(`/api/stats?date=${day}`),
+        getJSON<ServicesListResponse>(listUrl(day)),
+        getJSON<StatsResponse>(statsUrl(day)),
       ]);
       if (reqId.current !== my) return;
       setServices(svc.services);
+      setListTotal(svc.total ?? null);
+      setListHasMore(!!svc.hasMore);
       setStats(st);
     } catch (e) {
       if (reqId.current !== my) return;
@@ -192,7 +244,7 @@ export function ServiceWorkspace({
         setLoading(false);
       }
     }
-  }, []);
+  }, [listUrl, statsUrl]);
 
   const fetchMonthly = useCallback(async (r: { from: string; to: string }) => {
     const my = ++monthlyReq.current;
@@ -252,7 +304,29 @@ export function ServiceWorkspace({
 
   useEffect(() => {
     void load(date, !loadedOnce.current);
-  }, [date, load]);
+    // listMode/listRange changes re-run the same loader with a wider window.
+  }, [date, listMode, listRange, load]);
+
+  /** Next page of a capped range/all view; appends so sections stay stable. */
+  const loadMore = useCallback(async () => {
+    const my = ++reqId.current;
+    setRefreshing(true);
+    try {
+      const next = await getJSON<ServicesListResponse>(
+        listUrl(dateRef.current, servicesRef.current.length)
+      );
+      if (reqId.current !== my) return;
+      setServices((prev) => [...prev, ...next.services]);
+      setListTotal(next.total ?? null);
+      setListHasMore(!!next.hasMore);
+    } catch (e) {
+      if (reqId.current === my) {
+        toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
+      }
+    } finally {
+      if (reqId.current === my) setRefreshing(false);
+    }
+  }, [listUrl]);
 
   useEffect(() => {
     void loadTechnicians();
@@ -279,6 +353,8 @@ export function ServiceWorkspace({
         return;
       }
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        // Day stepping only makes sense in the single-day view.
+        if (listModeRef.current !== "day") return;
         const next = shiftDateKey(
           dateRef.current,
           e.key === "ArrowLeft" ? -1 : 1
@@ -292,6 +368,22 @@ export function ServiceWorkspace({
   }, [rangeMode]);
 
   const goToday = () => applyDate(dhakaDateKey(new Date()));
+
+  /** List scope switch — only the list window moves; the report stays put. */
+  const changeListMode = (mode: ListMode) => {
+    if (mode === listMode) return;
+    setListMode(mode);
+    setTechFilter(null);
+  };
+
+  const changeListRange = (from: string, to: string) => {
+    if (!from || !to) return;
+    if (from > to) {
+      toast.error("শুরুর তারিখ শেষের তারিখের আগে");
+      return;
+    }
+    setListRange({ from, to });
+  };
 
   const pickPreset = (mode: RangeMode) => {
     setRangeMode(mode);
@@ -424,6 +516,93 @@ export function ServiceWorkspace({
     }
   };
 
+  /* ------------------------------------------------------------------
+   * Report export — always follows the ACTIVE report range/preset. Rows
+   * come from the additive range scope (paged, capped), totals from the
+   * monthly summary already fetched for exactly this window. Fully local:
+   * no cloud, no third-party service.
+   * ------------------------------------------------------------------ */
+  const [exporting, setExporting] = useState<null | "pdf" | "csv" | "excel">(
+    null
+  );
+  const EXPORT_PAGE = 500;
+  const EXPORT_MAX = 5000;
+
+  const collectReport = async (): Promise<ReportData | null> => {
+    if (!monthly) return null;
+    const { from, to } = rangeRef.current;
+    const rows: ServiceDTO[] = [];
+    let offset = 0;
+    let hasMore = true;
+    while (hasMore && rows.length < EXPORT_MAX) {
+      const page = await getJSON<ServicesListResponse>(
+        `/api/services?from=${from}&to=${to}&limit=${EXPORT_PAGE}&offset=${offset}`
+      );
+      rows.push(...(page.services ?? []));
+      hasMore = !!page.hasMore;
+      offset = rows.length;
+    }
+    if (hasMore) {
+      toast.warning("রিপোর্টে সর্বোচ্চ ৫০০০ রেকর্ড — রেঞ্জ ছোট করে আবার চেষ্টা করুন");
+    }
+    return { from, to, summary: monthly.summary, rows };
+  };
+
+  const exportReport = async (kind: "pdf" | "csv" | "excel") => {
+    if (exporting) return;
+    if (!monthly) {
+      toast.error("রিপোর্ট লোড হওয়ার পর এক্সপোর্ট করুন");
+      return;
+    }
+    setExporting(kind);
+    try {
+      const data = await collectReport();
+      if (!data) return;
+      const stamp = `${data.from}_${data.to}`;
+      const { downloadBlob } = await import("@/lib/export");
+      if (kind === "csv") {
+        const { buildReportCsv } = await import("@/lib/export");
+        downloadBlob(buildReportCsv(data), `MAHER-Report-${stamp}.csv`);
+      } else if (kind === "excel") {
+        const { buildReportXlsx } = await import("@/lib/export");
+        downloadBlob(buildReportXlsx(data), `MAHER-Report-${stamp}.xlsx`);
+      } else {
+        const host = document.createElement("div");
+        host.setAttribute("aria-hidden", "true");
+        host.style.cssText =
+          "position:fixed;left:-10000px;top:0;width:760px;background:#fff;pointer-events:none;z-index:-1;";
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        try {
+          flushSync(() => {
+            root.render(<ReportDocument data={data} />);
+          });
+          if (document.fonts?.ready) {
+            await document.fonts.ready;
+          }
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          );
+          const node = host.querySelector<HTMLElement>("[data-report-doc]");
+          if (!node) throw new Error("রিপোর্ট তৈরি করা যায়নি");
+          const { createReportPdf } = await import("@/lib/report-pdf");
+          downloadBlob(await createReportPdf(node), `MAHER-Report-${stamp}.pdf`);
+        } finally {
+          root.unmount();
+          host.remove();
+        }
+      }
+      toast.success("রিপোর্ট ডাউনলোড হয়েছে");
+    } catch (error) {
+      console.error("Report export failed", error);
+      toast.error(
+        error instanceof Error ? error.message : "এক্সপোর্ট করা যায়নি"
+      );
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const backup = async () => {
     if (backingUp) return;
     setBackingUp(true);
@@ -533,6 +712,14 @@ export function ServiceWorkspace({
       ? (initialStatus as "All" | ServiceStatus)
       : "All";
 
+  /** Headline label of the daily cards: the shown window, not always "today". */
+  const statsScope =
+    listMode === "day"
+      ? null
+      : listMode === "all"
+        ? "সব তারিখের হিসাব"
+        : `${dayLabel(listRange.from)} – ${dayLabel(listRange.to)}`;
+
   return (
     <div className="min-h-dvh bg-maher-surface">
       <div
@@ -621,6 +808,7 @@ export function ServiceWorkspace({
           onSelect={setTechFilter}
           date={date}
           today={dhakaDateKey(new Date())}
+          scope={statsScope}
         />
 
         <ServiceUtilities
@@ -719,6 +907,13 @@ export function ServiceWorkspace({
               services={services}
               loading={loading}
               date={date}
+              listMode={listMode}
+              listRange={listRange}
+              listTotal={listTotal}
+              listHasMore={listHasMore}
+              onLoadMore={() => void loadMore()}
+              onModeChange={changeListMode}
+              onRangeChange={changeListRange}
               onEdit={edit}
               onReceipt={openReceipt}
               onSharePdf={shareReceiptPdf}
@@ -759,6 +954,10 @@ export function ServiceWorkspace({
             onPreset={pickPreset}
             onCustom={pickCustom}
             loading={loading}
+            exporting={exporting}
+            onExportPdf={() => void exportReport("pdf")}
+            onExportCsv={() => void exportReport("csv")}
+            onExportExcel={() => void exportReport("excel")}
           />
         </DialogContent>
       </Dialog>

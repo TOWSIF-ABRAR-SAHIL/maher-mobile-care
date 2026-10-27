@@ -83,6 +83,8 @@ export interface DayStats {
 
 export interface StatsResponse {
   date: string;
+  /** Set only for range/all queries so the UI can label the shown window. */
+  range?: { from: string; to: string };
   techStats: TechStat[];
   today: DayStats;
 }
@@ -126,6 +128,27 @@ export interface MonthlyResponse {
 
 /** Summary window mode — presets follow the navbar date, custom is free. */
 export type RangeMode = "rolling30" | "thisMonth" | "lastMonth" | "custom";
+
+/** Service-list date scope. `day` is the untouched legacy default. */
+export type ListMode = "day" | "range" | "all";
+
+/**
+ * Response of the additive list scopes (`?from&to` / `?all=1`). Day mode
+ * keeps the legacy `{ date, services }` shape, so `date`/`total`/`hasMore`
+ * are optional here.
+ */
+export interface ServicesListResponse {
+  date?: string;
+  mode?: ListMode;
+  from?: string;
+  to?: string;
+  /** SQL count() over the whole window — the aggregate behind the cap. */
+  total?: number;
+  offset?: number;
+  shown?: number;
+  hasMore?: boolean;
+  services: ServiceDTO[];
+}
 
 /* ------------------------------------------------------------------ */
 /* Inventory DTOs                                                       */

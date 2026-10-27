@@ -31,6 +31,7 @@ export function TodayStats({
   loading,
   date,
   today,
+  scopePrefix,
 }: {
   stats: DayStats | null;
   loading: boolean;
@@ -38,8 +39,10 @@ export function TodayStats({
   date: string;
   /** Current YYYY-MM-DD day in Dhaka time. */
   today: string;
+  /** Overrides "আজকের"/"নির্বাচিত দিনের" while a range/all window is shown. */
+  scopePrefix?: string;
 }) {
-  const prefix = date === today ? "আজকের" : "নির্বাচিত দিনের";
+  const prefix = scopePrefix ?? (date === today ? "আজকের" : "নির্বাচিত দিনের");
   if (loading || !stats) {
     return (
       <div

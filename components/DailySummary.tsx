@@ -20,6 +20,7 @@ export function DailySummary({
   onSelect,
   date,
   today,
+  scope,
 }: {
   stats: StatsResponse | null;
   loading: boolean;
@@ -27,6 +28,8 @@ export function DailySummary({
   onSelect: (name: string | null) => void;
   date: string;
   today: string;
+  /** Shown window when the list is in range/all mode; null keeps "আজকের". */
+  scope?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const day = stats?.today ?? null;
@@ -45,10 +48,12 @@ export function DailySummary({
         <span className="flex min-w-0 items-center gap-2">
           <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-semibold text-maher-navy">
-            আজকের হিসাব
+            {scope ?? "আজকের হিসাব"}
           </span>
           <span className="hidden truncate text-xs text-muted-foreground lg:inline">
-            টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
+            {scope
+              ? "নির্বাচিত সময়ের টেকনিশিয়ান অনুযায়ী হিসাব"
+              : "টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব"}
           </span>
         </span>
 
@@ -107,6 +112,7 @@ export function DailySummary({
           loading={loading}
           date={date}
           today={today}
+          scopePrefix={scope ? "নির্বাচিত সময়ের" : undefined}
         />
       </div>
     </section>

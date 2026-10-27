@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -9,6 +10,7 @@ import {
 } from "react";
 import {
   Archive,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   ClipboardList,
@@ -65,7 +67,7 @@ import {
 import { isShopExpenseCode } from "@/lib/expense-code";
 import { dhakaDateKey, bengaliDateLabel } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
-import type { ServiceDTO } from "@/lib/types";
+import type { ListMode, ServiceDTO } from "@/lib/types";
 
 /**
  * One customer visit: either a plain single-device job or every device row that
@@ -120,6 +122,13 @@ export function ServiceTable({
   services,
   loading,
   date,
+  listMode = "day",
+  listRange,
+  listTotal = null,
+  listHasMore = false,
+  onLoadMore,
+  onModeChange,
+  onRangeChange,
   onEdit,
   onReceipt,
   onSharePdf,
@@ -136,6 +145,15 @@ export function ServiceTable({
   services: ServiceDTO[];
   loading: boolean;
   date: string;
+  /** Date scope of the list; `day` (default) keeps the legacy single-day view. */
+  listMode?: ListMode;
+  listRange?: { from: string; to: string };
+  /** Server count() over the whole window, or null in day mode. */
+  listTotal?: number | null;
+  listHasMore?: boolean;
+  onLoadMore?: () => void;
+  onModeChange?: (mode: ListMode) => void;
+  onRangeChange?: (from: string, to: string) => void;
   onEdit: (service: ServiceDTO) => void;
   onReceipt: (service: ServiceDTO) => void;
   onSharePdf: (service: ServiceDTO) => Promise<void>;
@@ -349,6 +367,87 @@ export function ServiceTable({
     return out;
   }, [visitsAll, search, statusFilter, statusActive]);
 
+  /**
+   * Multi-date view only: fold the visible visits under one header per day so
+   * a range/all list stays scannable. Day mode returns null — its table and
+   * cards render exactly as they always have.
+   */
+  const dateSections = useMemo(() => {
+    if (listMode === "day" || showArchived) return null;
+    type Section = {
+      key: string;
+      dateKey: string;
+      visits: Visit[];
+      devices: number;
+      bill: number;
+    };
+    const out: Section[] = [];
+    const deviceCount = (visit: Visit) => visit.devices.length;
+    const visitBill = (visit: Visit) =>
+      visit.devices.reduce((sum, d) => sum + d.totalBill, 0);
+    for (const visit of filtered) {
+      const dateKey = dhakaDateKey(visit.devices[0].serviceDate);
+      const last = out[out.length - 1];
+      if (last && last.key === dateKey) {
+        last.visits.push(visit);
+        last.devices += deviceCount(visit);
+        last.bill += visitBill(visit);
+      } else {
+        out.push({
+          key: dateKey,
+          dateKey,
+          visits: [visit],
+          devices: deviceCount(visit),
+          bill: visitBill(visit),
+        });
+      }
+    }
+    return out;
+  }, [filtered, listMode, showArchived]);
+
+  /** One shared header for the desktop group row and the mobile divider. */
+  const dateSectionHeader = (sec: {
+    dateKey: string;
+    visits: Visit[];
+    devices: number;
+    bill: number;
+  }) => (
+    <div
+      data-testid="svc-date-section"
+      data-date={sec.dateKey}
+      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 py-1.5 text-xs"
+    >
+      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-maher-navy" />
+      <span className="font-semibold text-maher-navy">
+        {bengaliDateLabel(sec.dateKey)}
+      </span>
+      <span aria-hidden className="text-muted-foreground">
+        •
+      </span>
+      <span className="text-muted-foreground">
+        <span className="font-semibold tabular-nums text-foreground">
+          {toBnDigits(sec.visits.length)}
+        </span>{" "}
+        ভিজিট
+      </span>
+      <span aria-hidden className="text-muted-foreground">
+        •
+      </span>
+      <span className="text-muted-foreground">
+        <span className="font-semibold tabular-nums text-foreground">
+          {toBnDigits(sec.devices)}
+        </span>{" "}
+        ডিভাইস
+      </span>
+      <span aria-hidden className="text-muted-foreground">
+        •
+      </span>
+      <span className="tabular-nums text-muted-foreground">
+        {formatTaka(sec.bill)}
+      </span>
+    </div>
+  );
+
   const isCollapsed = (visit: Visit) =>
     !filterActive && visit.devices.length > 1 && !!collapsed[visit.key];
   const toggleCollapsed = (key: string) =>
@@ -509,11 +608,12 @@ export function ServiceTable({
     </div>
   );
 
-  /** Expected handover date; turns red once the day has passed. */
+  /** Expected handover date; turns red once the day has passed. The wording
+   *  is fixed — only the presentation became a tone pill. */
   const renderDelivery = (s: ServiceDTO) => {
     if (s.deliveredAt) {
       return (
-        <div className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-maher-done">
+        <div className="mt-1 inline-flex whitespace-nowrap rounded bg-maher-done/10 px-1.5 py-0.5 text-[11px] font-semibold text-maher-done">
           ✅ ডেলিভারি: {dhakaDateKey(s.deliveredAt)}
         </div>
       );
@@ -523,9 +623,12 @@ export function ServiceTable({
     const overdue = key < dhakaDateKey(new Date()) && !isReturned(s.status);
     return (
       <div
-        className={`mt-0.5 whitespace-nowrap text-[11px] ${
-          overdue ? "font-semibold text-maher-due" : "text-muted-foreground"
+        className={`mt-1 inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${
+          overdue
+            ? "bg-maher-due/10 font-semibold text-maher-due"
+            : "bg-maher-surface text-muted-foreground"
         }`}
+        title={`ডেলিভারি: ${key}`}
       >
         {overdue ? "⚠️ " : ""}ডেলিভারি: {key}
       </div>
@@ -1137,7 +1240,7 @@ export function ServiceTable({
       ) : null}
       <TableCell className="align-top">
         <div
-          className="max-w-[8.5rem] truncate font-semibold text-foreground"
+          className="max-w-[8.5rem] truncate text-[13px] font-semibold text-foreground"
           title={s.customerName}
         >
           {s.customerName}
@@ -1147,7 +1250,7 @@ export function ServiceTable({
         </div>
       </TableCell>
       <TableCell className="align-top">
-        <div className="font-medium">{s.model}</div>
+        <div className="text-[13px] font-medium text-maher-ink">{s.model}</div>
         <div
           className="max-w-44 truncate text-xs text-muted-foreground"
           title={s.problem}
@@ -1432,6 +1535,7 @@ export function ServiceTable({
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
       data-date={date}
+      data-mode={listMode}
       className="overflow-hidden rounded-xl border border-maher-border bg-card shadow-card sheen"
     >
       <div className="border-b border-maher-border px-4 py-3">
@@ -1459,7 +1563,11 @@ export function ServiceTable({
               ) : (
                 <>
                   <span className="font-medium text-foreground/80">
-                    {bengaliDateLabel(date)}
+                    {listMode === "day"
+                      ? bengaliDateLabel(date)
+                      : listMode === "all"
+                        ? "সব তারিখ"
+                        : `${bengaliDateLabel(listRange?.from ?? date)} – ${bengaliDateLabel(listRange?.to ?? date)}`}
                   </span>
                   <span aria-hidden className="h-3 w-px bg-maher-border" />
                   <span>
@@ -1475,6 +1583,18 @@ export function ServiceTable({
                     </span>
                     টি ডিভাইস
                   </span>
+                  {listMode !== "day" && listTotal != null ? (
+                    <>
+                      <span aria-hidden className="h-3 w-px bg-maher-border" />
+                      <span>
+                        মোট{" "}
+                        <span className="font-semibold tabular-nums text-maher-ink">
+                          {toBnDigits(listTotal)}
+                        </span>
+                        টি
+                      </span>
+                    </>
+                  ) : null}
                   {filterActive ? (
                     <>
                       <span aria-hidden className="h-3 w-px bg-maher-border" />
@@ -1509,14 +1629,95 @@ export function ServiceTable({
             </div>
           </div>
           {!showArchived && onPrev && onNext && onDateChange && onToday ? (
-            <ServiceDateNav
-              date={date}
-              onPrev={onPrev}
-              onNext={onNext}
-              onDateChange={onDateChange}
-              onToday={onToday}
-              isToday={date === dhakaDateKey(new Date())}
-            />
+            <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end print:hidden">
+              <div
+                data-testid="svc-date-mode"
+                role="group"
+                aria-label="তারিখ দেখার মোড"
+                className="inline-flex h-9 max-w-full items-center overflow-x-auto rounded-lg border border-maher-border bg-white p-0.5"
+              >
+                {(
+                  [
+                    ["day", "একদিন"],
+                    ["range", "তারিখ রেঞ্জ"],
+                    ["all", "সব তারিখ"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={listMode === mode}
+                    onClick={() => onModeChange?.(mode)}
+                    className={`h-8 shrink-0 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition ${
+                      listMode === mode
+                        ? "bg-maher-navy text-white"
+                        : "text-muted-foreground hover:bg-maher-surface hover:text-maher-navy"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {listMode === "day" ? (
+                <ServiceDateNav
+                  date={date}
+                  onPrev={onPrev}
+                  onNext={onNext}
+                  onDateChange={onDateChange}
+                  onToday={onToday}
+                  isToday={date === dhakaDateKey(new Date())}
+                />
+              ) : listMode === "range" ? (
+                <div
+                  data-testid="svc-range-inputs"
+                  className="flex items-center gap-1.5"
+                >
+                  <label className="sr-only" htmlFor="svc-range-from">
+                    শুরুর তারিখ
+                  </label>
+                  <Input
+                    id="svc-range-from"
+                    data-testid="svc-range-from"
+                    type="date"
+                    aria-label="শুরুর তারিখ"
+                    value={listRange?.from ?? ""}
+                    max={listRange?.to}
+                    onChange={(e) =>
+                      e.target.value &&
+                      onRangeChange?.(e.target.value, listRange?.to ?? e.target.value)
+                    }
+                    className="h-9 w-[148px] bg-white text-xs"
+                  />
+                  <span aria-hidden className="text-muted-foreground">
+                    –
+                  </span>
+                  <label className="sr-only" htmlFor="svc-range-to">
+                    শেষের তারিখ
+                  </label>
+                  <Input
+                    id="svc-range-to"
+                    data-testid="svc-range-to"
+                    type="date"
+                    aria-label="শেষের তারিখ"
+                    value={listRange?.to ?? ""}
+                    min={listRange?.from}
+                    onChange={(e) =>
+                      e.target.value &&
+                      onRangeChange?.(listRange?.from ?? e.target.value, e.target.value)
+                    }
+                    className="h-9 w-[148px] bg-white text-xs"
+                  />
+                </div>
+              ) : (
+                <p
+                  data-testid="svc-all-dates-note"
+                  className="text-xs text-muted-foreground"
+                >
+                  সব তারিখের তালিকা — তারিখ অনুযায়ী ভাগ করা
+                </p>
+              )}
+            </div>
           ) : null}
         </div>
 
@@ -1559,10 +1760,13 @@ export function ServiceTable({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="svc-search"
+              data-scope="local"
+              aria-label="এই তালিকার মধ্যে খুঁজুন (লোকাল ফিল্টার)"
+              title="শুধু এই তালিকায় দেখা এন্ট্রি খুঁজবে — সব তারিখের জন্য উপরের হেডার সার্চ ব্যবহার করুন"
               placeholder="নাম, আইডি, ফোন, মডেল বা সমস্যা খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className={`h-9 bg-white pl-9 ${search ? "pr-9" : ""}`}
+              className={`h-9 bg-white pl-9 ${search ? "pr-9" : "pr-[6.75rem]"}`}
             />
             {search ? (
               <button
@@ -1575,7 +1779,14 @@ export function ServiceTable({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-            ) : null}
+            ) : (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-maher-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+              >
+                এই তালিকায়
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1666,6 +1877,36 @@ export function ServiceTable({
               />
             </div>
           ) : null}
+          {!showArchived && listMode !== "day" && listTotal != null ? (
+            <div
+              data-testid="list-cap-notice"
+              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-maher-border bg-maher-surface/40 px-3 py-2 text-xs text-muted-foreground print:hidden"
+            >
+              <span>
+                মোট{" "}
+                <b className="tabular-nums text-foreground">
+                  {toBnDigits(listTotal)}
+                </b>
+                টি এন্ট্রি — এখন দেখানো{" "}
+                <b className="tabular-nums text-foreground">
+                  {toBnDigits(services.length)}
+                </b>
+                টি
+                {listMode === "all" ? " (সব তারিখ)" : " (এই রেঞ্জে)"}।
+              </span>
+              {listHasMore && onLoadMore ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 bg-white"
+                  onClick={onLoadMore}
+                  disabled={loading}
+                >
+                  আরও দেখুন
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-maher-border bg-maher-surface/30 py-12 text-center">
               <span className="grid h-11 w-11 place-items-center rounded-full bg-maher-navy/10 text-maher-navy">
@@ -1724,11 +1965,34 @@ export function ServiceTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((visit) =>
-                  visit.devices.length > 1
-                    ? renderVisitRow(visit)
-                    : renderSingleRow(visit.devices[0])
-                )}
+                {dateSections
+                  ? dateSections.map((sec) => (
+                      <Fragment key={sec.key}>
+                        <TableRow
+                          data-testid="svc-date-row"
+                          data-date={sec.dateKey}
+                          className="hover:bg-transparent"
+                        >
+                          {/* 7 live columns; the archived view never groups. */}
+                          <TableCell
+                            colSpan={7}
+                            className="border-b-maher-border bg-maher-surface/70 p-0"
+                          >
+                            {dateSectionHeader(sec)}
+                          </TableCell>
+                        </TableRow>
+                        {sec.visits.map((visit) =>
+                          visit.devices.length > 1
+                            ? renderVisitRow(visit)
+                            : renderSingleRow(visit.devices[0])
+                        )}
+                      </Fragment>
+                    ))
+                  : filtered.map((visit) =>
+                      visit.devices.length > 1
+                        ? renderVisitRow(visit)
+                        : renderSingleRow(visit.devices[0])
+                    )}
               </TableBody>
             </Table>
           ) : (
@@ -1736,11 +2000,24 @@ export function ServiceTable({
               className="grid grid-cols-1 items-start gap-2 md:grid-cols-2"
               data-testid="service-cards"
             >
-              {filtered.map((visit) =>
-                visit.devices.length > 1
-                  ? renderVisitCard(visit)
-                  : renderSingleCard(visit.devices[0])
-              )}
+              {dateSections
+                ? dateSections.map((sec) => (
+                    <Fragment key={sec.key}>
+                      <div className="rounded-lg border border-maher-border bg-maher-surface/70 md:col-span-2">
+                        {dateSectionHeader(sec)}
+                      </div>
+                      {sec.visits.map((visit) =>
+                        visit.devices.length > 1
+                          ? renderVisitCard(visit)
+                          : renderSingleCard(visit.devices[0])
+                      )}
+                    </Fragment>
+                  ))
+                : filtered.map((visit) =>
+                    visit.devices.length > 1
+                      ? renderVisitCard(visit)
+                      : renderSingleCard(visit.devices[0])
+                  )}
             </div>
           )}
         </>

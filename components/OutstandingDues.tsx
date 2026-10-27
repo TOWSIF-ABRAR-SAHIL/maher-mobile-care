@@ -1,11 +1,12 @@
 "use client";
 
+import { Fragment } from "react";
 import { Pencil, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactButtons } from "@/components/ContactButtons";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatTaka } from "@/lib/utils";
-import { dhakaDateKey } from "@/lib/dhaka";
+import { formatTaka, toBnDigits } from "@/lib/utils";
+import { bengaliDateLabel, dhakaDateKey } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -28,6 +29,12 @@ interface DueVisit {
   devices: ServiceDTO[];
   totalBill: number;
   totalAdvance: number;
+  totalDue: number;
+}
+
+interface DueSection {
+  date: string;
+  visits: DueVisit[];
   totalDue: number;
 }
 
@@ -62,6 +69,31 @@ function groupDueVisits(services: ServiceDTO[]): DueVisit[] {
   });
 }
 
+/**
+ * Newest day first, one section per date: the date is stated once per group
+ * (with that day's due subtotal) instead of repeating down every row.
+ */
+function groupDueSections(visits: DueVisit[]): DueSection[] {
+  const sorted = [...visits].sort((a, b) =>
+    a.date === b.date
+      ? b.first.id - a.first.id
+      : a.date < b.date
+        ? 1
+        : -1
+  );
+  const out: DueSection[] = [];
+  for (const visit of sorted) {
+    const last = out[out.length - 1];
+    if (last && last.date === visit.date) {
+      last.visits.push(visit);
+      last.totalDue += visit.totalDue;
+    } else {
+      out.push({ date: visit.date, visits: [visit], totalDue: visit.totalDue });
+    }
+  }
+  return out;
+}
+
 export function OutstandingDues({
   dues,
   loading,
@@ -75,6 +107,31 @@ export function OutstandingDues({
 }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const visits = dues ? groupDueVisits(dues.services) : [];
+  const sections = groupDueSections(visits);
+
+  /** Group divider — same markup in the table (inside a colSpan cell) and on cards. */
+  const sectionHeader = (section: DueSection, testid: string) => (
+    <div
+      data-testid={testid}
+      data-date={section.date}
+      className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 px-2 py-1.5 text-xs"
+    >
+      <span className="flex items-center gap-2">
+        <span className="font-semibold text-maher-ink">
+          {bengaliDateLabel(section.date)}
+        </span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {section.date}
+        </span>
+      </span>
+      <span className="text-muted-foreground">
+        {toBnDigits(section.visits.length)}টি বাকি •{" "}
+        <b className="tabular-nums text-maher-due-ink">
+          {formatTaka(section.totalDue)}
+        </b>
+      </span>
+    </div>
+  );
 
   return (
     <section
@@ -124,72 +181,240 @@ export function OutstandingDues({
               </tr>
             </thead>
             <tbody>
-              {visits.map((visit) => {
-                const multi = visit.devices.length > 1;
-                return (
+              {sections.map((section) => (
+                <Fragment key={section.date}>
                   <tr
-                    key={visit.key}
-                    data-testid={`due-visit-${visit.first.id}`}
-                    data-devices={visit.devices.length}
-                    className="border-t"
+                    data-testid="due-date-section"
+                    data-date={section.date}
+                    className="bg-maher-surface/80 hover:bg-maher-surface/80"
                   >
-                    <td className="whitespace-nowrap p-2 text-muted-foreground">
-                      {visit.date}
-                      <div className="font-mono text-xs text-muted-foreground/75">
-                        #{visit.first.id}
-                      </div>
+                    <td colSpan={6} className="p-0">
+                      {sectionHeader(section, "due-date-section-row")}
                     </td>
-                    <td className="p-2">
-                      <div className="font-medium">{visit.customerName}</div>
-                      <div className="text-xs text-muted-foreground">{visit.phone}</div>
-                    </td>
-                    <td className="p-2">
-                      <div className="space-y-1">
-                        {visit.devices.map((s) => (
-                          <div key={s.id} className="flex items-start gap-1.5">
-                            <div className="min-w-0">
-                              <div className="font-medium">{s.model}</div>
-                              <div className="mt-1">
-                                <StatusBadge status={s.status} />
+                  </tr>
+                  {section.visits.map((visit) => {
+                    const multi = visit.devices.length > 1;
+                    return (
+                      <tr
+                        key={visit.key}
+                        data-testid={`due-visit-${visit.first.id}`}
+                        data-devices={visit.devices.length}
+                        className="border-t align-top"
+                      >
+                        <td className="whitespace-nowrap px-2 py-1.5 text-[13px] tabular-nums text-muted-foreground">
+                          {visit.date}
+                          <div className="font-mono text-xs text-muted-foreground/75">
+                            #{visit.first.id}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="text-[13px] font-semibold text-foreground">
+                            {visit.customerName}
+                          </div>
+                          <div className="text-xs tabular-nums text-muted-foreground">
+                            {visit.phone}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="space-y-1">
+                            {visit.devices.map((s) => (
+                              <div key={s.id} className="flex items-start gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="text-[13px] font-medium">
+                                    {s.model}
+                                  </div>
+                                  <div className="mt-1">
+                                    <StatusBadge status={s.status} />
+                                  </div>
+                                </div>
+                                {multi ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={`এডিট (${s.model})`}
+                                    className="h-7 w-7 shrink-0"
+                                    title={`এডিট (${s.model})`}
+                                    onClick={() => onEdit(s)}
+                                  >
+                                    <Pencil />
+                                  </Button>
+                                ) : null}
                               </div>
+                            ))}
+                          </div>
+                        </td>
+                        {/* Label/value pairs keep the exact text «বিল: ৳X»
+                            while the three figures align in one column. */}
+                        <td className="whitespace-nowrap px-2 py-1.5 text-[13px] tabular-nums">
+                          <div className="flex items-baseline justify-between gap-4">
+                            <span className="text-muted-foreground">{"বিল: "}</span>
+                            <span className="font-medium text-foreground">
+                              {formatTaka(visit.totalBill)}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex items-baseline justify-between gap-4">
+                            <span className="text-maher-done/80">{"জমা: "}</span>
+                            <span className="font-semibold text-maher-done">
+                              {formatTaka(visit.totalAdvance)}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex items-baseline justify-between gap-4 border-t border-dashed border-maher-due/30 pt-0.5">
+                            <span className="font-semibold text-maher-due-ink">
+                              {"বাকি: "}
+                            </span>
+                            <span className="font-bold text-maher-due-ink">
+                              {formatTaka(visit.totalDue)}
+                            </span>
+                          </div>
+                          {multi ? (
+                            <div className="mt-0.5 text-right text-[11px] text-muted-foreground">
+                              {visit.devices.length}টি ডিভাইসের মোট
                             </div>
-                            {multi ? (
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <ContactButtons service={visit.first} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="বিল প্রিন্ট করুন"
+                              className="h-8 w-8 text-maher-navy"
+                              title="বিল প্রিন্ট"
+                              onClick={() => onReceipt(visit.first)}
+                            >
+                              <ReceiptText />
+                            </Button>
+                            {multi ? null : (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 shrink-0"
-                                title={`এডিট (${s.model})`}
-                                onClick={() => onEdit(s)}
+                                aria-label="এন্ট্রি এডিট করুন"
+                                className="h-8 w-8"
+                                title="এডিট"
+                                onClick={() => onEdit(visit.first)}
                               >
                                 <Pencil />
                               </Button>
-                            ) : null}
+                            )}
                           </div>
-                        ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="space-y-2" data-testid="dues-cards">
+          {sections.map((section) => (
+            <Fragment key={section.date}>
+              <div className="rounded-lg bg-maher-surface">
+                {sectionHeader(section, "due-date-section-card")}
+              </div>
+              {section.visits.map((visit) => {
+                const multi = visit.devices.length > 1;
+                return (
+                  <article
+                    key={visit.key}
+                    data-testid={`due-visit-card-${visit.first.id}`}
+                    data-devices={visit.devices.length}
+                    className="rounded-lg border border-maher-due/25 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">
+                          {visit.date} •{" "}
+                          <span className="font-mono">#{visit.first.id}</span>
+                        </p>
+                        <p
+                          className="truncate font-medium text-foreground"
+                          title={visit.customerName}
+                        >
+                          {visit.customerName}
+                        </p>
+                        <p className="text-xs tabular-nums text-muted-foreground">
+                          {visit.phone}
+                        </p>
                       </div>
-                    </td>
-                    <td className="whitespace-nowrap p-2 tabular-nums">
-                      <div>বিল: {formatTaka(visit.totalBill)}</div>
-                      <div className="text-maher-done">
-                        জমা: {formatTaka(visit.totalAdvance)}
+                      <div className="shrink-0">
+                        {multi ? (
+                          <span className="rounded bg-maher-due/10 px-1.5 py-0.5 text-[11px] font-semibold text-maher-due-ink">
+                            {visit.devices.length}টি ডিভাইস
+                          </span>
+                        ) : (
+                          <StatusBadge status={visit.first.status} />
+                        )}
                       </div>
-                      <div className="font-semibold text-maher-due-ink">
-                        বাকি: {formatTaka(visit.totalDue)}
-                      </div>
-                      {multi ? (
-                        <div className="text-[11px] text-muted-foreground">
-                          {visit.devices.length}টি ডিভাইসের মোট
+                    </div>
+
+                    <div className="mt-2 space-y-1">
+                      {visit.devices.map((s) => (
+                        <div
+                          key={s.id}
+                          className="flex items-start justify-between gap-2 rounded bg-maher-surface px-2 py-1"
+                        >
+                          <div className="min-w-0">
+                            <p className="break-words text-sm text-maher-ink">
+                              {s.model}
+                            </p>
+                            <div className="mt-0.5">
+                              <StatusBadge status={s.status} />
+                            </div>
+                          </div>
+                          {multi ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`এডিট (${s.model})`}
+                              className="h-7 w-7 shrink-0"
+                              title={`এডিট (${s.model})`}
+                              onClick={() => onEdit(s)}
+                            >
+                              <Pencil />
+                            </Button>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </td>
-                    <td className="p-2">
+                      ))}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-maher-due/10 p-2 text-xs tabular-nums">
+                      <div>
+                        বিল
+                        <div className="font-semibold">
+                          {formatTaka(visit.totalBill)}
+                        </div>
+                      </div>
+                      <div className="text-maher-done">
+                        জমা
+                        <div className="font-semibold">
+                          {formatTaka(visit.totalAdvance)}
+                        </div>
+                      </div>
+                      <div className="text-maher-due-ink">
+                        বাকি
+                        <div className="font-semibold">
+                          {formatTaka(visit.totalDue)}
+                        </div>
+                      </div>
+                    </div>
+                    {multi ? (
+                      <p className="mt-1 text-right text-[11px] text-muted-foreground">
+                        {visit.devices.length}টি ডিভাইসের মোট
+                      </p>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                       <ContactButtons service={visit.first} />
-                    </td>
-                    <td className="p-2">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="বিল প্রিন্ট করুন"
                           className="h-8 w-8 text-maher-navy"
                           title="বিল প্রিন্ট"
                           onClick={() => onReceipt(visit.first)}
@@ -200,6 +425,7 @@ export function OutstandingDues({
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label="এন্ট্রি এডিট করুন"
                             className="h-8 w-8"
                             title="এডিট"
                             onClick={() => onEdit(visit.first)}
@@ -208,132 +434,12 @@ export function OutstandingDues({
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </article>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="space-y-2" data-testid="dues-cards">
-          {visits.map((visit) => {
-            const multi = visit.devices.length > 1;
-            return (
-              <article
-                key={visit.key}
-                data-testid={`due-visit-card-${visit.first.id}`}
-                data-devices={visit.devices.length}
-                className="rounded-lg border border-maher-due/25 p-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">
-                      {visit.date} •{" "}
-                      <span className="font-mono">#{visit.first.id}</span>
-                    </p>
-                    <p
-                      className="truncate font-medium text-foreground"
-                      title={visit.customerName}
-                    >
-                      {visit.customerName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{visit.phone}</p>
-                  </div>
-                  <div className="shrink-0">
-                    {multi ? (
-                      <span className="rounded bg-maher-due/10 px-1.5 py-0.5 text-[11px] font-semibold text-maher-due-ink">
-                        {visit.devices.length}টি ডিভাইস
-                      </span>
-                    ) : (
-                      <StatusBadge status={visit.first.status} />
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-2 space-y-1">
-                  {visit.devices.map((s) => (
-                    <div
-                      key={s.id}
-                      className="flex items-start justify-between gap-2 rounded bg-maher-surface px-2 py-1"
-                    >
-                      <div className="min-w-0">
-                        <p className="break-words text-sm text-maher-ink">
-                          {s.model}
-                        </p>
-                        <div className="mt-0.5">
-                          <StatusBadge status={s.status} />
-                        </div>
-                      </div>
-                      {multi ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          title={`এডিট (${s.model})`}
-                          onClick={() => onEdit(s)}
-                        >
-                          <Pencil />
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-maher-due/10 p-2 text-xs tabular-nums">
-                  <div>
-                    বিল
-                    <div className="font-semibold">
-                      {formatTaka(visit.totalBill)}
-                    </div>
-                  </div>
-                  <div className="text-maher-done">
-                    জমা
-                    <div className="font-semibold">
-                      {formatTaka(visit.totalAdvance)}
-                    </div>
-                  </div>
-                  <div className="text-maher-due-ink">
-                    বাকি
-                    <div className="font-semibold">
-                      {formatTaka(visit.totalDue)}
-                    </div>
-                  </div>
-                </div>
-                {multi ? (
-                  <p className="mt-1 text-right text-[11px] text-muted-foreground">
-                    {visit.devices.length}টি ডিভাইসের মোট
-                  </p>
-                ) : null}
-
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <ContactButtons service={visit.first} />
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-maher-navy"
-                      title="বিল প্রিন্ট"
-                      onClick={() => onReceipt(visit.first)}
-                    >
-                      <ReceiptText />
-                    </Button>
-                    {multi ? null : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="এডিট"
-                        onClick={() => onEdit(visit.first)}
-                      >
-                        <Pencil />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+            </Fragment>
+          ))}
         </div>
       )}
     </section>

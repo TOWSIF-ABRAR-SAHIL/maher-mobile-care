@@ -9,18 +9,51 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const dateParam = req.nextUrl.searchParams.get("date");
+    const sp = req.nextUrl.searchParams;
+    const dateParam = sp.get("date");
+    const from = sp.get("from");
+    const to = sp.get("to");
+    const all = sp.get("all") === "1";
     if (dateParam !== null && !isDateKey(dateParam)) {
       return NextResponse.json(
         { error: "সঠিক তারিখ দিন (YYYY-MM-DD)" },
         { status: 400 }
       );
     }
-    const date = dateParam || dhakaDateKey(new Date());
-    const { start, end } = dhakaRangeBounds(date, date);
+
+    // Day (legacy), range (?from&to) and whole-ledger (?all=1) share ONE
+    // aggregation path — only the date window differs.
+    let date: string;
+    let range: { from: string; to: string } | undefined;
+    let bounds: { start: Date; end: Date } | null = null;
+    if (all) {
+      date = dhakaDateKey(new Date());
+    } else if (from !== null || to !== null) {
+      if (!from || !to || !isDateKey(from) || !isDateKey(to)) {
+        return NextResponse.json(
+          { error: "শুরু ও শেষ তারিখ দিন (YYYY-MM-DD)" },
+          { status: 400 }
+        );
+      }
+      if (from > to) {
+        return NextResponse.json(
+          { error: "শুরুর তারিখ শেষের তারিখের আগে" },
+          { status: 400 }
+        );
+      }
+      bounds = dhakaRangeBounds(from, to);
+      range = { from, to };
+      date = to;
+    } else {
+      date = dateParam || dhakaDateKey(new Date());
+      bounds = dhakaRangeBounds(date, date);
+    }
 
     const rows = await prisma.service.findMany({
-      where: { archived: false, serviceDate: { gte: start, lte: end } },
+      where: {
+        archived: false,
+        ...(bounds ? { serviceDate: { gte: bounds.start, lte: bounds.end } } : {}),
+      },
       select: {
         technician: true,
         totalBill: true,
@@ -54,6 +87,7 @@ export async function GET(req: NextRequest) {
 
     const payload: StatsResponse = {
       date,
+      ...(range ? { range } : {}),
       techStats,
       today: {
         count: activeRows.length,

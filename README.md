@@ -263,7 +263,8 @@ app/
     technicians/route.ts   → GET (?all=true) roster, POST add
     technicians/[id]/route.ts → PUT rename (2-step cascade), DELETE deactivate,
                                 POST reactivate
-    services/route.ts      → GET ?date= / ?archived=true / ?groupId=, POST create
+    services/route.ts      → GET ?date= / ?from=&to= / ?all=1 (capped list +
+                             count aggregate) / ?archived=true / ?groupId=, POST create
     services/batch/route.ts → POST one grouped visit (up to 8 devices, one transaction)
     services/[id]/route.ts → PUT update (incl. serviceDate/damageLoss/deliveryDate), DELETE = archive
     services/[id]/restore/route.ts → POST un-archive
@@ -275,7 +276,7 @@ app/
                               (DELETE refuses while sales still reference it)
     product-categories/route.ts → GET / POST, [id] → PUT / DELETE (guard applies)
     parts-shops/route.ts   → GET ?all=true parts-shop names for the form datalist
-    stats/route.ts         → GET ?date= daily + per-technician totals
+    stats/route.ts         → GET ?date= / ?from=&to= / ?all=1 daily + per-technician totals
     stats/monthly/route.ts → GET ?date= (rolling 30d) or ?from=&to= range
     backup/route.ts        → GET = CSV download, POST = DB snapshot + prune
     backup/list/route.ts   → GET = snapshot list
@@ -294,16 +295,22 @@ components/
   DailySummary.tsx         → daily cards row (wraps TodayStats + TechnicianStats)
   TechnicianStats.tsx      → one card per roster technician (5-col desktop grid)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ) + refund/damage hints
-  MonthlySummary.tsx       → range report cards/presets (dialog + hidden print copy)
+  MonthlySummary.tsx       → range report cards/presets (dialog + hidden print
+                             copy; the dialog alone shows the PDF/CSV/Excel row)
   ServiceForm.tsx          → entry form (4/12): service/product toggle, live due,
                              numbered multi-device rows with one shared visit
                              money block, optional IMEI per device, expected
                              delivery date (no device-lock field)
-  ServiceTable.tsx         → service list (8/12): search, chips, universal/row eye,
+  ServiceTable.tsx         → service list (8/12): date-mode switch (একদিন/
+                             তারিখ রেঞ্জ/সব তারিখ) with per-day sections,
+                             search, chips, universal/row eye,
                              1-click status, group/device badges (sr-only for
                              screen readers), delivery dates, sticky actions
   ServiceAdjustDialog.tsx  → ⚖️ return/refund + parts-cost write-off + damage ledger
-  OutstandingDues.tsx      → বাকি table rendered inside the dues dialog
+  OutstandingDues.tsx      → বাকি table rendered inside the dues dialog (grouped
+                             into date sections with per-day subtotals)
+  report/ReportDocument.tsx → off-screen Bengali report sheet captured into the
+                             multi-page PDF export
   ContactButtons.tsx       → phone / WhatsApp links (message text from lib/contact.ts)
   StatusBadge.tsx          → colored Bengali status badges
   Receipt.tsx              → customer bill (single + combined group slip, print/PDF)
@@ -325,7 +332,8 @@ lib/
                              ৳ format (+ FALLBACK_TECHNICIANS, only used if the
                              roster request fails)
   types.ts                 → shared DTOs (ServiceDTO, stats, RangeMode,
-                             product/stock DTOs…)
+                             ListMode + ServicesListResponse, product/stock
+                             DTOs…)
   inventory.ts             → stock rules: Bengali status labels, low-stock
                              threshold, movement validation
   inventory-data.ts        → product/category/stock read-write helpers used by
@@ -335,6 +343,9 @@ lib/
   contact.ts               → WhatsApp/phone message text
   shop.ts                  → shop name/address/phone (receipt + footer source)
   receipt-pdf.ts           → client-side receipt PDF file name + download
+  export.ts                → report export builders (BOM CSV + SheetJS xlsx),
+                             daily breakdown, privacy column policy
+  report-pdf.ts            → multi-page A4 report PDF (canvas-sliced capture)
   backup.ts                → shared localStorage keys/stamps for auto-backup
   use-last-backup.ts       → hook: last-backup stamp (AutoBackup + utilities rail)
   use-media-query.ts       → hook: CSS media query, SSR-safe (defaultValue first)
@@ -411,7 +422,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   into the form. `Ctrl+K` focuses the input; below 1280px a 🔍 icon opens a top
   search sheet. The header compacts to three rows on phones/tablets and two rows
   from 1280px, so it never eats half the screen. Keyboard `←`/`→` changes day
-  (not while typing).
+  (not while typing). The two search boxes state their scope: the header
+  search carries a **সব তারিখ** tag (global, any day), the service list's own
+  search carries an **এই তালিকায়** tag (filters only what is on screen) — both
+  via `data-scope` + `aria-label`/`title`, with placeholders untouched.
 - Technician cards — one per **active** technician (card count follows the
   roster), plus a greyed “নিষ্ক্রিয়” card for anyone who has left the shop but
   still has work on the shown date, so the day's cards always add up to
@@ -432,6 +446,26 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   Presets follow the navbar date;
   custom stays fixed. Close with X or Escape. Dashboard printing still carries
   the same report via a hidden print-only copy.
+- **List date modes (post-v1.2.0)** — a segmented switch on the service list
+  masthead: **একদিন** (default, byte-identical legacy view with the day nav and
+  `←`/`→` keys), **তারিখ রেঞ্জ** (শুরু/শেষ pickers; starts as the selected day
+  and widens freely) and **সব তারিখ** (whole ledger). Multi-date views group
+  rows under per-day section headers (Bengali date + visit/device/৳ subtotal),
+  newest day first, on both the desktop table and the mobile cards. The API
+  serves `?from&to` / `?all=1` with a SQL `count()` aggregate and the client
+  renders at most 300 rows per page behind a **মোট X টি** notice with an
+  **আরও দেখুন** append button — day mode's `{date, services}` response is
+  unchanged for every existing caller.
+- **Report export (post-v1.2.0)** — the report dialog has an
+  “এই রেঞ্জের এক্সপোর্ট:” row with **PDF / CSV / Excel**, always following the
+  active preset/range. All three build locally (offline, no cloud): CSV is
+  UTF-8 with BOM + formula-injection guards, Excel is a real `.xlsx` with 3
+  sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস) via SheetJS, PDF slices a
+  print-friendly Bengali report sheet across multiple A4 pages. Every format
+  carries the totals plus a per-day breakdown and row-level list, capped at
+  5000 rows with a warning; per-row খরচ/IMEI/refund-damage notes are never
+  exported (only the aggregate খরচ appears). Export buttons exist only in the
+  dialog, never in the print copy.
 - Entry form — all fields, **বাকি auto-calculates live**, Bengali digits
   accepted (`১৬০০` → 1600). Shop expense accepts a number or a keypad code
   (`*J#` → 1500). A plain number is converted to the canonical code on save
@@ -508,9 +542,12 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   outstanding, independent of the selected day. Desktop keeps
   `তারিখ | কাস্টমার | মডেল/অবস্থা | বিল/জমা/বাকি | যোগাযোগ | অ্যাকশন`; below
   1024px the same records become cards with call + WhatsApp buttons per record.
-  The **মোট বাকি** headline is a SQL aggregate over *all* matching rows, so it
-  stays 100% accurate even when the rendered list is capped. Close with X or
-  Escape.
+  Rows are grouped into **date sections** (newest first), each with its own
+  “Nটি বাকি • ৳মোট” subtotal, and বিল/জমা/বাকি align in one column while the
+  exact `বিল: ৳X` text is preserved; every icon action carries an
+  `aria-label` + tooltip. The **মোট বাকি** headline is a SQL aggregate over
+  *all* matching rows, so it stays 100% accurate even when the rendered list
+  is capped. Close with X or Escape.
 - **Responsive dashboard** — navbar → report/dues buttons → technician cards →
   today's cards → form + service list → footer. Below 1280px the form and list
   stack; at 1280px+ they sit side by side (340px form + the rest; 380px form
@@ -810,7 +847,7 @@ exist in the schema but are not yet driven by app code.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (161 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (171 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -847,7 +884,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  161 steps, including a real PDF print/read-back; run it on the target PC after
+  171 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
@@ -1000,6 +1037,25 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   `prefers-reduced-motion` kill-switch. DOM, testids and Bengali labels were
   deliberately left untouched; `scripts/service-list-design.js` (19 checks)
   guards the service-list half of the contract.
+- **List date modes** — the service list masthead gains a segmented switch:
+  **একদিন** (default, untouched legacy view + day nav + `←`/`→`),
+  **তারিখ রেঞ্জ** (শুরু/শেষ pickers, starting at one day and widenable) and
+  **সব তারিখ**. `GET /api/services` grew an additive `?from&to` / `?all=1`
+  branch with `limit`/`offset`, a SQL `count()` aggregate and
+  `{mode, total, offset, shown, hasMore}` metadata (capped at 300 rendered rows
+  per page, append via **আরও দেখুন**); `GET /api/stats` gained the matching
+  `?from&to` / `?all=1` window on the same aggregation path. Day mode's
+  responses are byte-identical, and multi-date rows render under per-day
+  section headers (table + cards), newest day first.
+- **Report export (PDF / CSV / Excel)** — the report dialog's new
+  “এই রেঞ্জের এক্সপোর্ট:” row always follows the active preset/range and
+  builds every file locally: `lib/export.ts` (BOM CSV + SheetJS `.xlsx` with
+  সারাংশ/দৈনিক ভাঙতি/সার্ভিস sheets) and `lib/report-pdf.ts` +
+  `components/report/ReportDocument.tsx` (canvas-sliced multi-page Bengali
+  A4). Rows are paged from the range scope up to 5000 with a cap warning;
+  expense amounts, write-off flags, IMEI and damage/refund notes never enter
+  a file (only the aggregate খরচ does). New `xlsx@0.18.5` dependency —
+  write-only, bundled, never parses untrusted input.
 
 **Changed**
 - **Numbered device cards, one shared visit money block** — the first card is
@@ -1022,6 +1078,19 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **Stage/overdue summary line dropped** from the desk — the daily cards and
   list already carry the figures; `GET /api/services/overdue` still exists but
   the UI no longer calls it.
+- **Search scopes are explicit** — the header search shows a **সব তারিখ** tag
+  and `data-scope="global"` (searches every day), the list search shows an
+  **এই তালিকায়** tag and `data-scope="local"` (filters only rendered rows),
+  both with `aria-label`/`title` explaining the scope. Neither placeholder
+  changed.
+- **বাকি তালিকা grouped by date** — visits are folded into per-day sections
+  with a per-day due subtotal (newest first) on desktop and mobile; বিল/জমা/
+  বাকি align in one column while keeping the exact `বিল: ৳X` text, density is
+  tighter, and every icon button gained an `aria-label` + tooltip. Header line,
+  6 `<th>` labels and all `due-visit-*` testids unchanged.
+- **Daily cards label the shown window** — in range/all mode the cards say
+  “নির্বাচিত সময়ের মোট …” with the range in the header; day mode still says
+  আজকের/নির্বাচিত দিনের exactly as before.
 
 **Fixed**
 - **Service-list inspection pass** — single-row cells all hang from the top

@@ -1,4 +1,5 @@
-import { BarChart3, RotateCcw } from "lucide-react";
+import { BarChart3, FileDown, FileSpreadsheet, RotateCcw, Table2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { dayLabel } from "@/lib/dhaka";
@@ -25,6 +26,10 @@ export function MonthlySummary({
   onPreset,
   onCustom,
   loading,
+  exporting,
+  onExportPdf,
+  onExportCsv,
+  onExportExcel,
 }: {
   summary: MonthlySummary | null;
   range: { from: string; to: string };
@@ -32,7 +37,18 @@ export function MonthlySummary({
   onPreset: (mode: RangeMode) => void;
   onCustom: (from: string, to: string) => void;
   loading: boolean;
+  /** Set while a file is being built; null otherwise. */
+  exporting?: "pdf" | "csv" | "excel" | null;
+  /**
+   * Export handlers exist only on the dialog instance, so the hidden
+   * print copy never renders these buttons (and no testid is duplicated).
+   * Not wrapped in `div.mb-3`: laneA's chip helper selects that selector.
+   */
+  onExportPdf?: () => void;
+  onExportCsv?: () => void;
+  onExportExcel?: () => void;
 }) {
+  const canExport = !!onExportPdf && !!onExportCsv && !!onExportExcel;
   return (
     <section className="rounded-xl border border-maher-border bg-card p-3 shadow-card sheen sm:p-4 print:bg-white print:text-black">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground sm:text-base print:text-black">
@@ -78,6 +94,58 @@ export function MonthlySummary({
           />
         </div>
       </div>
+      {/* Export row: NOT `mb-3` — laneA's chip helper selects `div.mb-3 button`. */}
+      {canExport ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-maher-border pb-3 pt-3 print:hidden">
+          <span className="text-xs text-muted-foreground">
+            এই রেঞ্জের এক্সপোর্ট:
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="export-pdf"
+            aria-label="রিপোর্ট PDF ডাউনলোড"
+            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট PDF (বাংলা, প্রিন্ট-ফ্রেন্ডলি)`}
+            disabled={loading || !summary || !!exporting}
+            onClick={onExportPdf}
+            className="h-8 bg-white"
+          >
+            <FileDown className="mr-1 h-3.5 w-3.5" />
+            PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="export-csv"
+            aria-label="রিপোর্ট CSV ডাউনলোড"
+            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট CSV (Excel-সমর্থিত, বাংলা)`}
+            disabled={loading || !summary || !!exporting}
+            onClick={onExportCsv}
+            className="h-8 bg-white"
+          >
+            <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
+            CSV
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="export-excel"
+            aria-label="রিপোর্ট Excel ডাউনলোড"
+            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট Excel (.xlsx, ৩ শিট)`}
+            disabled={loading || !summary || !!exporting}
+            onClick={onExportExcel}
+            className="h-8 bg-white"
+          >
+            <Table2 className="mr-1 h-3.5 w-3.5" />
+            Excel
+          </Button>
+          {exporting ? (
+            <span role="status" className="text-xs text-muted-foreground">
+              তৈরি হচ্ছে…
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {loading || !summary ? (
           [0, 1, 2, 3, 4].map((i) => (
