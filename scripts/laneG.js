@@ -1,11 +1,15 @@
-/* Lane G: optional IMEI + optional device lock on the New Job form.
+/* Lane G: optional IMEI on the New Job form, plus the API/DB privacy rules.
  *
- * Runs only on the throwaway DB supplied by run-tests.js. Covers the six
- * acceptance criteria and the privacy rules:
- *   1. both fields empty  · 2. IMEI only  · 3. lock only  · 4. both
+ * Runs only on the throwaway DB supplied by run-tests.js. Covers:
+ *   1. both optional fields empty  · 2. IMEI only  · 3. lock fields posted by
+ *   an API client are ignored  · 4. IMEI + a posted lock together
  *   5. multi-device independence  · 6. existing create/edit/backup paths
- * plus: no IMEI/lock in the list or receipt, and no lock value ever leaves the
- * open form (not in a request body, not in the database file).
+ * plus: no IMEI in the list or receipt, and no lock value ever reaching the
+ * database.
+ *
+ * The form no longer has a Device Lock field at all (it was removed because
+ * the shop never used it); G8, G9, G11 and G16 pin that down so it cannot
+ * quietly come back.
  */
 const fs = require("node:fs");
 const Database = require("better-sqlite3");
@@ -97,38 +101,6 @@ function basePayload(name, model) {
     status: "In-Progress",
     serviceDate: TODAY,
   };
-}
-
-/** Pick a Radix select option by its exact label. */
-async function selectOption(page, triggerSelector, label) {
-  await page.click(triggerSelector);
-  await page.waitForSelector('[role="option"]', {
-    polling: 200,
-    timeout: 8000,
-  });
-  const picked = await page.evaluate((text) => {
-    const option = [...document.querySelectorAll('[role="option"]')].find(
-      (o) => o.textContent.trim() === text
-    );
-    if (!option) return false;
-    option.click();
-    return true;
-  }, label);
-  // A programmatic click can leave Radix's portal open; Escape closes it
-  // without touching the form. Wait for the portal to actually unmount: the
-  // closing menu overlaps the lock field, so a slow machine would otherwise
-  // route the next real click to a menu item and silently change the type.
-  await page.keyboard.press("Escape");
-  await page
-    .waitForFunction(
-      () =>
-        !document.querySelector('[role="option"]') &&
-        !document.querySelector('[role="listbox"][data-state="open"]'),
-      { polling: 100, timeout: 5000 }
-    )
-    .catch(() => {});
-  await sleep(150);
-  return picked;
 }
 
 async function submitForm(page, expectedToast) {
@@ -349,77 +321,56 @@ async function submitForm(page, expectedToast) {
       document.querySelector('[data-testid="device-imei-0"]')?.placeholder || "",
     imeiLabel:
       document.querySelector('label[for="svc-imei"]')?.textContent?.trim() || "",
-    lockLabel:
-      document
-        .querySelector('[data-testid="device-lock-0"] label')
-        ?.textContent?.trim() || "",
-    lockDefault:
-      document
-        .querySelector('[data-testid="device-lock-0-type"]')
-        ?.textContent?.trim() || "",
-    lockValueHidden: !document.querySelector(
-      '[data-testid="device-lock-0-value"]'
+    imeiNotRequired:
+      !document.querySelector('[data-testid="device-imei-0"]')?.required,
+    lockTestIds: [
+      "device-lock-0",
+      "device-lock-0-type",
+      "device-lock-0-value",
+      "svc-lock",
+      "svc-lock-type",
+      "svc-lock-value",
+    ].filter((id) => !!document.querySelector(`[data-testid="${id}"]`)),
+    lockLabelText: (document.body.textContent || "").includes(
+      "Device Lock (PIN / Pattern / Password)"
     ),
-    noRequired:
-      !document.querySelector('[data-testid="device-imei-0"]')?.required &&
-      !document.querySelector('[data-testid="device-lock-0-type"]')?.required,
   }));
   check(
     "G8",
-    "form shows optional IMEI + lock fields, defaulting to Not Provided",
+    "form shows the optional IMEI and no device lock field",
     uiFields.imeiPlaceholder === "Enter IMEI number (optional)" &&
       uiFields.imeiLabel === "IMEI Number" &&
-      uiFields.lockLabel === "Device Lock (PIN / Pattern / Password)" &&
-      uiFields.lockDefault === "Not Provided" &&
-      uiFields.lockValueHidden &&
-      uiFields.noRequired,
+      uiFields.imeiNotRequired &&
+      uiFields.lockTestIds.length === 0 &&
+      !uiFields.lockLabelText,
     JSON.stringify(uiFields)
   );
 
   /* ------------------------------------------------------------------ */
-  /* UI create with both fields + reveal toggle                          */
+  /* The lock field is gone, so nothing in the form takes a credential  */
   /* ------------------------------------------------------------------ */
-  const UI_BOTH = uniqueName("UiImeiLock");
-  await typeInto(page, "svc-name", UI_BOTH);
-  await typeInto(page, "svc-phone", "01700000952");
-  await typeInto(page, "svc-model", "UI Imei Model");
-  await typeInto(page, "svc-problem", "IMEI ও লক");
-  await typeInto(page, "svc-bill", "700");
-  await typeInto(page, "svc-imei", IMEI_A);
-  const pinPicked = await selectOption(
-    page,
-    '[data-testid="device-lock-0-type"]',
-    "PIN"
-  );
-  await page.waitForSelector('[data-testid="device-lock-0-value"]', {
-    timeout: 5000,
-  });
-  const typeBefore = await page.$eval(
-    '[data-testid="device-lock-0-value"]',
-    (el) => el.type
-  );
-  await typeInto(page, "svc-lock-value", LOCK_A);
-  await page.click('[data-testid="device-lock-0-toggle"]');
-  await sleep(150);
-  const typeRevealed = await page.$eval(
-    '[data-testid="device-lock-0-value"]',
-    (el) => el.type
-  );
-  await page.click('[data-testid="device-lock-0-toggle"]');
-  await sleep(150);
-  const typeHidden = await page.$eval(
-    '[data-testid="device-lock-0-value"]',
-    (el) => el.type
+  const maskedInputs = await page.evaluate(() =>
+    [...document.querySelectorAll('form input[type="password"]')].map(
+      (input) => input.dataset.testid || input.id || input.name
+    )
   );
   check(
     "G9",
-    "PIN input is masked by default and the eye toggle reveals it",
-    pinPicked &&
-      typeBefore === "password" &&
-      typeRevealed === "text" &&
-      typeHidden === "password",
-    JSON.stringify({ pinPicked, typeBefore, typeRevealed, typeHidden })
+    "the new job form has no masked credential input",
+    maskedInputs.length === 0,
+    JSON.stringify(maskedInputs)
   );
+
+  /* ------------------------------------------------------------------ */
+  /* UI create with an IMEI; no lock field to fill                       */
+  /* ------------------------------------------------------------------ */
+  const UI_BOTH = uniqueName("UiImei");
+  await typeInto(page, "svc-name", UI_BOTH);
+  await typeInto(page, "svc-phone", "01700000952");
+  await typeInto(page, "svc-model", "UI Imei Model");
+  await typeInto(page, "svc-problem", "শুধু IMEI");
+  await typeInto(page, "svc-bill", "700");
+  await typeInto(page, "svc-imei", IMEI_A);
 
   await submitForm(page, "সেভ হয়েছে");
   const uiRows = (await dayServices(page)).filter(
@@ -428,15 +379,16 @@ async function submitForm(page, expectedToast) {
   const uiBodies = requestBodies.join("\n");
   check(
     "G10",
-    "UI save stores the IMEI but never sends or stores the PIN",
+    "UI save stores the IMEI and posts no lock field at all",
     uiRows.length === 1 &&
       uiRows[0].imei === IMEI_A &&
-      !uiBodies.includes(LOCK_A) &&
+      !uiBodies.includes("lockType") &&
+      !uiBodies.includes("lockValue") &&
       !dbHasText(LOCK_A),
     JSON.stringify({
       rows: uiRows.length,
       imei: uiRows[0]?.imei,
-      bodyLeak: uiBodies.includes(LOCK_A),
+      lockKeys: /"lock(Type|Value)"/.test(uiBodies),
       dbLeak: dbHasText(LOCK_A),
     })
   );
@@ -444,20 +396,14 @@ async function submitForm(page, expectedToast) {
   await sleep(300);
   const formReset = await page.evaluate(() => ({
     imei: document.querySelector('[data-testid="device-imei-0"]')?.value ?? null,
-    lockValue: !!document.querySelector('[data-testid="device-lock-0-value"]'),
-    lockType:
-      document
-        .querySelector('[data-testid="device-lock-0-type"]')
-        ?.textContent?.trim() || "",
-    lockVisible: !!document.querySelector('[data-testid="device-lock-0-toggle"]'),
+    lockFields: ["device-lock-0", "svc-lock"].filter(
+      (id) => !!document.querySelector(`[data-testid="${id}"]`)
+    ),
   }));
   check(
     "G11",
-    "temporary lock/IMEI state clears after a successful save",
-    formReset.imei === "" &&
-      !formReset.lockValue &&
-      formReset.lockType === "Not Provided" &&
-      !formReset.lockVisible,
+    "temporary IMEI state clears after a save and no lock field appears",
+    formReset.imei === "" && formReset.lockFields.length === 0,
     JSON.stringify(formReset)
   );
 
@@ -491,8 +437,6 @@ async function submitForm(page, expectedToast) {
   await typeInto(page, "svc-problem", "প্রথম");
   await typeInto(page, "svc-bill", "200");
   await typeInto(page, "svc-imei", IMEI_A);
-  await selectOption(page, '[data-testid="device-lock-0-type"]', "PIN");
-  await typeInto(page, "svc-lock-value", LOCK_A);
   await page.$eval('[data-testid="add-device"]', (el) =>
     el.scrollIntoView({ block: "center" })
   );
@@ -502,17 +446,12 @@ async function submitForm(page, expectedToast) {
   await typeInto(page, "svc-device-1-problem", "দ্বিতীয়");
   await typeInto(page, "svc-device-1-bill", "400");
   await typeInto(page, "svc-device-1-imei", IMEI_B);
-  await selectOption(page, '[data-testid="device-lock-1-type"]', "Password");
-  await typeInto(page, "svc-device-1-lock-value", LOCK_B);
   const beforeSave = await page.evaluate(() => ({
     d1: document.querySelector('[data-testid="device-imei-0"]')?.value,
     d2: document.querySelector('[data-testid="device-imei-1"]')?.value,
-    lock1: document.querySelector('[data-testid="device-lock-0-value"]')
-      ?.value,
-    lock2: document.querySelector('[data-testid="device-lock-1-value"]')
-      ?.value,
-    lock2Type: document.querySelector('[data-testid="device-lock-1-value"]')
-      ?.type,
+    lockFields: ["device-lock-0", "device-lock-1"].filter(
+      (id) => !!document.querySelector(`[data-testid="${id}"]`)
+    ),
   }));
   await submitForm(page, "2টি ডিভাইস একসাথে সেভ হয়েছে");
   const multiRows = (await dayServices(page))
@@ -521,24 +460,19 @@ async function submitForm(page, expectedToast) {
   const multiBodies = requestBodies.join("\n");
   check(
     "G13",
-    "each device card keeps its own IMEI and lock values",
+    "each device card keeps its own IMEI and offers no lock field",
     beforeSave.d1 === IMEI_A &&
       beforeSave.d2 === IMEI_B &&
-      beforeSave.lock1 === LOCK_A &&
-      beforeSave.lock2 === LOCK_B &&
-      beforeSave.lock2Type === "password" &&
+      beforeSave.lockFields.length === 0 &&
       multiRows.length === 2 &&
       multiRows[0].imei === IMEI_A &&
       multiRows[1].imei === IMEI_B &&
-      !multiBodies.includes(LOCK_A) &&
-      !multiBodies.includes(LOCK_B) &&
-      !dbHasText(LOCK_A) &&
-      !dbHasText(LOCK_B),
+      !multiBodies.includes("lockType") &&
+      !multiBodies.includes("lockValue"),
     JSON.stringify({
       beforeSave,
       imeis: multiRows.map((r) => r.imei),
-      bodyLeak:
-        multiBodies.includes(LOCK_A) || multiBodies.includes(LOCK_B),
+      lockKeys: /"lock(Type|Value)"/.test(multiBodies),
     })
   );
 
@@ -600,7 +534,7 @@ async function submitForm(page, expectedToast) {
   );
 
   /* ------------------------------------------------------------------ */
-  /* Editing an existing job loads the stored IMEI, lock stays blank     */
+  /* Editing an existing job loads the stored IMEI; no lock field        */
   /* ------------------------------------------------------------------ */
   const editOpened = await page.evaluate((name) => {
     const section = document.querySelector('[data-testid="daily-services"]');
@@ -618,18 +552,20 @@ async function submitForm(page, expectedToast) {
   await sleep(400);
   const editState = await page.evaluate(() => ({
     imei: document.querySelector("#svc-imei")?.value ?? null,
-    lockType:
-      document.querySelector('[data-testid="svc-lock-type"]')?.textContent?.trim() ||
-      "",
-    lockValue: !!document.querySelector('[data-testid="svc-lock-value"]'),
+    lockTestIds: ["svc-lock", "svc-lock-type", "svc-lock-value"].filter(
+      (id) => !!document.querySelector(`[data-testid="${id}"]`)
+    ),
+    lockLabelText: (document.body.textContent || "").includes(
+      "Device Lock (PIN / Pattern / Password)"
+    ),
   }));
   check(
     "G16",
-    "editing pre-fills the saved IMEI and keeps the lock field empty",
+    "editing pre-fills the saved IMEI and offers no lock field",
     editOpened &&
       editState.imei === IMEI_B &&
-      editState.lockType === "Not Provided" &&
-      !editState.lockValue,
+      editState.lockTestIds.length === 0 &&
+      !editState.lockLabelText,
     JSON.stringify({ editOpened, editState })
   );
 

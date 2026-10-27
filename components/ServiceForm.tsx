@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, KeyRound, Loader2, Lock, Plus } from "lucide-react";
+import { KeyRound, Loader2, Lock, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,16 +32,6 @@ import {
 } from "@/lib/service-validation";
 import type { ServiceDTO } from "@/lib/types";
 
-/** Optional unlock method. `none` = Not Provided (the default, never required). */
-type LockType = "none" | "PIN" | "Pattern" | "Password";
-
-const LOCK_OPTIONS: ReadonlyArray<{ value: LockType; label: string }> = [
-  { value: "none", label: "Not Provided" },
-  { value: "PIN", label: "PIN" },
-  { value: "Pattern", label: "Pattern" },
-  { value: "Password", label: "Password" },
-];
-
 const empty = {
   customerName: "",
   phone: "",
@@ -58,15 +48,6 @@ const empty = {
   deliveryDate: "",
   serviceDate: "",
   imei: "",
-  /*
-   * Device unlock credentials are deliberately form-only. They are never
-   * validated, never put in the API payload and never written to SQLite: the
-   * technician can read the lock while the job is open, and the value dies
-   * with the form. `lockType`/`lockVisible` are UI state for the same reason.
-   */
-  lockType: "none" as LockType,
-  lockValue: "",
-  lockVisible: false,
 };
 
 /** One device in a shared-customer visit. Money/status live on the visit. */
@@ -79,10 +60,6 @@ interface VisitDevice {
   deliveryDate: string;
   /** Optional handset IMEI (persisted as text on this device row). */
   imei: string;
-  /** Form-only unlock state: never validated, never sent, never stored. */
-  lockType: LockType;
-  lockValue: string;
-  lockVisible: boolean;
 }
 
 function blankDevice(key: number, entryDay: string): VisitDevice {
@@ -93,9 +70,6 @@ function blankDevice(key: number, entryDay: string): VisitDevice {
     totalBill: "",
     deliveryDate: entryDay,
     imei: "",
-    lockType: "none",
-    lockValue: "",
-    lockVisible: false,
   };
 }
 
@@ -150,110 +124,7 @@ function toForm(s: ServiceDTO) {
     deliveryDate: s.deliveryDate ? dhakaDateKey(s.deliveryDate) : "",
     serviceDate: dhakaDateKey(s.serviceDate),
     imei: s.imei ?? "",
-    // Unlock fields always start blank, even when editing an existing job.
-    lockType: "none" as LockType,
-    lockValue: "",
-    lockVisible: false,
   };
-}
-
-/**
- * Optional unlock credential. Entirely form-local: the value is never added to
- * the request body, never validated and never logged, so a blank or a filled
- * lock can never block saving. PIN and Password get a reveal toggle; Pattern is
- * typed as a short description (no dot grid to keep the form compact).
- */
-function DeviceLockFields({
-  idPrefix,
-  testId,
-  lockType,
-  value,
-  visible,
-  onTypeChange,
-  onValueChange,
-  onToggleVisible,
-}: {
-  idPrefix: string;
-  testId: string;
-  lockType: LockType;
-  value: string;
-  visible: boolean;
-  onTypeChange: (value: LockType) => void;
-  onValueChange: (value: string) => void;
-  onToggleVisible: () => void;
-}) {
-  const canReveal = lockType === "PIN" || lockType === "Password";
-  const placeholder =
-    lockType === "PIN"
-      ? "PIN লিখুন"
-      : lockType === "Password"
-        ? "পাসওয়ার্ড লিখুন"
-        : "Pattern বর্ণনা করুন";
-  return (
-    <div data-testid={testId}>
-      <Label htmlFor={`${idPrefix}-lock-type`}>
-        Device Lock (PIN / Pattern / Password)
-      </Label>
-      <Select
-        value={lockType}
-        onValueChange={(v) => {
-          if (!v) return;
-          onTypeChange(v as LockType);
-        }}
-      >
-        <SelectTrigger
-          id={`${idPrefix}-lock-type`}
-          data-testid={`${testId}-type`}
-          className="h-9 xl:h-8"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {LOCK_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {lockType !== "none" ? (
-        <div className="mt-1 flex gap-1.5">
-          <Input
-            id={`${idPrefix}-lock-value`}
-            data-testid={`${testId}-value`}
-            type={canReveal && !visible ? "password" : "text"}
-            value={value}
-            onChange={(e) => onValueChange(e.target.value)}
-            placeholder={placeholder}
-            autoComplete="off"
-            spellCheck={false}
-            className="h-9 xl:h-8"
-          />
-          {canReveal ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              data-testid={`${testId}-toggle`}
-              aria-label={visible ? "লুকান" : "দেখান"}
-              title={visible ? "লুকান" : "দেখান"}
-              onClick={onToggleVisible}
-              className="h-9 w-9 shrink-0 xl:h-8 xl:w-8"
-            >
-              {visible ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-        ঐচ্ছিক — শুধু এই ফর্মেই থাকে, সেভ হয় না বা কোথাও দেখা যায় না।
-      </p>
-    </div>
-  );
 }
 
 export function ServiceForm({
@@ -412,10 +283,9 @@ export function ServiceForm({
     );
   }, [serviceDate]);
 
-  const set = (
-    key: Exclude<keyof typeof empty, "lockType" | "lockValue" | "lockVisible">
-  ) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setF((prev) => ({ ...prev, [key]: e.target.value }));
+  const set = (key: keyof typeof empty) => (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => setF((prev) => ({ ...prev, [key]: e.target.value }));
 
   const billNum = parseBnNumber(f.totalBill) ?? 0;
   const advNum = parseBnNumber(f.advance) ?? 0;
@@ -852,39 +722,21 @@ export function ServiceForm({
             </div>
 
             {isProductSale ? null : (
-              <>
-                <div>
-                  <Label htmlFor="svc-imei">IMEI Number</Label>
-                  <Input
-                    id="svc-imei"
-                    data-testid="svc-imei"
-                    value={f.imei}
-                    onChange={set("imei")}
-                    placeholder="Enter IMEI number (optional)"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    spellCheck={false}
-                    maxLength={32}
-                    className="h-9 xl:h-8"
-                  />
-                </div>
-                <DeviceLockFields
-                  idPrefix="svc"
-                  testId="svc-lock"
-                  lockType={f.lockType}
-                  value={f.lockValue}
-                  visible={f.lockVisible}
-                  onTypeChange={(lockType) =>
-                    setF((prev) => ({ ...prev, lockType }))
-                  }
-                  onValueChange={(lockValue) =>
-                    setF((prev) => ({ ...prev, lockValue }))
-                  }
-                  onToggleVisible={() =>
-                    setF((prev) => ({ ...prev, lockVisible: !prev.lockVisible }))
-                  }
+              <div>
+                <Label htmlFor="svc-imei">IMEI Number</Label>
+                <Input
+                  id="svc-imei"
+                  data-testid="svc-imei"
+                  value={f.imei}
+                  onChange={set("imei")}
+                  placeholder="Enter IMEI number (optional)"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={32}
+                  className="h-9 xl:h-8"
                 />
-              </>
+              </div>
             )}
 
             <div className="grid grid-cols-2 gap-2">
@@ -1032,24 +884,6 @@ export function ServiceForm({
                           className="h-9 xl:h-8"
                         />
                       </div>
-                      <DeviceLockFields
-                        idPrefix={prefix}
-                        testId={`device-lock-${d.key}`}
-                        lockType={d.lockType}
-                        value={d.lockValue}
-                        visible={d.lockVisible}
-                        onTypeChange={(lockType) =>
-                          patchDevice(d.key, { lockType })
-                        }
-                        onValueChange={(lockValue) =>
-                          patchDevice(d.key, { lockValue })
-                        }
-                        onToggleVisible={() =>
-                          patchDevice(d.key, {
-                            lockVisible: !d.lockVisible,
-                          })
-                        }
-                      />
                     </div>
                   </div>
                 );
