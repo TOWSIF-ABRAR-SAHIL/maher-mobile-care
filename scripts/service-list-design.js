@@ -199,11 +199,12 @@ let browser = null;
     timeout: 20000,
   });
 
-  // ---------- D1: the brand blue is one deliberate step darker ----------
+  // ---------- D1: the royal chrome is #1748D8, glossed with a gradient ----
   const brand = await page.evaluate(() => {
     const header = document.querySelector('[data-testid="app-header"]');
     const root = getComputedStyle(document.documentElement);
-    const rgb = getComputedStyle(header).backgroundColor;
+    const style = getComputedStyle(header);
+    const rgb = style.backgroundColor;
     const m = rgb.match(/\d+/g)?.map(Number) ?? [0, 0, 0];
     const channel = (c) => {
       c /= 255;
@@ -214,18 +215,49 @@ let browser = null;
     return {
       token: root.getPropertyValue("--maher-navy").trim(),
       hover: root.getPropertyValue("--maher-navy-light").trim(),
+      pageBg: root.getPropertyValue("--maher-surface").trim(),
       headerBg: rgb,
+      headerGloss: /linear-gradient/.test(style.backgroundImage),
+      headerSheen: /inset/.test(style.boxShadow),
       contrast: Number((1.05 / (luminance + 0.05)).toFixed(2)),
     };
   });
   check(
     "D1",
-    "brand blue is the deeper #1D4ED8 step with strong white contrast",
-    brand.token === "224.3 76.3% 48%" &&
-      brand.hover === "226 71% 40%" &&
-      brand.headerBg === "rgb(29, 78, 216)" &&
+    "header chrome is royal #1748D8 under a gloss gradient with white contrast",
+    brand.token === "224.8 80.8% 46.9%" &&
+      brand.hover === "225.6 81.8% 38.8%" &&
+      brand.pageBg === "216 71.4% 97.3%" &&
+      brand.headerBg === "rgb(23, 72, 216)" &&
+      brand.headerGloss &&
+      brand.headerSheen &&
       brand.contrast >= 6.5,
     JSON.stringify(brand)
+  );
+
+  // ---------- D1b: white panels are glossy — hairline + top wash + lift ----
+  const panel = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="daily-services"]');
+    if (!el) return null;
+    const style = getComputedStyle(el);
+    return {
+      bg: style.backgroundColor,
+      border: style.borderTopColor,
+      wash: /linear-gradient/.test(style.backgroundImage),
+      lift: style.boxShadow !== "none" && style.boxShadow.length > 0,
+      radius: style.borderTopLeftRadius,
+    };
+  });
+  check(
+    "D1b",
+    "the service panel is white with a #E0E8F5 hairline, a blue top wash and a soft lift",
+    !!panel &&
+      panel.bg === "rgb(255, 255, 255)" &&
+      panel.border === "rgb(224, 232, 245)" &&
+      panel.wash &&
+      panel.lift &&
+      ["12px", "14px", "16px"].includes(panel.radius),
+    JSON.stringify(panel)
   );
 
   // ---------- D2: the masthead states the day and its real size ----------
@@ -271,7 +303,7 @@ let browser = null;
       tabs.items.length === 6 &&
       tabs.items.every((item, i) => item.text === expectedTabs[i]) &&
       tabs.items[0].pressed === "true" &&
-      tabs.items[0].bg === "rgb(29, 78, 216)" &&
+      tabs.items[0].bg === "rgb(23, 72, 216)" &&
       tabs.items.slice(1).every((item) => item.pressed === "false"),
     JSON.stringify(tabs)
   );

@@ -120,14 +120,14 @@ export function ServiceAdjustDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-maher-border bg-maher-surface px-3 py-2 text-sm">
           <span>
             বিল: <strong>{formatTaka(service.totalBill)}</strong>
           </span>
-          <span className="text-green-700">
+          <span className="text-maher-done">
             জমা: <strong>{formatTaka(service.advance)}</strong>
           </span>
-          <span className="text-gray-600">
+          <span className="text-muted-foreground">
             অবস্থা:{" "}
             <strong>
               {(STATUS_BN as Record<string, string>)[service.status] ??
@@ -148,26 +148,26 @@ export function ServiceAdjustDialog({
 
           <TabsContent value="refund" className="space-y-3">
             {returned ? (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="rounded-lg border border-maher-warning/40 bg-maher-warning/10 p-3 text-sm text-maher-ink">
                 <p className="font-semibold">এই কাজটি ফেরত দেওয়া হয়েছে।</p>
                 <p className="mt-1">
                   ফেরত দেওয়া হয়েছে:{" "}
                   <strong>{formatTaka(service.refundAmount)}</strong>
                 </p>
                 {service.returnedAt ? (
-                  <p className="mt-1 text-xs text-amber-800">
+                  <p className="mt-1 text-xs text-maher-money">
                     তারিখ: {dhakaDateKey(service.returnedAt)}
                   </p>
                 ) : null}
                 {service.refundNote ? (
-                  <p className="mt-1 text-xs text-amber-800">
+                  <p className="mt-1 text-xs text-maher-money">
                     নোট: {service.refundNote}
                   </p>
                 ) : null}
                 {hasExpense ? (
                   <p
                     data-testid="adjust-expense-written-off"
-                    className="mt-1 text-xs text-amber-800"
+                    className="mt-1 text-xs text-maher-money"
                   >
                     দোকান খরচ:{" "}
                     <strong>{formatTaka(service.expenseAmount)}</strong> —{" "}
@@ -179,7 +179,7 @@ export function ServiceAdjustDialog({
               </div>
             ) : (
               <>
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                <div className="rounded-lg border border-maher-due/30 bg-maher-due/10 p-3 text-sm text-maher-ink">
                   <p className="font-semibold">
                     কাজ সম্পন্ন না হলে এই কাজটি ফেরত হিসাবে বন্ধ হবে।
                   </p>
@@ -193,7 +193,7 @@ export function ServiceAdjustDialog({
                 {hasExpense ? (
                   <div
                     data-testid="adjust-expense-choice"
-                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                    className="rounded-lg border border-maher-warning/40 bg-maher-warning/10 p-3 text-sm text-maher-ink"
                   >
                     <p className="font-semibold">
                       দোকান খরচ: {formatTaka(service.expenseAmount)}{" "}
@@ -218,14 +218,14 @@ export function ServiceAdjustDialog({
                         onClick={() => setExpenseChoice("writeoff")}
                         className={`rounded-md border px-3 py-2 text-left transition ${
                           expenseChoice === "writeoff"
-                            ? "border-emerald-600 bg-emerald-100 ring-1 ring-emerald-600"
-                            : "border-amber-300 bg-white hover:bg-amber-100"
+                            ? "border-maher-done bg-maher-done/15 ring-1 ring-maher-done"
+                            : "border-maher-border bg-white hover:bg-maher-warning/10"
                         }`}
                       >
                         <span className="block font-semibold">
                           খরচ হয়নি — বাদ দিন
                         </span>
-                        <span className="block text-xs text-gray-600">
+                        <span className="block text-xs text-muted-foreground">
                           পার্টস ফেরত পাওয়া গেছে / ব্যবহার হয়নি। রিপোর্টে কোনো
                           খরচ বা ক্ষতি থাকবে না।
                         </span>
@@ -238,14 +238,14 @@ export function ServiceAdjustDialog({
                         onClick={() => setExpenseChoice("keep")}
                         className={`rounded-md border px-3 py-2 text-left transition ${
                           expenseChoice === "keep"
-                            ? "border-red-600 bg-red-100 ring-1 ring-red-600"
-                            : "border-amber-300 bg-white hover:bg-amber-100"
+                            ? "border-maher-due bg-maher-due/15 ring-1 ring-maher-due"
+                            : "border-maher-border bg-white hover:bg-maher-warning/10"
                         }`}
                       >
                         <span className="block font-semibold">
                           খরচ হয়েছে — ক্ষতি হিসেবে রাখুন
                         </span>
-                        <span className="block text-xs text-gray-600">
+                        <span className="block text-xs text-muted-foreground">
                           পার্টস ব্যবহার/নষ্ট হয়েছে। {formatTaka(service.expenseAmount)}{" "}
                           দোকানের ক্ষতি হিসাবে রিপোর্টে থাকবে।
                         </span>
@@ -273,7 +273,7 @@ export function ServiceAdjustDialog({
                   data-testid="adjust-refund-confirm"
                   disabled={refunding || (needsExpenseChoice && !expenseChoice)}
                   onClick={() => void refund()}
-                  className="w-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                  className="w-full bg-maher-warning text-white hover:bg-maher-money disabled:opacity-50"
                 >
                   {refunding ? (
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -283,7 +283,7 @@ export function ServiceAdjustDialog({
                     : "ফেরত হিসাবে বন্ধ করুন"}
                 </Button>
                 {needsExpenseChoice && !expenseChoice ? (
-                  <p className="text-center text-xs text-amber-700">
+                  <p className="text-center text-xs text-maher-money">
                     আগে দোকান খরচের সিদ্ধান্ত বেছে নিন।
                   </p>
                 ) : null}
@@ -292,7 +292,7 @@ export function ServiceAdjustDialog({
           </TabsContent>
 
           <TabsContent value="damage" className="space-y-3">
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs leading-snug text-orange-900">
+            <div className="rounded-lg border border-maher-warning/40 bg-maher-warning/10 p-3 text-xs leading-snug text-maher-ink">
               এই খরচ শুধু দোকানের হিসাবের জন্য। কাস্টমার রিসিট/PDF-এ কখনো
               যাবে না। বিল আলাদা থাকবে; profit থেকে এই ক্ষতি বাদ যাবে।
             </div>
@@ -327,7 +327,7 @@ export function ServiceAdjustDialog({
               data-testid="adjust-damage-save"
               disabled={savingLoss}
               onClick={() => void saveLoss()}
-              className="w-full bg-orange-600 text-white hover:bg-orange-700"
+              className="w-full bg-maher-warning text-white hover:bg-maher-money"
             >
               {savingLoss ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />

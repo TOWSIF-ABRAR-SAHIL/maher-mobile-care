@@ -455,6 +455,13 @@ export function ServiceWorkspace({
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  /** Empty list: jump straight to the form on whichever surface is showing. */
+  const newEntry = () => {
+    setEditing(null);
+    setMobileTab("form");
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const editFromDues = (service: ServiceDTO) => {
     setShowDues(false);
     edit(service);
@@ -722,6 +729,7 @@ export function ServiceWorkspace({
               onDateChange={(next) => applyDate(next)}
               onToday={goToday}
               initialStatus={statusParam}
+              onNewEntry={newEntry}
               onChanged={() => {
                 if (editing) setEditing(null);
                 setDataVersion((v) => v + 1);

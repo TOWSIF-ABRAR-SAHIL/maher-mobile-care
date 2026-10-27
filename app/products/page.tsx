@@ -67,9 +67,9 @@ type StatusFilter = "all" | StockStatus;
 type SortKey = "name" | "recent" | "stock" | "selling";
 
 const STATUS_STYLE: Record<StockStatus, string> = {
-  in: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  low: "border-amber-200 bg-amber-50 text-amber-700",
-  out: "border-red-200 bg-red-50 text-red-700",
+  in: "border-maher-done/35 bg-maher-done/10 text-maher-done",
+  low: "border-maher-warning/40 bg-maher-warning/10 text-maher-money",
+  out: "border-maher-due/30 bg-maher-due/10 text-maher-due-ink",
 };
 
 const STATUS_TEXT: Record<StockStatus, string> = {
@@ -155,6 +155,16 @@ export default function ProductsPage() {
     setDialogOpen(true);
   };
 
+  const filtersActive =
+    query.trim() !== "" || status !== "all" || categoryId !== "all";
+
+  /** One click back to the full inventory from an empty filtered view. */
+  const clearFilters = () => {
+    setQuery("");
+    setStatus("all");
+    setCategoryId("all");
+  };
+
   /** Global search belongs to the shared chrome; from inventory it opens the
    *  matching service row on the Service desk. */
   const openServiceFromSearch = (service: ServiceDTO) => {
@@ -203,21 +213,21 @@ export default function ProductsPage() {
       value: summary ? formatNum(summary.categories) : "—",
       hint: "টি বিভাগ",
       icon: Layers,
-      tone: "text-sky-600",
+      tone: "text-maher-royal",
     },
     {
       label: "মোট ইউনিট",
       value: summary ? formatNum(summary.units) : "—",
       hint: "পিস স্টকে",
       icon: Boxes,
-      tone: "text-indigo-600",
+      tone: "text-maher-navy-light",
     },
     {
       label: "কম স্টক",
       value: summary ? formatNum(summary.lowStock) : "—",
       hint: "সীমার নিচে/সমান",
       icon: AlertTriangle,
-      tone: "text-amber-600",
+      tone: "text-maher-warning",
     },
     {
       label: "স্টক নেই",
@@ -270,11 +280,7 @@ export default function ProductsPage() {
                 <Settings2 className="mr-1 h-4 w-4" />
                 ক্যাটাগরি
               </Button>
-              <Button
-                type="button"
-                onClick={openCreate}
-                className="bg-maher-navy text-white hover:bg-maher-navy-light"
-              >
+              <Button type="button" onClick={openCreate}>
                 <Plus className="mr-1 h-4 w-4" />
                 নতুন প্রোডাক্ট
               </Button>
@@ -291,7 +297,7 @@ export default function ProductsPage() {
           {cards.map(({ label, value, hint, icon: Icon, tone }) => (
             <div
               key={label}
-              className="rounded-xl border bg-white p-3 shadow-sm"
+              className="rounded-xl border border-maher-border bg-white p-3 shadow-rail sheen"
             >
               <div className="flex items-center justify-between gap-1">
                 <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">
@@ -312,7 +318,7 @@ export default function ProductsPage() {
         {/* Toolbar */}
         <section
           aria-label="ফিল্টার"
-          className="flex flex-col gap-2 rounded-xl border bg-white p-2.5 shadow-sm lg:flex-row lg:items-center"
+          className="flex flex-col gap-2 rounded-xl border border-maher-border bg-white p-2.5 shadow-card lg:flex-row lg:items-center"
         >
           <div className="relative min-w-0 lg:flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -406,8 +412,10 @@ export default function ProductsPage() {
               ))}
             </div>
           ) : products.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-white px-4 py-12 text-center">
-              <ShoppingBag className="h-9 w-9 text-muted-foreground/50" />
+            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-maher-border bg-white px-4 py-12 text-center shadow-card">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-maher-blue-soft text-maher-navy">
+                <ShoppingBag className="h-6 w-6" />
+              </span>
               <p className="text-sm font-semibold">
                 {data && data.summary.totalProducts === 0
                   ? "এখনো কোনো প্রোডাক্ট নেই"
@@ -418,17 +426,26 @@ export default function ProductsPage() {
                   ? "ক্যাটাগরি তৈরি করে প্রথম প্রোডাক্ট যোগ করুন।"
                   : "খোঁজা বা ফিল্টার বদলে আবার দেখুন।"}
               </p>
-              {data && data.summary.totalProducts === 0 && (
+              {data && data.summary.totalProducts === 0 ? (
                 <Button size="sm" className="mt-1" onClick={openCreate}>
                   <PackagePlus className="mr-1 h-4 w-4" />
                   প্রথম প্রোডাক্ট যোগ করুন
                 </Button>
-              )}
+              ) : filtersActive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1"
+                  onClick={clearFilters}
+                >
+                  ফিল্টার সরান
+                </Button>
+              ) : null}
             </div>
           ) : (
             <>
               {/* Tablet/desktop table */}
-              <div className="hidden overflow-hidden rounded-xl border bg-white shadow-sm md:block">
+              <div className="hidden overflow-hidden rounded-xl border border-maher-border bg-white shadow-card md:block">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -515,7 +532,7 @@ export default function ProductsPage() {
                 {products.map((product) => (
                   <div
                     key={product.id}
-                    className="rounded-xl border bg-white p-3 shadow-sm"
+                    className="rounded-xl border border-maher-border bg-white p-3 shadow-card"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

@@ -91,35 +91,35 @@ function SearchResults({
 
   if (trimmed.length === 0) {
     return (
-      <p className="px-3 py-6 text-center text-sm text-gray-500">
+      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
         পুরোনো কাস্টমার, ফোন বা বিল নং খুঁজতে লিখুন — তারিখ বদলাতে হবে না।
       </p>
     );
   }
   if (trimmed.length < 2) {
     return (
-      <p className="px-3 py-6 text-center text-sm text-gray-500">
+      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
         কমপক্ষে ২ অক্ষর লিখুন।
       </p>
     );
   }
   if (loading && !result) {
     return (
-      <p className="px-3 py-6 text-center text-sm text-gray-500">
+      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
         খোঁজা হচ্ছে…
       </p>
     );
   }
   if (!result) {
     return (
-      <p className="px-3 py-6 text-center text-sm text-gray-500">
+      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
         খোঁজা যায়নি — আবার চেষ্টা করুন।
       </p>
     );
   }
   if (result.services.length === 0) {
     return (
-      <p className="px-3 py-6 text-center text-sm text-gray-500">
+      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
         “{result.query}” দিয়ে কিছু পাওয়া যায়নি।
       </p>
     );
@@ -127,39 +127,39 @@ function SearchResults({
 
   return (
     <div>
-      <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500">
+      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
         <span>{result.count}টি ফলাফল</span>
         <span className="hidden sm:inline">বিল দেখতে ক্লিক করুন</span>
       </div>
       <ul>
         {result.services.map((s) => (
           <li key={s.id} className="border-t">
-            <div className="flex items-start gap-1.5 px-2 py-2 transition hover:bg-blue-50/70">
+            <div className="flex items-start gap-1.5 px-2 py-2 transition hover:bg-maher-blue-soft/70">
               <button
                 type="button"
                 onClick={() => onPick(s)}
-                className="min-w-0 flex-1 rounded px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="min-w-0 flex-1 rounded px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maher-blue"
                 title="বিল প্রিভিউ"
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-gray-900">
+                  <span className="truncate text-sm font-semibold text-foreground">
                     {s.customerName}
                   </span>
                   <span
                     className={`shrink-0 text-xs font-semibold tabular-nums ${
-                      s.due > 0 ? "text-red-600" : "text-gray-500"
+                      s.due > 0 ? "text-maher-due-ink" : "text-muted-foreground"
                     }`}
                   >
                     {formatTaka(s.due)}
                   </span>
                 </span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                   <span className="font-mono">#{s.id}</span>
                   <span>{dayLabel(dhakaDateKey(s.serviceDate))}</span>
                   <span className="truncate">{s.phone}</span>
                 </span>
                 <span className="mt-1 flex items-center gap-2">
-                  <span className="min-w-0 truncate text-xs text-gray-700">
+                  <span className="min-w-0 truncate text-xs text-foreground/80">
                     {s.model}
                     {s.problem ? ` • ${s.problem}` : ""}
                   </span>
@@ -173,7 +173,7 @@ function SearchResults({
                   asChild
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-green-700"
+                  className="h-7 w-7 text-maher-done"
                   title="কল"
                 >
                   <a
@@ -187,7 +187,7 @@ function SearchResults({
                   asChild
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-green-600"
+                  className="h-7 w-7 text-maher-done"
                   title="WhatsApp"
                 >
                   <a
@@ -292,12 +292,12 @@ export function HeaderSearch({
         aria-label="নাম, ফোন, মডেল বা বিল নং খুঁজুন"
         aria-keyshortcuts="Control+K"
         autoComplete="off"
-        className="h-9 w-64 border-white/30 bg-white/95 text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-white/70 xl:w-80"
+        className="h-9 w-64 rounded-lg border-white/35 bg-white/95 text-foreground shadow-[0_4px_14px_-8px_rgb(9_30_110/0.8)] placeholder:text-muted-foreground focus-visible:border-white focus-visible:ring-2 focus-visible:ring-white/60 xl:w-80"
       />
       {open && query.trim().length > 0 ? (
         <div
           data-testid="global-search-dropdown"
-          className="absolute right-0 top-full z-50 mt-2 max-h-[min(70vh,32rem)] w-[22rem] overflow-y-auto rounded-xl border bg-white text-gray-900 shadow-2xl xl:w-[26rem]"
+          className="absolute right-0 top-full z-50 mt-2 max-h-[min(70vh,32rem)] w-[22rem] overflow-y-auto rounded-xl border border-maher-border bg-white text-foreground shadow-lift xl:w-[26rem]"
         >
           <SearchResults
             query={query}
@@ -364,11 +364,11 @@ export function MobileSearch({
       </SheetTrigger>
       <SheetContent
         side="top"
-        className="border-maher-navy/40 bg-maher-navy p-0 text-white"
+        className="border-white/20 bg-maher-navy gloss-chrome p-0 text-white"
       >
         <SheetHeader className="border-white/15">
           <SheetTitle className="text-white">🔍 সব তারিখে খুঁজুন</SheetTitle>
-          <SheetDescription className="text-blue-50">
+          <SheetDescription className="text-white/80">
             নাম, ফোন, মডেল বা বিল নং দিয়ে খুঁজুন — তারিখ বদলাতে হবে না।
           </SheetDescription>
         </SheetHeader>
@@ -383,12 +383,12 @@ export function MobileSearch({
             aria-keyshortcuts="Control+K"
             autoComplete="off"
             autoFocus
-            className="h-10 border-white/30 bg-white text-gray-900 placeholder:text-gray-500"
+            className="h-10 rounded-lg border-white/35 bg-white text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:border-maher-blue focus-visible:ring-2 focus-visible:ring-maher-blue/25"
           />
         </div>
         <div
           data-testid="mobile-search-results"
-          className="mx-2 mt-2 flex-1 overflow-y-auto rounded-lg border bg-white pb-2 text-gray-900 shadow"
+          className="mx-2 mt-2 flex-1 overflow-y-auto rounded-xl border border-maher-border bg-white pb-2 text-foreground shadow-lift"
         >
           <SearchResults
             query={query}

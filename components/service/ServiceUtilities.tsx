@@ -51,7 +51,7 @@ export function ServiceUtilities({
     <section
       data-testid="service-utilities"
       aria-label="সিস্টেম, ব্যাকআপ ও রিস্টোর"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-maher-border bg-white px-3 py-2 text-[11px] print:hidden"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-maher-border bg-white px-3 py-2 text-[11px] shadow-card print:hidden"
     >
       <span className="inline-flex items-center gap-1.5 font-semibold text-maher-ink">
         <Database className="h-3.5 w-3.5 text-maher-navy" />
@@ -62,8 +62,8 @@ export function ServiceUtilities({
         className={cn(
           "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
           online
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : "border-amber-200 bg-amber-50 text-amber-700"
+            ? "border-maher-done/35 bg-maher-done/10 text-maher-done"
+            : "border-maher-money/40 bg-maher-money/10 text-maher-money"
         )}
         title={
           online

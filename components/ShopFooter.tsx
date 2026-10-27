@@ -11,7 +11,7 @@ export function ShopFooter({ className }: { className?: string }) {
         className
       )}
     >
-      <div className="overflow-hidden rounded-xl border border-maher-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-maher-border bg-white shadow-card sheen">
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-bold tracking-[0.04em] text-maher-navy">

@@ -80,20 +80,20 @@ export function OutstandingDues({
     <section
       data-testid="outstanding-dues"
       data-view={isDesktop ? "table" : "cards"}
-      className="rounded-xl border border-red-200 bg-white p-4 print:hidden"
+      className="rounded-xl border border-maher-due/25 bg-white p-4 shadow-card print:hidden"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold tracking-tight text-gray-800">
+        <h2 className="text-base font-semibold tracking-tight text-maher-ink">
           💰 বাকি তালিকা (সব তারিখ)
         </h2>
         <div className="text-right">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             {loading || !dues
               ? "হিসাব হচ্ছে…"
               : `${dues.count}টি ডিভাইস বাকি • মোট ${formatTaka(dues.totalDue)}`}
           </p>
           {dues?.hasMore && !loading ? (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-maher-money">
               সবচেয়ে নতুন {dues.listed ?? dues.services.length}টি দেখানো হচ্ছে — বাকি{" "}
               {dues.count - (dues.listed ?? dues.services.length)}টির তালিকা নিচে নেই।
             </p>
@@ -101,20 +101,20 @@ export function OutstandingDues({
         </div>
       </div>
       {loading ? (
-        <p className="py-6 text-center text-sm text-gray-500">তালিকা আসছে…</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">তালিকা আসছে…</p>
       ) : !dues ? (
-        <p className="py-6 text-center text-sm text-red-600">
+        <p className="py-6 text-center text-sm text-maher-due-ink">
           বাকি তালিকা আনা যায়নি — Sync করুন।
         </p>
       ) : dues.services.length === 0 ? (
-        <p className="rounded-lg border border-dashed py-8 text-center text-sm text-gray-500">
+        <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
           কোনো বাকি নেই। সব টাকা উঠে গেছে। 🎉
         </p>
       ) : isDesktop ? (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-600">
+              <tr className="bg-maher-surface text-left text-xs font-semibold text-muted-foreground">
                 <th className="p-2">তারিখ</th>
                 <th className="p-2">কাস্টমার</th>
                 <th className="p-2">মডেল / অবস্থা</th>
@@ -133,15 +133,15 @@ export function OutstandingDues({
                     data-devices={visit.devices.length}
                     className="border-t"
                   >
-                    <td className="whitespace-nowrap p-2 text-gray-600">
+                    <td className="whitespace-nowrap p-2 text-muted-foreground">
                       {visit.date}
-                      <div className="font-mono text-xs text-gray-400">
+                      <div className="font-mono text-xs text-muted-foreground/75">
                         #{visit.first.id}
                       </div>
                     </td>
                     <td className="p-2">
                       <div className="font-medium">{visit.customerName}</div>
-                      <div className="text-xs text-gray-500">{visit.phone}</div>
+                      <div className="text-xs text-muted-foreground">{visit.phone}</div>
                     </td>
                     <td className="p-2">
                       <div className="space-y-1">
@@ -170,14 +170,14 @@ export function OutstandingDues({
                     </td>
                     <td className="whitespace-nowrap p-2 tabular-nums">
                       <div>বিল: {formatTaka(visit.totalBill)}</div>
-                      <div className="text-green-700">
+                      <div className="text-maher-done">
                         জমা: {formatTaka(visit.totalAdvance)}
                       </div>
-                      <div className="font-semibold text-red-600">
+                      <div className="font-semibold text-maher-due-ink">
                         বাকি: {formatTaka(visit.totalDue)}
                       </div>
                       {multi ? (
-                        <div className="text-[11px] text-gray-500">
+                        <div className="text-[11px] text-muted-foreground">
                           {visit.devices.length}টি ডিভাইসের মোট
                         </div>
                       ) : null}
@@ -190,7 +190,7 @@ export function OutstandingDues({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-blue-700"
+                          className="h-8 w-8 text-maher-navy"
                           title="বিল প্রিন্ট"
                           onClick={() => onReceipt(visit.first)}
                         >
@@ -224,25 +224,25 @@ export function OutstandingDues({
                 key={visit.key}
                 data-testid={`due-visit-card-${visit.first.id}`}
                 data-devices={visit.devices.length}
-                className="rounded-lg border border-red-100 p-3"
+                className="rounded-lg border border-maher-due/25 p-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {visit.date} •{" "}
                       <span className="font-mono">#{visit.first.id}</span>
                     </p>
                     <p
-                      className="truncate font-medium text-gray-900"
+                      className="truncate font-medium text-foreground"
                       title={visit.customerName}
                     >
                       {visit.customerName}
                     </p>
-                    <p className="text-xs text-gray-500">{visit.phone}</p>
+                    <p className="text-xs text-muted-foreground">{visit.phone}</p>
                   </div>
                   <div className="shrink-0">
                     {multi ? (
-                      <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">
+                      <span className="rounded bg-maher-due/10 px-1.5 py-0.5 text-[11px] font-semibold text-maher-due-ink">
                         {visit.devices.length}টি ডিভাইস
                       </span>
                     ) : (
@@ -255,10 +255,10 @@ export function OutstandingDues({
                   {visit.devices.map((s) => (
                     <div
                       key={s.id}
-                      className="flex items-start justify-between gap-2 rounded bg-gray-50 px-2 py-1"
+                      className="flex items-start justify-between gap-2 rounded bg-maher-surface px-2 py-1"
                     >
                       <div className="min-w-0">
-                        <p className="break-words text-sm text-gray-800">
+                        <p className="break-words text-sm text-maher-ink">
                           {s.model}
                         </p>
                         <div className="mt-0.5">
@@ -280,20 +280,20 @@ export function OutstandingDues({
                   ))}
                 </div>
 
-                <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-red-50 p-2 text-xs tabular-nums">
+                <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-maher-due/10 p-2 text-xs tabular-nums">
                   <div>
                     বিল
                     <div className="font-semibold">
                       {formatTaka(visit.totalBill)}
                     </div>
                   </div>
-                  <div className="text-green-700">
+                  <div className="text-maher-done">
                     জমা
                     <div className="font-semibold">
                       {formatTaka(visit.totalAdvance)}
                     </div>
                   </div>
-                  <div className="text-red-600">
+                  <div className="text-maher-due-ink">
                     বাকি
                     <div className="font-semibold">
                       {formatTaka(visit.totalDue)}
@@ -301,7 +301,7 @@ export function OutstandingDues({
                   </div>
                 </div>
                 {multi ? (
-                  <p className="mt-1 text-right text-[11px] text-gray-500">
+                  <p className="mt-1 text-right text-[11px] text-muted-foreground">
                     {visit.devices.length}টি ডিভাইসের মোট
                   </p>
                 ) : null}
@@ -312,7 +312,7 @@ export function OutstandingDues({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-blue-700"
+                      className="h-8 w-8 text-maher-navy"
                       title="বিল প্রিন্ট"
                       onClick={() => onReceipt(visit.first)}
                     >

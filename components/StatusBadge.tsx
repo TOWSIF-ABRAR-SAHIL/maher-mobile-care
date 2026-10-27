@@ -8,7 +8,7 @@ import { STATUS_BN, cn } from "@/lib/utils";
  */
 const CLASSES: Record<string, string> = {
   Pending:
-    "border-maher-due/30 bg-maher-due/10 text-maher-due hover:bg-maher-due/10",
+    "border-maher-due/30 bg-maher-due/10 text-maher-due-ink hover:bg-maher-due/10",
   "In-Progress":
     "border-maher-navy/30 bg-maher-navy/10 text-maher-navy hover:bg-maher-navy/10",
   Completed:

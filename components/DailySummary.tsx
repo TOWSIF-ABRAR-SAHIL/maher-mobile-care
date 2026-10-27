@@ -40,7 +40,7 @@ export function DailySummary({
         aria-expanded={open}
         aria-controls="daily-summary-body"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-maher-border bg-card px-3 py-2 text-left transition hover:border-maher-navy/30 hover:bg-maher-surface/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-maher-navy"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-maher-border bg-card px-3 py-2 text-left shadow-card sheen transition hover:border-maher-navy/30 hover:bg-maher-surface/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-maher-navy"
       >
         <span className="flex min-w-0 items-center gap-2">
           <Users className="h-4 w-4 shrink-0 text-muted-foreground" />

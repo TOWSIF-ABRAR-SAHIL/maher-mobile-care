@@ -17,6 +17,7 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
+  Plus,
   ReceiptText,
   RotateCcw,
   Scale,
@@ -130,6 +131,7 @@ export function ServiceTable({
   onDateChange,
   onToday,
   initialStatus,
+  onNewEntry,
 }: {
   services: ServiceDTO[];
   loading: boolean;
@@ -148,6 +150,8 @@ export function ServiceTable({
   onToday?: () => void;
   /** Deep-link from the Service stage line (`/service?status=Pending`). */
   initialStatus?: "All" | ServiceStatus;
+  /** Empty state offers the one action that fills it: start a new entry. */
+  onNewEntry?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ServiceDTO | null>(null);
@@ -479,7 +483,7 @@ export function ServiceTable({
         </div>
       ) : null}
       {s.status === "Delivered" && s.due > 0 && !isReturned(s.status) ? (
-        <div className="mt-1 whitespace-nowrap text-xs font-bold text-maher-due">
+        <div className="mt-1 whitespace-nowrap text-xs font-bold text-maher-due-ink">
           ⚠️ টাকা বাকি
         </div>
       ) : null}
@@ -552,7 +556,7 @@ export function ServiceTable({
           ) : (
             <span
               className={`font-semibold ${
-                s.due > 0 ? "text-maher-due" : "text-muted-foreground"
+                s.due > 0 ? "text-maher-due-ink" : "text-muted-foreground"
               }`}
             >
               বাকি {formatTaka(s.due)}
@@ -864,7 +868,7 @@ export function ServiceTable({
       {
         label: "বাকি",
         value: totals.due,
-        tone: totals.due > 0 ? "text-maher-due" : "text-muted-foreground",
+        tone: totals.due > 0 ? "text-maher-due-ink" : "text-muted-foreground",
       },
     ];
     return (
@@ -1287,7 +1291,7 @@ export function ServiceTable({
           : moneyCell(
               "বাকি",
               formatTaka(s.due),
-              s.due > 0 ? "text-maher-due" : "text-muted-foreground"
+              s.due > 0 ? "text-maher-due-ink" : "text-muted-foreground"
             )}
       </div>
 
@@ -1393,7 +1397,7 @@ export function ServiceTable({
       data-testid="daily-services"
       data-view={isDesktop ? "table" : "cards"}
       data-date={date}
-      className="overflow-hidden rounded-xl border border-maher-border bg-card"
+      className="overflow-hidden rounded-xl border border-maher-border bg-card shadow-card sheen"
     >
       <div className="border-b border-maher-border px-4 py-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
@@ -1612,6 +1616,12 @@ export function ServiceTable({
                     ? "আর্কাইভ খালি।"
                     : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
               </p>
+              {!showArchived && onNewEntry ? (
+                <Button size="sm" className="mt-1" onClick={onNewEntry}>
+                  <Plus className="mr-1 h-4 w-4" />
+                  নতুন এন্ট্রি
+                </Button>
+              ) : null}
             </div>
           ) : isDesktop ? (
             <Table ref={tableRef}>

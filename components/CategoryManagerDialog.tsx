@@ -198,7 +198,7 @@ export function CategoryManagerDialog({
               return (
                 <div
                   key={category.id}
-                  className="rounded-md border bg-white px-3 py-2"
+                  className="rounded-lg border border-maher-border bg-white px-3 py-2"
                 >
                   <div className="flex items-center gap-2">
                     {editingId === category.id ? (

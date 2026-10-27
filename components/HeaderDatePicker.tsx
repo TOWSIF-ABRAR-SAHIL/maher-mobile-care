@@ -124,7 +124,7 @@ export function HeaderDatePicker({
           onDateChange(event.target.value);
           setOpen(false);
         }}
-        className={`w-full bg-white pr-9 text-gray-800 [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+        className={`w-full bg-white pr-9 text-foreground [&::-webkit-calendar-picker-indicator]:opacity-0 ${
           tone === "light" ? "h-9" : "h-8"
         }`}
       />
@@ -137,13 +137,13 @@ export function HeaderDatePicker({
         aria-expanded={open}
         aria-controls="header-calendar"
         onClick={toggle}
-        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md bg-white text-gray-600 transition-colors hover:bg-maher-blue-soft hover:text-maher-blue focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-maher-blue"
+        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md bg-white text-muted-foreground transition-colors hover:bg-maher-blue-soft hover:text-maher-blue focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-maher-blue"
       >
         <CalendarDays className="h-4 w-4" />
       </button>
       <p
         className={`mt-0.5 hidden truncate text-center text-xs sm:block ${
-          tone === "light" ? "text-muted-foreground" : "text-blue-100"
+          tone === "light" ? "text-muted-foreground" : "text-white/80"
         }`}
       >
         {bengaliDateLabel(date)}
@@ -156,14 +156,14 @@ export function HeaderDatePicker({
           data-testid="calendar-panel"
           role="dialog"
           aria-label="তারিখ বাছুন"
-          className="absolute left-1/2 top-full z-50 mt-2 w-[288px] max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-gray-900 shadow-xl"
+          className="absolute left-1/2 top-full z-50 mt-2 w-[288px] max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-xl border border-maher-border bg-white p-3 text-foreground shadow-lift"
         >
           <div className="mb-2 flex items-center justify-between">
             <button
               type="button"
               aria-label="আগের মাস"
               onClick={() => changeMonth(-1)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-slate-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-maher-blue-soft hover:text-maher-navy focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-maher-blue"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -174,7 +174,7 @@ export function HeaderDatePicker({
               type="button"
               aria-label="পরের মাস"
               onClick={() => changeMonth(1)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-slate-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-maher-blue-soft hover:text-maher-navy focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-maher-blue"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -184,7 +184,7 @@ export function HeaderDatePicker({
             {WEEKDAYS_BN.map((weekday) => (
               <span
                 key={weekday}
-                className="py-1 text-[10px] font-medium text-gray-500"
+                className="py-1 text-[10px] font-medium text-muted-foreground"
               >
                 {weekday}
               </span>
@@ -206,12 +206,12 @@ export function HeaderDatePicker({
                   aria-label={bengaliDateLabel(key)}
                   aria-current={isToday ? "date" : undefined}
                   onClick={() => pickDay(day)}
-                  className={`h-8 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 ${
+                  className={`h-8 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-maher-blue ${
                     isSelected
                       ? "bg-maher-blue text-white hover:bg-maher-navy"
                       : isToday
                         ? "bg-maher-blue-soft text-maher-navy ring-1 ring-inset ring-maher-blue/30 hover:bg-maher-blue-soft/80"
-                        : "text-gray-700 hover:bg-slate-100"
+                        : "text-foreground hover:bg-maher-blue-soft/60"
                   }`}
                 >
                   {toBnDigits(day)}

@@ -50,6 +50,8 @@ const config: Config = {
           border: "hsl(var(--maher-border))",
           navy: "hsl(var(--maher-navy))",
           "navy-light": "hsl(var(--maher-navy-light))",
+          royal: "hsl(var(--maher-royal))",
+          gloss: "hsl(var(--maher-gloss))",
           ink: "hsl(var(--maher-ink))",
           blue: "hsl(var(--maher-blue))",
           "blue-soft": "hsl(var(--maher-blue-soft))",
@@ -57,7 +59,19 @@ const config: Config = {
           warning: "hsl(var(--maher-warning))",
           done: "hsl(var(--maher-done))",
           due: "hsl(var(--maher-due))",
+          "due-ink": "hsl(var(--maher-due-ink))",
         },
+      },
+      boxShadow: {
+        // Layered, blue-tinted lift for white work surfaces (subtle, not the
+        // default flat grey).
+        card: "0 1px 2px 0 rgb(23 72 216 / 0.05), 0 14px 30px -22px rgb(23 35 61 / 0.5)",
+        panel:
+          "0 1px 2px 0 rgb(23 72 216 / 0.04), 0 22px 48px -32px rgb(23 35 61 / 0.55)",
+        // Stat cards: a 2px gloss rail along the top edge plus the soft lift.
+        rail: "inset 0 2px 0 0 rgb(86 139 255 / 0.45), 0 1px 2px 0 rgb(23 72 216 / 0.05), 0 14px 30px -22px rgb(23 35 61 / 0.5)",
+        // Elevated white surfaces (dialogs, dropdowns).
+        lift: "0 1px 2px 0 rgb(23 72 216 / 0.06), 0 28px 60px -34px rgb(23 35 61 / 0.6)",
       },
       borderRadius: {
         lg: "var(--radius)",

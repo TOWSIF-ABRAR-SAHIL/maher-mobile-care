@@ -215,7 +215,7 @@ export function TechnicianManager({
             <Button
               onClick={() => void add()}
               disabled={adding || !newName.trim()}
-              className="bg-blue-700 hover:bg-blue-800"
+              className="bg-primary hover:bg-primary/90"
             >
               {adding ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -225,22 +225,22 @@ export function TechnicianManager({
               যোগ করুন
             </Button>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             নাম ছোট হাতের অক্ষরে লিখলেও বড় হাতের অক্ষরে সেভ হবে (যেমন
             &quot;rakib&quot; → RAKIB)। একই নাম দুইবার যোগ করা যাবে না।
           </p>
 
           {loading ? (
-            <p className="py-6 text-center text-sm text-gray-500">
+            <p className="py-6 text-center text-sm text-muted-foreground">
               তালিকা আসছে…
             </p>
           ) : (
             <>
-              <p className="text-sm font-semibold text-gray-700">
+              <p className="text-sm font-semibold text-foreground">
                 সক্রিয় টেকনিশিয়ান ({active.length})
               </p>
               {active.length === 0 ? (
-                <p className="rounded-lg border border-dashed py-4 text-center text-sm text-gray-500">
+                <p className="rounded-lg border border-dashed py-4 text-center text-sm text-muted-foreground">
                   কোনো টেকনিশিয়ান নেই। উপরে নাম লিখে যোগ করুন।
                 </p>
               ) : (
@@ -262,7 +262,7 @@ export function TechnicianManager({
                           />
                           <Button
                             size="sm"
-                            className="bg-blue-700 hover:bg-blue-800"
+                            className="bg-primary hover:bg-primary/90"
                             disabled={busyId === t.id || !editName.trim()}
                             onClick={() => void rename(t, editName, false)}
                           >
@@ -298,7 +298,7 @@ export function TechnicianManager({
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-8 w-8 text-red-600"
+                              className="h-8 w-8 text-maher-due"
                               title="ডিলিট"
                               aria-label={`${t.name} ডিলিট`}
                               // The shop must always keep one technician.
@@ -317,7 +317,7 @@ export function TechnicianManager({
 
               {inactive.length > 0 ? (
                 <>
-                  <p className="pt-1 text-sm font-semibold text-gray-700">
+                  <p className="pt-1 text-sm font-semibold text-foreground">
                     নিষ্ক্রিয় ({inactive.length})
                   </p>
                   <ul className="space-y-2">
@@ -325,9 +325,9 @@ export function TechnicianManager({
                       <li
                         key={t.id}
                         data-testid={`tech-inactive-${t.name}`}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-dashed bg-gray-50 p-2"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-dashed bg-maher-surface/70 p-2"
                       >
-                        <span className="min-w-0 truncate text-gray-500 line-through">
+                        <span className="min-w-0 truncate text-muted-foreground line-through">
                           {t.name}
                         </span>
                         <Button
@@ -371,7 +371,7 @@ export function TechnicianManager({
                 e.preventDefault();
                 void remove();
               }}
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-maher-due text-white hover:bg-maher-due/90"
             >
               {busyId !== null ? "হচ্ছে…" : "ডিলিট"}
             </AlertDialogAction>
@@ -404,7 +404,7 @@ export function TechnicianManager({
                   void rename(pendingRename.tech, pendingRename.name, true);
                 }
               }}
-              className="bg-blue-700 text-white hover:bg-blue-800"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {busyId !== null ? "হচ্ছে…" : "হ্যাঁ, বদলান"}
             </AlertDialogAction>

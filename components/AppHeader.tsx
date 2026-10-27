@@ -24,7 +24,7 @@ export function AppHeader({
   return (
     <header
       data-testid="app-header"
-      className={`sticky top-0 z-40 rounded-xl border border-maher-navy/70 bg-maher-navy px-3 py-2.5 text-white shadow-sm md:py-2 print:hidden ${className ?? ""}`}
+      className={`sticky top-0 z-40 rounded-2xl border border-white/15 bg-maher-navy gloss-chrome px-3 py-2.5 text-white md:py-2 print:hidden ${className ?? ""}`}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-4">
         <BrandMark className="col-start-1 row-start-1" />

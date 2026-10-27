@@ -19,7 +19,7 @@ export function TechnicianStats({
   return (
     <section
       data-testid="technician-stats"
-      className="rounded-xl border border-maher-border bg-card p-3 sm:p-4"
+      className="rounded-xl border border-maher-border bg-card p-3 shadow-card sm:p-4"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">

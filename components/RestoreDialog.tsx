@@ -92,16 +92,16 @@ export function RestoreDialog({
               </span>
             </DialogTitle>
           </DialogHeader>
-          <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+          <p className="rounded-lg border border-maher-warning/40 bg-maher-warning/10 p-2 text-xs text-maher-money">
             Restore করলে এখনকার data মুছে গিয়ে ঐ snapshot-এর data আসবে।
             ভুল হলে ফেরত পেতে restore-এর আগের safety-copy auto রাখা হবে।
           </p>
           {loading ? (
-            <p className="py-6 text-center text-sm text-gray-500">
+            <p className="py-6 text-center text-sm text-muted-foreground">
               তালিকা আসছে…
             </p>
           ) : snaps.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-500">
+            <p className="py-6 text-center text-sm text-muted-foreground">
               কোনো ব্যাকআপ নেই। আগে ব্যাকআপ বাটনে backup নিন।
             </p>
           ) : (
@@ -115,12 +115,12 @@ export function RestoreDialog({
                     <p className="truncate text-sm font-medium">
                       {fmtDate(s.mtime)}
                       {s.kind === "safety" ? (
-                        <span className="ml-1 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700">
+                        <span className="ml-1 rounded bg-maher-surface px-1.5 py-0.5 text-xs text-foreground">
                           safety
                         </span>
                       ) : null}
                     </p>
-                    <p className="truncate text-xs text-gray-500">
+                    <p className="truncate text-xs text-muted-foreground">
                       {s.file} • {s.sizeKB} KB •{" "}
                       {s.rowCount === null
                         ? "রেকর্ড পড়া যায়নি"
@@ -132,7 +132,7 @@ export function RestoreDialog({
                     variant={confirmFile === s.file ? "default" : "outline"}
                     className={
                       confirmFile === s.file
-                        ? "shrink-0 bg-red-600 hover:bg-red-700"
+                        ? "shrink-0 bg-maher-due hover:bg-maher-due/90"
                         : "shrink-0"
                     }
                     disabled={restoring}

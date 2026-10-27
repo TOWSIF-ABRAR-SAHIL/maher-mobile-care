@@ -600,7 +600,7 @@ export function ServiceForm({
   );
 
   return (
-    <section className="rounded-xl border border-maher-border bg-card p-2.5 print:hidden">
+    <section className="rounded-xl border border-maher-border bg-card p-2.5 shadow-card sheen print:hidden">
       <h2 className="mb-1.5 flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
         <Plus className="h-4 w-4 text-maher-navy" />
         নতুন সার্ভিস এন্ট্রি
@@ -795,7 +795,7 @@ export function ServiceForm({
                     data-testid={
                       isFirst ? "device-1" : `extra-device-${index}`
                     }
-                    className="rounded-lg border border-maher-border bg-card p-2"
+                    className="rounded-lg border border-maher-border bg-card p-2 shadow-card"
                   >
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">

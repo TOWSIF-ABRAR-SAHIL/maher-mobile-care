@@ -16,7 +16,7 @@ function DayCard({
   valueClass?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-maher-border border-l-4 bg-card p-2.5 ${border}`}>
+    <div className={`rounded-xl border border-maher-border border-l-4 bg-card p-2.5 shadow-card ${border}`}>
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className={`mt-1 text-xl font-bold tracking-tight tabular-nums ${valueClass ?? "text-foreground"}`}>
         {value}
