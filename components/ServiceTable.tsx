@@ -373,7 +373,15 @@ export function ServiceTable({
       if (widths.length !== 5 || widths.some((w) => w <= 0)) return;
       // Fixed px tracks: fractional units take their minimum from the content,
       // so a wide badge/date would widen one column and shift the rest.
-      const next = widths.map((w) => `${Math.round(w * 100) / 100}px`).join(" ");
+      // minmax(0, …) keeps those px as the *maximum*: under intrinsic sizing
+      // the track floors at 0, so the spanning cell no longer raises the
+      // whole table's minimum width (it used to pin the table at whatever it
+      // measured once, and the table then refused to shrink with its
+      // container → sideways scroll). With a definite width the tracks still
+      // resolve to exactly these px, so the device lines stay aligned.
+      const next = widths
+        .map((w) => `minmax(0,${Math.round(w * 100) / 100}px)`)
+        .join(" ");
       setDeviceCols((prev) => (prev === next ? prev : next));
     };
     measure();
@@ -1118,7 +1126,9 @@ export function ServiceTable({
         )}`}
       >
         <div>{s.id}</div>
-        {groupBadge(s)}
+        {/* Kept for screen readers and row text; visually hidden so the ID
+            column sizes to the id itself, not to a badge. */}
+        <div className="sr-only">{groupBadge(s)}</div>
       </TableCell>
       {showArchived ? (
         <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">
@@ -1182,7 +1192,9 @@ export function ServiceTable({
             <div data-testid={`visit-id-${first.id}`}>#{first.id}</div>
             {collapseToggle(visit)}
           </div>
-          <div className="mt-0.5">{deviceCountBadge(visit)}</div>
+          {/* Same device-count badge, screen-reader only: it used to set the
+              width of the ID column for grouped visits. */}
+          <div className="sr-only">{deviceCountBadge(visit)}</div>
         </TableCell>
         {showArchived ? (
           <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">

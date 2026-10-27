@@ -253,7 +253,7 @@ export default function ProductsPage() {
           refreshing ? "animate-pulse opacity-100" : "opacity-0"
         }`}
       />
-      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1440px] 2xl:max-w-[1600px]">
+      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1600px] 2xl:max-w-[1840px]">
         <AppHeader
           searchRefreshKey={0}
           onSearchEdit={openServiceFromSearch}

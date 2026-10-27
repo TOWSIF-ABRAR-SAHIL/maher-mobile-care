@@ -7,7 +7,7 @@ export function ShopFooter({ className }: { className?: string }) {
   return (
     <footer
       className={cn(
-        "mx-auto w-full max-w-7xl px-3 pb-6 xl:max-w-[1440px] 2xl:max-w-[1600px] print:hidden",
+        "mx-auto w-full max-w-7xl px-3 pb-6 xl:max-w-[1600px] 2xl:max-w-[1840px] print:hidden",
         className
       )}
     >

@@ -555,7 +555,7 @@ export function ServiceWorkspace({
 
       <main
         data-refreshing={refreshing ? "true" : "false"}
-        className={`mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1440px] 2xl:max-w-[1600px] ${
+        className={`mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1600px] 2xl:max-w-[1840px] ${
           receipt ? "print:hidden" : ""
         }`}
       >
@@ -677,7 +677,7 @@ export function ServiceWorkspace({
           </button>
         </div>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]">
           <div
             ref={formRef}
             className={cn(
