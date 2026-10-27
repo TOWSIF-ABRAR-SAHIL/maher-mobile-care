@@ -98,12 +98,28 @@ function check(name, ok, extra = "") {
     await page.waitForSelector('[data-testid="calendar-panel"]', {
       timeout: 3000,
     });
-    await page.click("h1");
+    // The service desk has no page heading any more (the old eyebrow/title was
+    // removed with the redesign), so there is no `h1` to click. Click the page
+    // gutter instead: at every width that is empty background, below the
+    // popover, so the click can neither miss the page nor land on a control.
+    const panelBox = await (
+      await page.$('[data-testid="calendar-panel"]')
+    ).boundingBox();
+    const viewport = page.viewport();
+    const gutterY = Math.min(
+      viewport.height - 12,
+      Math.round(panelBox.y + panelBox.height + 24)
+    );
+    await page.mouse.click(6, gutterY);
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="calendar-panel"]'),
       { timeout: 3000 }
     );
-    check("outside click closes the calendar", true);
+    check(
+      "outside click closes the calendar",
+      true,
+      `clicked page at 6,${gutterY}`
+    );
 
     check("zero JS errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   } finally {

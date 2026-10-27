@@ -8,7 +8,8 @@
  *   MAHER MOBILE CARE.bat   double-click launcher
  *   runtime/                node.exe + Node's own DLLs (no install needed)
  *   app/                    .next/standalone server + static assets + prisma/migrations
- *   data/                   created on first run, holds the database + backups
+ *   data/                   created on first run, holds the database + backups;
+ *                            kept across rebuilds (see scripts/portable-keep.mjs)
  *
  * Design notes that matter:
  *
@@ -31,6 +32,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { preservePackageData, releaseHold, restorePackageData } from "./portable-keep.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -54,6 +56,32 @@ function fail(message) {
   console.error(`\n[portable] BUILD FAILED: ${message}\n`);
   process.exit(1);
 }
+
+// out/MAHER/data is the client's shop database, and the rebuild deletes the
+// whole package folder. The data is copied to a hold first; if this build ever
+// stops before putting it back, say exactly where it is instead of losing it
+// silently (which is how the database got deleted after the redesign rebuild).
+let keptPackageData = null;
+let dataRestored = false;
+process.on("exit", () => {
+  if (keptPackageData && !dataRestored) {
+    // Say what is actually true: the package usually still has the folder
+    // (the delete failed, or only part of it ran), so do not claim the data is
+    // gone when it is not.
+    const inPackage = fs.existsSync(path.join(outDir, "data"));
+    console.error(
+      [
+        "",
+        `[portable] NOTE: a kept copy of ${keptPackageData.dirs.join(" and ")} from the old package is at:`,
+        `  ${keptPackageData.dir}`,
+        inPackage
+          ? `[portable] ${outDir} still has its data folder — compare it with the copy before deleting either.`
+          : `[portable] ${outDir} has NO data folder — copy the kept one back before removing it.`,
+        "",
+      ].join("\n")
+    );
+  }
+});
 
 /** Downloads once into cache, then reuses. */
 function cachedDownload(url, fileName) {
@@ -267,7 +295,40 @@ if (!fs.existsSync(standalone)) {
   fail(".next/standalone is missing after the build");
 }
 
-fs.rmSync(outDir, { recursive: true, force: true });
+// Keep the shop's data out of the way of the delete, then clear the old
+// package. A folder that is still open (MAHER running) fails here with a
+// plain-language message rather than half-deleting the package, which is what
+// happened when a rebuild ran while the app was open.
+try {
+  keptPackageData = preservePackageData(outDir);
+} catch (error) {
+  fail(`could not copy the shop data out of the old package first (${error?.message ?? error})`);
+}
+if (keptPackageData) {
+  log(`kept ${keptPackageData.dirs.join(" + ")} safe in ${keptPackageData.dir}`);
+}
+try {
+  fs.rmSync(outDir, { recursive: true, force: true });
+} catch (error) {
+  const detail =
+    `could not clear the old package (${error?.code ?? error}).\n` +
+    `MAHER is probably still running — run MAHER STOP.bat (or end node.exe in Task Manager) and try again.`;
+  // The delete can stop half-way, so put the shop's data straight back rather
+  // than leaving a package that is missing its database.
+  if (keptPackageData) {
+    try {
+      const putBack = restorePackageData(outDir, keptPackageData);
+      if (putBack.skipped.length === 0) {
+        dataRestored = true;
+        releaseHold(keptPackageData);
+        log("the shop data was put back into the package");
+      }
+    } catch {
+      /* the hold stays; the exit note prints where it is */
+    }
+  }
+  fail(detail);
+}
 fs.mkdirSync(outDir, { recursive: true });
 log(`package directory: ${outDir}`);
 
@@ -607,6 +668,22 @@ fs.writeFileSync(path.join(outDir, "build-info.json"), `${JSON.stringify(manifes
 
 // 9. Never ship shop data, and never ship the Linux native binary.
 assertNoShopData(outDir);
+
+// ...so the shop's data only comes back once the leak check has run. The
+// isolation check below copies the package without data/, so restoring here
+// cannot weaken it.
+if (keptPackageData) {
+  const restored = restorePackageData(outDir, keptPackageData);
+  if (restored.restored.length > 0) {
+    log(`restored ${restored.restored.join(" + ")} from the previous package`);
+  }
+  if (restored.skipped.length > 0) {
+    console.error(`[portable] WARNING: ${restored.skipped.join(", ")} could not be restored`);
+  } else {
+    dataRestored = true;
+    releaseHold(keptPackageData);
+  }
+}
 
 const strayLinux = findStrayLinuxBinaries(appDir);
 if (strayLinux.length > 0) {

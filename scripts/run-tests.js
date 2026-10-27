@@ -18,6 +18,7 @@ const NEXT_BIN = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
 
 const DEFAULT_SUITES = [
   "scripts/launcher-decide.test.js",
+  "scripts/portable-keep.test.js",
   "scripts/expense-upgrade.test.js",
   "scripts/e2e-maher.js",
   "scripts/e2e-p0.js",
