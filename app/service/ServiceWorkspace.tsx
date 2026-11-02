@@ -18,6 +18,7 @@ import { MonthlySummary } from "@/components/MonthlySummary";
 import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
 import { PageLead } from "@/components/PageLead";
 import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
+import { ReportDetails } from "@/components/ReportDetails";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { RestoreDialog } from "@/components/RestoreDialog";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -122,6 +123,17 @@ export function ServiceWorkspace({
   useEffect(() => {
     rangeRef.current = range;
   }, [range]);
+
+  /**
+   * Report scope — deliberately independent of the list's scope. It starts on
+   * তারিখ রেঞ্জ (the report has always opened there); একদিন and সব তারিখ are
+   * chosen inside the dialog and never move the list beside it.
+   */
+  const [reportMode, setReportMode] = useState<ListMode>("range");
+  const reportModeRef = useRef(reportMode);
+  useEffect(() => {
+    reportModeRef.current = reportMode;
+  }, [reportMode]);
 
   const computeRange = (mode: RangeMode, day: string) => {
     if (mode === "thisMonth") return monthContaining(day);
@@ -246,19 +258,47 @@ export function ServiceWorkspace({
     }
   }, [listUrl, statsUrl]);
 
-  const fetchMonthly = useCallback(async (r: { from: string; to: string }) => {
-    const my = ++monthlyReq.current;
-    try {
-      const mo = await getJSON<MonthlyResponse>(
-        `/api/stats/monthly?from=${r.from}&to=${r.to}`
-      );
-      if (monthlyReq.current !== my) return;
-      setMonthly(mo);
-    } catch (e) {
-      if (monthlyReq.current !== my) return;
-      toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
+  const fetchMonthly = useCallback(
+    async (w: { from: string; to: string } | null) => {
+      const my = ++monthlyReq.current;
+      try {
+        const mo = await getJSON<MonthlyResponse>(
+          w
+            ? `/api/stats/monthly?from=${w.from}&to=${w.to}`
+            : `/api/stats/monthly?all=1`
+        );
+        if (monthlyReq.current !== my) return;
+        setMonthly(mo);
+      } catch (e) {
+        if (monthlyReq.current !== my) return;
+        toast.error(e instanceof Error ? e.message : "লোড করা যায়নি");
+      }
+    },
+    []
+  );
+
+  /**
+   * The window the REPORT is showing: একদিন = the selected day, তারিখ রেঞ্জ =
+   * the report range, সব তারিখ = null (no bounds at all). Reads refs so every
+   * caller stays a stable callback.
+   */
+  const currentWindow = useCallback((): { from: string; to: string } | null => {
+    const mode = reportModeRef.current;
+    if (mode === "all") return null;
+    if (mode === "day") {
+      const day = dateRef.current;
+      return { from: day, to: day };
     }
+    return rangeRef.current;
   }, []);
+
+  /** Identity of the current report window — refetch only when it changes. */
+  const reportWindowKey =
+    reportMode === "all"
+      ? "all"
+      : reportMode === "day"
+        ? `day:${date}`
+        : `range:${range.from}_${range.to}`;
 
   const fetchDues = useCallback(async () => {
     const my = ++duesReq.current;
@@ -276,21 +316,22 @@ export function ServiceWorkspace({
   /** One manual refresh for every panel on the desk. */
   const refreshAll = useCallback(() => {
     void load(dateRef.current, false);
-    void fetchMonthly(rangeRef.current);
+    void fetchMonthly(currentWindow());
     void fetchDues();
     void loadTechnicians();
     void loadPartsShops();
   }, [
     load,
     fetchMonthly,
+    currentWindow,
     fetchDues,
     loadTechnicians,
     loadPartsShops,
   ]);
 
   useEffect(() => {
-    void fetchMonthly(range);
-  }, [range, fetchMonthly]);
+    void fetchMonthly(currentWindow());
+  }, [reportWindowKey, fetchMonthly, currentWindow]);
 
   useEffect(() => {
     return () => {
@@ -517,10 +558,10 @@ export function ServiceWorkspace({
   };
 
   /* ------------------------------------------------------------------
-   * Report export — always follows the ACTIVE report range/preset. Rows
-   * come from the additive range scope (paged, capped), totals from the
-   * monthly summary already fetched for exactly this window. Fully local:
-   * no cloud, no third-party service.
+   * Report export — always follows the ACTIVE report scope (একদিন / তারিখ
+   * রেঞ্জ / সব তারিখ). Rows come from the same paged source the on-screen
+   * detail table uses, totals from the monthly summary fetched for exactly
+   * this window. Fully local: no cloud, no third-party service.
    * ------------------------------------------------------------------ */
   const [exporting, setExporting] = useState<null | "pdf" | "csv" | "excel">(
     null
@@ -528,24 +569,67 @@ export function ServiceWorkspace({
   const EXPORT_PAGE = 500;
   const EXPORT_MAX = 5000;
 
+  /** Rows for the dialog's detail table (paged, same window as the totals). */
+  const [reportRows, setReportRows] = useState<ServiceDTO[] | null>(null);
+  const [reportRowsLoading, setReportRowsLoading] = useState(false);
+  const reportRowsReq = useRef(0);
+
+  const fetchWindowRows = useCallback(
+    async (cap: number): Promise<{ rows: ServiceDTO[]; capped: boolean }> => {
+      const w = currentWindow();
+      const scope = w ? `from=${w.from}&to=${w.to}` : "all=1";
+      const rows: ServiceDTO[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore && rows.length < cap) {
+        const page = await getJSON<ServicesListResponse>(
+          `/api/services?${scope}&limit=${EXPORT_PAGE}&offset=${offset}`
+        );
+        rows.push(...(page.services ?? []));
+        hasMore = !!page.hasMore;
+        offset = rows.length;
+      }
+      return { rows, capped: hasMore };
+    },
+    [currentWindow]
+  );
+
+  // Keep the detail table in sync while the dialog is open; drop it on close
+  // so reopening always shows the current window (no stale rows).
+  useEffect(() => {
+    if (!showReport) {
+      setReportRows(null);
+      return;
+    }
+    const my = ++reportRowsReq.current;
+    setReportRowsLoading(true);
+    fetchWindowRows(EXPORT_MAX)
+      .then(({ rows }) => {
+        if (reportRowsReq.current === my) setReportRows(rows);
+      })
+      .catch(() => {
+        if (reportRowsReq.current === my) setReportRows([]);
+      })
+      .finally(() => {
+        if (reportRowsReq.current === my) setReportRowsLoading(false);
+      });
+  }, [showReport, reportWindowKey, fetchWindowRows]);
+
   const collectReport = async (): Promise<ReportData | null> => {
     if (!monthly) return null;
-    const { from, to } = rangeRef.current;
-    const rows: ServiceDTO[] = [];
-    let offset = 0;
-    let hasMore = true;
-    while (hasMore && rows.length < EXPORT_MAX) {
-      const page = await getJSON<ServicesListResponse>(
-        `/api/services?from=${from}&to=${to}&limit=${EXPORT_PAGE}&offset=${offset}`
-      );
-      rows.push(...(page.services ?? []));
-      hasMore = !!page.hasMore;
-      offset = rows.length;
-    }
-    if (hasMore) {
+    const w = currentWindow();
+    const { rows, capped } = await fetchWindowRows(EXPORT_MAX);
+    if (capped) {
       toast.warning("রিপোর্টে সর্বোচ্চ ৫০০০ রেকর্ড — রেঞ্জ ছোট করে আবার চেষ্টা করুন");
     }
-    return { from, to, summary: monthly.summary, rows };
+    return {
+      from: w?.from ?? "",
+      to: w?.to ?? "",
+      label: w ? `${w.from} – ${w.to}` : "সব তারিখ",
+      stamp: w ? `${w.from}_${w.to}` : "all",
+      summary: monthly.summary,
+      rows,
+    };
   };
 
   const exportReport = async (kind: "pdf" | "csv" | "excel") => {
@@ -558,7 +642,7 @@ export function ServiceWorkspace({
     try {
       const data = await collectReport();
       if (!data) return;
-      const stamp = `${data.from}_${data.to}`;
+      const stamp = data.stamp;
       const { downloadBlob } = await import("@/lib/export");
       if (kind === "csv") {
         const { buildReportCsv } = await import("@/lib/export");
@@ -634,11 +718,21 @@ export function ServiceWorkspace({
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  /** Empty list: jump straight to the form on whichever surface is showing. */
+  /**
+   * Jump straight to the entry form (empty list, navbar CTA, deep links):
+   * switch the phone surface to the form, scroll it into view, then put the
+   * cursor in the first field so the shopkeeper can start typing immediately.
+   */
   const newEntry = () => {
     setEditing(null);
     setMobileTab("form");
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      const field = formRef.current?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]), select, textarea'
+      );
+      field?.focus({ preventScroll: true });
+    }, 350);
   };
 
   const editFromDues = (service: ServiceDTO) => {
@@ -756,6 +850,16 @@ export function ServiceWorkspace({
             <>
               <Button
                 type="button"
+                size="sm"
+                data-testid="new-service-entry"
+                onClick={newEntry}
+                title="নতুন কাজের ফর্মে যান — কাস্টমারের নাম লিখে শুরু করুন"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                নতুন সার্ভিস এন্ট্রি
+              </Button>
+              <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 data-testid="open-report"
@@ -825,6 +929,8 @@ export function ServiceWorkspace({
             summary={monthly?.summary ?? null}
             range={range}
             mode={rangeMode}
+            dateMode={reportMode}
+            day={date}
             onPreset={pickPreset}
             onCustom={pickCustom}
             loading={loading}
@@ -888,7 +994,7 @@ export function ServiceWorkspace({
                 setMobileTab("list");
                 setDataVersion((v) => v + 1);
                 void load(date, false);
-                void fetchMonthly(range);
+                void fetchMonthly(currentWindow());
                 void loadPartsShops();
               }}
               onCancelEdit={() => {
@@ -929,7 +1035,7 @@ export function ServiceWorkspace({
                 if (editing) setEditing(null);
                 setDataVersion((v) => v + 1);
                 void load(date, false);
-                void fetchMonthly(range);
+                void fetchMonthly(currentWindow());
               }}
             />
           </div>
@@ -944,13 +1050,17 @@ export function ServiceWorkspace({
           <DialogHeader className="sr-only">
             <DialogTitle>ওভারঅল রিপোর্ট</DialogTitle>
             <DialogDescription>
-              বিগত ৩০ দিন, এই মাস বা গত মাসের সার্ভিস ও লাভের হিসাব
+              একদিন, তারিখ রেঞ্জ বা সব তারিখের সার্ভিস, বাকি ও লাভের হিসাব
             </DialogDescription>
           </DialogHeader>
           <MonthlySummary
             summary={monthly?.summary ?? null}
             range={range}
             mode={rangeMode}
+            dateMode={reportMode}
+            day={date}
+            onDateMode={setReportMode}
+            onDayChange={setDate}
             onPreset={pickPreset}
             onCustom={pickCustom}
             loading={loading}
@@ -958,6 +1068,13 @@ export function ServiceWorkspace({
             onExportPdf={() => void exportReport("pdf")}
             onExportCsv={() => void exportReport("csv")}
             onExportExcel={() => void exportReport("excel")}
+          />
+          <ReportDetails
+            rows={reportRows}
+            loading={reportRowsLoading}
+            dateMode={reportMode}
+            day={date}
+            range={range}
           />
         </DialogContent>
       </Dialog>
@@ -998,7 +1115,7 @@ export function ServiceWorkspace({
           setShowRestore(false);
           setDataVersion((value) => value + 1);
           void load(dateRef.current, false);
-          void fetchMonthly(rangeRef.current);
+          void fetchMonthly(currentWindow());
           void loadTechnicians();
           void loadPartsShops();
         }}

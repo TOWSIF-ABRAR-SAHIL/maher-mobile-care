@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { ServiceAdjustDialog } from "@/components/ServiceAdjustDialog";
 import { ServiceDateNav } from "@/components/ServiceDateNav";
 import { StatusBadge } from "@/components/StatusBadge";
+import { StatusChips } from "@/components/StatusChips";
 import { whatsAppHref } from "@/lib/contact";
 import {
   AlertDialog,
@@ -1762,11 +1763,11 @@ export function ServiceTable({
               id="svc-search"
               data-scope="local"
               aria-label="এই তালিকার মধ্যে খুঁজুন (লোকাল ফিল্টার)"
-              title="শুধু এই তালিকায় দেখা এন্ট্রি খুঁজবে — সব তারিখের জন্য উপরের হেডার সার্চ ব্যবহার করুন"
-              placeholder="নাম, আইডি, ফোন, মডেল বা সমস্যা খুঁজুন..."
+              title="শুধু এই তালিকায় দেখা এন্ট্রি খুঁজবে — নাম, আইডি, ফোন, মডেল বা সমস্যা | সব তারিখের জন্য উপরের হেডার সার্চ ব্যবহার করুন"
+              placeholder="এই তালিকায় খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className={`h-9 bg-white pl-9 ${search ? "pr-9" : "pr-[6.75rem]"}`}
+              className="h-9 bg-white pl-9 pr-9"
             />
             {search ? (
               <button
@@ -1779,14 +1780,7 @@ export function ServiceTable({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-            ) : (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-maher-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-              >
-                এই তালিকায়
-              </span>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -1819,63 +1813,12 @@ export function ServiceTable({
       ) : (
         <>
           {!showArchived ? (
-            <div className="relative mb-3">
-              <div
-                data-testid="svc-status-tabs"
-                className="-mx-1 overflow-x-auto px-1 print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              >
-              <div className="flex w-max min-w-full items-center gap-1.5">
-                {(["All", ...STATUSES] as const).map((st) => {
-                  const active = statusFilter === st;
-                  const dot =
-                    st === "All"
-                      ? "bg-maher-ink"
-                      : st === "Pending"
-                        ? "bg-maher-due"
-                        : st === "In-Progress"
-                          ? "bg-maher-navy"
-                          : st === "Completed"
-                            ? "bg-maher-done"
-                            : st === "Delivered"
-                              ? "bg-slate-400"
-                              : "bg-maher-money";
-                  return (
-                    <button
-                      key={st}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => setStatusFilter(st)}
-                      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition ${
-                        active
-                          ? "border-maher-navy bg-maher-navy text-white shadow-sm"
-                          : "border-maher-border bg-white text-foreground hover:border-maher-navy/40 hover:bg-maher-surface/60 hover:text-maher-navy"
-                      }`}
-                    >
-                      <span
-                        aria-hidden
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          active ? "bg-white/80" : dot
-                        }`}
-                      />
-                      <span>{st === "All" ? "সব" : STATUS_BN[st]}</span>
-                      {" "}
-                      <span
-                        className={`tabular-nums ${
-                          active ? "text-white/75" : "text-muted-foreground"
-                        }`}
-                      >
-                        ({counts[st] ?? 0})
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-card to-transparent sm:hidden"
-              />
-            </div>
+            <StatusChips
+              testid="svc-status-tabs"
+              counts={counts}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
           ) : null}
           {!showArchived && listMode !== "day" && listTotal != null ? (
             <div

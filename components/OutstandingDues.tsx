@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Pencil, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactButtons } from "@/components/ContactButtons";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatTaka, toBnDigits } from "@/lib/utils";
+import { StatusChips, type StatusFilter } from "@/components/StatusChips";
+import { formatTaka, STATUSES, toBnDigits } from "@/lib/utils";
 import { bengaliDateLabel, dhakaDateKey } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ServiceDTO } from "@/lib/types";
@@ -106,8 +107,30 @@ export function OutstandingDues({
   onReceipt: (service: ServiceDTO) => void;
 }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const visits = dues ? groupDueVisits(dues.services) : [];
-  const sections = groupDueSections(visits);
+  const visits = useMemo(
+    () => (dues ? groupDueVisits(dues.services) : []),
+    [dues]
+  );
+
+  /**
+   * Same chip contract as the service list: visit-level counts (a visit counts
+   * once per status when any device matches) and visit-level filtering, so no
+   * device of the same customer disappears. `ফেরত` sits at 0 by construction —
+   * a returned row always has due 0 and never reaches this list.
+   */
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { All: visits.length };
+    for (const st of STATUSES) {
+      c[st] = visits.filter((v) => v.devices.some((d) => d.status === st)).length;
+    }
+    return c;
+  }, [visits]);
+  const shown =
+    statusFilter === "All"
+      ? visits
+      : visits.filter((v) => v.devices.some((d) => d.status === statusFilter));
+  const sections = groupDueSections(shown);
 
   /** Group divider — same markup in the table (inside a colSpan cell) and on cards. */
   const sectionHeader = (section: DueSection, testid: string) => (
@@ -137,7 +160,7 @@ export function OutstandingDues({
     <section
       data-testid="outstanding-dues"
       data-view={isDesktop ? "table" : "cards"}
-      className="rounded-xl border border-maher-due/25 bg-white p-4 shadow-card print:hidden"
+      className="min-w-0 rounded-xl border border-maher-due/25 bg-white p-4 shadow-card print:hidden"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold tracking-tight text-maher-ink">
@@ -157,6 +180,15 @@ export function OutstandingDues({
           ) : null}
         </div>
       </div>
+      {!loading && dues && visits.length > 0 ? (
+        <StatusChips
+          testid="dues-status-tabs"
+          counts={counts}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          label="অবস্থা দিয়ে বাকি তালিকা ফিল্টার"
+        />
+      ) : null}
       {loading ? (
         <p className="py-6 text-center text-sm text-muted-foreground">তালিকা আসছে…</p>
       ) : !dues ? (
@@ -167,6 +199,21 @@ export function OutstandingDues({
         <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
           কোনো বাকি নেই। সব টাকা উঠে গেছে। 🎉
         </p>
+      ) : shown.length === 0 ? (
+        <div
+          data-testid="dues-filter-empty"
+          className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground"
+        >
+          <span>এই অবস্থায় কোনো বাকি নেই।</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 bg-white"
+            onClick={() => setStatusFilter("All")}
+          >
+            সব দেখান
+          </Button>
+        </div>
       ) : isDesktop ? (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">

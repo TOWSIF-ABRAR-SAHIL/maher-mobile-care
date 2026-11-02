@@ -11,9 +11,10 @@ that nothing is broken before a busy day.
   dialogs; **M1–M12 cover the v1.2.0 grouped visits, delivery dates,
   returned-row edits and write-off**; **N1–N10 cover the post-v1.2.0 look,
   landing page, IMEI/no-lock, numbered device cards, the stock page and the
-  scroll-free service list**; **O1–O10 cover the date modes (একদিন/তারিখ
-  রেঞ্জ/সব তারিখ), the two search scopes, the report PDF/CSV/Excel export and
-  the date-grouped বাকি list**.
+  scroll-free service list**; **O1–O13 cover the date modes (একদিন/তারিখ
+  রেঞ্জ/সব তারিখ), the two search scopes, the new-entry shortcut, the dues
+  status chips, the report date modes + customer detail table and the
+  PDF/CSV/Excel export**.
 - **This file:** the things a script cannot judge — paper printouts, real
   WhatsApp/dialer, Excel opening the CSV, touch on a phone, two tabs open at once.
 
@@ -297,7 +298,7 @@ of this checklist **byte-identical** — see step L3.
 
 ## O. NOTUN (post-v1.2.0) — date modes, search scope, report export & বাকি sections
 
-*O1–O8 risk: নেই • O9–O10 risk: মাঝারি (downloads a file / adds a row)*
+*O1–O8, O11–O12 risk: নেই • O9–O10, O13 risk: মাঝারি (downloads a file / adds a row)*
 
 - [ ] **O1** On the service list masthead find the date-mode switch:
   **একদিন | তারিখ রেঞ্জ | সব তারিখ**. Expect: **একদিন** is pressed by default and
@@ -319,15 +320,16 @@ of this checklist **byte-identical** — see step L3.
   the list search. Expect: counts, filters, edit/receipt/advance/archive and the
   খরচ reveal all still work on grouped rows; switching back to **একদিন** restores
   the old single-day list byte-for-byte — *risk: নেই*
-- [ ] **O6** Compare the two search boxes. Expect: the header search shows a
-  **সব তারিখ** tag and finds rows from *other* days; the list search shows an
-  **এই তালিকায়** tag (swapped for the × once you type) and only filters what is
-  already on screen; both placeholders are unchanged (Ctrl+K still works) —
+- [ ] **O6** Compare the two search boxes. Expect: the header placeholder is
+  exactly **🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)** and finds rows from
+  *other* days; the list placeholder is **এই তালিকায় খুঁজুন...** and only
+  filters what is already on screen, with the searchable fields in its
+  title/aria-label; neither box moved and Ctrl+K still focuses the header one —
   *risk: নেই*
-- [ ] **O7** Open **রিপোর্ট**. Expect: below the preset chips a new row
-  “এই রেঞ্জের এক্সপোর্ট:” with **PDF / CSV / Excel**; switch preset and confirm
-  the row's title shows the new range; the print output never contains these
-  buttons — *risk: নেই*
+- [ ] **O7** Open **রিপোর্ট**. Expect: below the date-mode switch a row
+  “এই হিসাবের এক্সপোর্ট:” with **PDF / CSV / Excel**; change the mode or preset
+  and confirm the row's button titles show the new window; the print output
+  never contains these buttons — *risk: নেই*
 - [ ] **O8** Open **বাকি তালিকা**. Expect: rows are grouped under date sections
   with a per-day due subtotal, the header line is still
   “Xটি ডিভাইস বাকি • মোট ৳Y”, বিল/জমা/বাকি values line up in one column, and
@@ -342,6 +344,27 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **O10** Add a `ZTEST` row inside the shown range and re-export. Expect: the
   new row is in the CSV/Excel row sheet and the daily breakdown; then archive it
   again — *risk: মাঝারি (adds a row)*
+- [ ] **O11** Press **নতুন সার্ভিস এন্ট্রি** in the service masthead on desktop,
+  then again on a phone. Expect: the page jumps to the entry form and the cursor
+  lands in কাস্টমারের নাম; on the phone the tabs switch to **নতুন কাজ** first;
+  রিপোর্ট / বাকি তালিকা / প্রিন্ট / টেকনিশিয়ান and the header did not move —
+  *risk: নেই*
+- [ ] **O12** Open **বাকি তালিকা**. Expect: a chip row **সব | পেন্ডিং | চলছে |
+  সম্পন্ন | ডেলিভারি | ফেরত** at the top, each with a live visit count in
+  parentheses and the same coloured dot as the service list; **সব** is pressed;
+  pressing **পেন্ডিং** keeps only pending visits and its count does not change;
+  **ফেরত** shows “এই অবস্থায় কোনো বাকি নেই।” with **সব দেখান**, because a
+  returned job never carries বাকি; on a phone the row scrolls sideways without
+  widening the dialog — *risk: নেই*
+- [ ] **O13** Open **রিপোর্ট**. Expect: **একদিন | তারিখ রেঞ্জ | সব তারিখ** above
+  the range; **একদিন** asks for one date, **তারিখ রেঞ্জ** keeps the old presets,
+  **সব তারিখ** covers the whole ledger. Below the cards a **কাস্টমার ডিটেইল
+  রিপোর্ট** table lists তারিখ / বিল নং / কাস্টমার / ফোন / মডেল / সমস্যা /
+  টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি / ফেরত; a returned row shows its ফেরত
+  amount and return date with বাকি ৳0, and no খরচ/IMEI/parts-shop ever appears.
+  Export PDF/CSV/Excel and confirm the file name, totals and rows follow the
+  selected mode (সব তারিখ → `MAHER-Report-all.*`) — *risk: মাঝারি (downloads
+  files)*
 
 ---
 

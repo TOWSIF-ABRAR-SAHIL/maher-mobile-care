@@ -34,6 +34,10 @@ export function downloadBlob(blob: Blob, fileName: string): void {
 export interface ReportData {
   from: string;
   to: string;
+  /** Human window label used in the file's header ("2026-10-01 – 2026-10-27"). */
+  label: string;
+  /** File-name stamp: the window (`from_to`) or `all` for the whole ledger. */
+  stamp: string;
   summary: MonthlySummary;
   /** Every active row of the window (client-capped by the caller). */
   rows: ServiceDTO[];
@@ -87,7 +91,8 @@ export function summaryRows(s: MonthlySummary): [string, number][] {
 
 const ROW_HEADER = [
   "আইডি", "তারিখ", "কাস্টমার", "ফোন", "মডেল", "টেকনিশিয়ান", "সমস্যা",
-  "অবস্থা", "বিল", "জমা", "বাকি", "ডেলিভারি তারিখ", "গ্রুপ আইডি",
+  "অবস্থা", "বিল", "জমা", "বাকি", "ফেরত", "ফেরত তারিখ", "ডেলিভারি তারিখ",
+  "গ্রুপ আইডি",
 ];
 
 function rowValues(r: ServiceDTO): (string | number)[] {
@@ -103,6 +108,9 @@ function rowValues(r: ServiceDTO): (string | number)[] {
     r.totalBill,
     r.advance,
     r.due,
+    // Refund is the returned advance only; nothing cost/IMEI/notes related.
+    r.status === "Returned" ? r.refundAmount : 0,
+    r.status === "Returned" && r.returnedAt ? dhakaDateKey(r.returnedAt) : "",
     r.deliveryDate ? dhakaDateKey(r.deliveryDate) : "",
     r.groupId ?? "",
   ];
@@ -112,7 +120,7 @@ function rowValues(r: ServiceDTO): (string | number)[] {
 export function buildReportCsv(d: ReportData): Blob {
   const L: string[] = [];
   L.push(csvCell("MAHER MOBILE CARE — ওভারঅল রিপোর্ট"));
-  L.push([csvCell("তারিখ পরিসীমা"), csvCell(`${d.from} – ${d.to}`)].join(","));
+  L.push([csvCell("তারিখ পরিসীমা"), csvCell(d.label)].join(","));
   L.push("");
   L.push([csvCell("সারাংশ"), csvCell("পরিমাণ")].join(","));
   for (const [label, value] of summaryRows(d.summary)) {
@@ -144,7 +152,7 @@ export function buildReportXlsx(d: ReportData): Blob {
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.aoa_to_sheet([
-      ["তারিখ পরিসীমা", `${d.from} – ${d.to}`],
+      ["তারিখ পরিসীমা", d.label],
       [],
       ["সারাংশ", "পরিমাণ"],
       ...summaryRows(d.summary),

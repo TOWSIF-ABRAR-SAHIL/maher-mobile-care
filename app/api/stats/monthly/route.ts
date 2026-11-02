@@ -19,11 +19,17 @@ export async function GET(req: NextRequest) {
   try {
     // Custom range (?from=&to=) for month/custom reports. Falls back to the
     // legacy 30-day window ending on ?date= so old callers keep working.
+    // ?all=1 is the report's whole-ledger mode: every active row, no window.
     const fromParam = req.nextUrl.searchParams.get("from");
     const toParam = req.nextUrl.searchParams.get("to");
+    const all = req.nextUrl.searchParams.get("all") === "1";
     let from: string;
     let to: string;
-    if (fromParam !== null || toParam !== null) {
+    let bounds: { start: Date; end: Date } | null = null;
+    if (all) {
+      from = "";
+      to = "";
+    } else if (fromParam !== null || toParam !== null) {
       if (!isDateKey(fromParam) || !isDateKey(toParam)) {
         return NextResponse.json(
           { error: "সঠিক তারিখ দিন (YYYY-MM-DD)" },
@@ -56,6 +62,7 @@ export async function GET(req: NextRequest) {
           { status: 400 }
         );
       }
+      bounds = dhakaRangeBounds(from, to);
     } else {
       const dateParam = req.nextUrl.searchParams.get("date");
       if (dateParam !== null && !isDateKey(dateParam)) {
@@ -66,11 +73,14 @@ export async function GET(req: NextRequest) {
       }
       to = dateParam || dhakaDateKey(new Date());
       from = shiftKey(to, -29); // 30-day window ending on the selected date
+      bounds = dhakaRangeBounds(from, to);
     }
-    const { start, end } = dhakaRangeBounds(from, to);
 
     const rows = await prisma.service.findMany({
-      where: { archived: false, serviceDate: { gte: start, lte: end } },
+      where: {
+        archived: false,
+        ...(bounds ? { serviceDate: { gte: bounds.start, lte: bounds.end } } : {}),
+      },
       select: {
         totalBill: true,
         advance: true,

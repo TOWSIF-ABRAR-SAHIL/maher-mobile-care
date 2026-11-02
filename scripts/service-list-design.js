@@ -594,7 +594,7 @@ let browser = null;
     "D7",
     "search keeps its id/placeholder and has a working clear button",
     searchState.value === PAID_NAME &&
-      searchState.placeholder === "নাম, আইডি, ফোন, মডেল বা সমস্যা খুঁজুন..." &&
+      searchState.placeholder === "এই তালিকায় খুঁজুন..." &&
       searchState.clear &&
       restoredRows === visitList.length,
     JSON.stringify({ searchState, restoredRows })

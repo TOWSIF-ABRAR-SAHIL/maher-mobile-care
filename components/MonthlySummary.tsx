@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { dayLabel } from "@/lib/dhaka";
 import { formatTaka } from "@/lib/utils";
-import type { MonthlySummary, RangeMode } from "@/lib/types";
+import type { ListMode, MonthlySummary, RangeMode } from "@/lib/types";
 
 const PRESETS: { mode: RangeMode; label: string }[] = [
   { mode: "rolling30", label: "বিগত ৩০ দিন" },
@@ -12,8 +12,20 @@ const PRESETS: { mode: RangeMode; label: string }[] = [
   { mode: "lastMonth", label: "গত মাস" },
 ];
 
-/** Card label prefix follows the active window mode. */
-function unitLabel(mode: RangeMode, kind: string): string {
+/** Report window kinds. `range` is the default, matching the old report. */
+const DATE_MODES: { mode: ListMode; label: string }[] = [
+  { mode: "day", label: "একদিন" },
+  { mode: "range", label: "তারিখ রেঞ্জ" },
+  { mode: "all", label: "সব তারিখ" },
+];
+
+/**
+ * Card label prefix follows the report window: one day, the whole ledger, or
+ * the range (whose preset wording stays exactly as before).
+ */
+function unitLabel(dateMode: ListMode, mode: RangeMode, kind: string): string {
+  if (dateMode === "day") return `এই দিনে মোট ${kind}`;
+  if (dateMode === "all") return `সব তারিখে মোট ${kind}`;
   if (mode === "thisMonth" || mode === "lastMonth") return `মাসে মোট ${kind}`;
   if (mode === "custom") return `মোট ${kind}`;
   return `৩০ দিনে মোট ${kind}`;
@@ -23,6 +35,10 @@ export function MonthlySummary({
   summary,
   range,
   mode,
+  dateMode,
+  day,
+  onDateMode,
+  onDayChange,
   onPreset,
   onCustom,
   loading,
@@ -34,6 +50,13 @@ export function MonthlySummary({
   summary: MonthlySummary | null;
   range: { from: string; to: string };
   mode: RangeMode;
+  /** Report window kind: একদিন / তারিখ রেঞ্জ / সব তারিখ. */
+  dateMode: ListMode;
+  /** The workspace's selected day — the window when `dateMode === "day"`. */
+  day: string;
+  /** Present only on the dialog instance; the print copy has no switch. */
+  onDateMode?: (mode: ListMode) => void;
+  onDayChange?: (day: string) => void;
   onPreset: (mode: RangeMode) => void;
   onCustom: (from: string, to: string) => void;
   loading: boolean;
@@ -49,16 +72,67 @@ export function MonthlySummary({
   onExportExcel?: () => void;
 }) {
   const canExport = !!onExportPdf && !!onExportCsv && !!onExportExcel;
+  const windowLabel =
+    dateMode === "all"
+      ? "সব তারিখ (পুরো হিসাব)"
+      : dateMode === "day"
+        ? `একদিন — ${dayLabel(day)}`
+        : `${dayLabel(range.from)} – ${dayLabel(range.to)}`;
   return (
     <section className="rounded-xl border border-maher-border bg-card p-3 shadow-card sheen sm:p-4 print:bg-white print:text-black">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground sm:text-base print:text-black">
         <BarChart3 className="h-4 w-4 text-maher-navy print:text-gray-600" />
         ওভারঅল রিপোর্ট (Monthly Summary)
       </h2>
+      {onDateMode ? (
+        <div
+          data-testid="report-date-mode"
+          role="group"
+          aria-label="রিপোর্টের তারিখ মোড"
+          className="mb-2 flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-maher-border bg-maher-surface/60 p-1 print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {DATE_MODES.map((m) => {
+            const active = dateMode === m.mode;
+            return (
+              <button
+                key={m.mode}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onDateMode(m.mode)}
+                className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  active
+                    ? "bg-maher-navy text-white shadow-sm"
+                    : "text-muted-foreground hover:bg-white hover:text-maher-navy"
+                }`}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <p className="mb-3 text-xs text-muted-foreground print:text-gray-600">
-        {dayLabel(range.from)} – {dayLabel(range.to)}
+        {windowLabel}
       </p>
-      <div className="mb-3 flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center">
+      {dateMode === "day" && onDayChange ? (
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground print:hidden">
+          <label htmlFor="report-day" className="font-medium">
+            রিপোর্টের তারিখ
+          </label>
+          <Input
+            id="report-day"
+            type="date"
+            aria-label="রিপোর্টের তারিখ"
+            value={day}
+            onChange={(e) => {
+              if (e.target.value) onDayChange(e.target.value);
+            }}
+            className="h-8 w-auto min-w-0 border-input bg-white text-xs text-foreground"
+          />
+        </div>
+      ) : null}
+      {dateMode === "range" ? (
+        <div className="mb-3 flex flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex flex-wrap gap-1.5">
           {PRESETS.map((p) => (
             <button
@@ -93,19 +167,20 @@ export function MonthlySummary({
             className="h-8 w-full min-w-0 border-input bg-white text-xs text-foreground sm:w-auto"
           />
         </div>
-      </div>
+        </div>
+      ) : null}
       {/* Export row: NOT `mb-3` — laneA's chip helper selects `div.mb-3 button`. */}
       {canExport ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-maher-border pb-3 pt-3 print:hidden">
           <span className="text-xs text-muted-foreground">
-            এই রেঞ্জের এক্সপোর্ট:
+            এই হিসাবের এক্সপোর্ট:
           </span>
           <Button
             size="sm"
             variant="outline"
             data-testid="export-pdf"
             aria-label="রিপোর্ট PDF ডাউনলোড"
-            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট PDF (বাংলা, প্রিন্ট-ফ্রেন্ডলি)`}
+            title={`${windowLabel} রিপোর্ট PDF (বাংলা, প্রিন্ট-ফ্রেন্ডলি)`}
             disabled={loading || !summary || !!exporting}
             onClick={onExportPdf}
             className="h-8 bg-white"
@@ -118,7 +193,7 @@ export function MonthlySummary({
             variant="outline"
             data-testid="export-csv"
             aria-label="রিপোর্ট CSV ডাউনলোড"
-            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট CSV (Excel-সমর্থিত, বাংলা)`}
+            title={`${windowLabel} রিপোর্ট CSV (Excel-সমর্থিত, বাংলা)`}
             disabled={loading || !summary || !!exporting}
             onClick={onExportCsv}
             className="h-8 bg-white"
@@ -131,7 +206,7 @@ export function MonthlySummary({
             variant="outline"
             data-testid="export-excel"
             aria-label="রিপোর্ট Excel ডাউনলোড"
-            title={`${dayLabel(range.from)} – ${dayLabel(range.to)} রিপোর্ট Excel (.xlsx, ৩ শিট)`}
+            title={`${windowLabel} রিপোর্ট Excel (.xlsx, ৩ শিট)`}
             disabled={loading || !summary || !!exporting}
             onClick={onExportExcel}
             className="h-8 bg-white"
@@ -154,7 +229,7 @@ export function MonthlySummary({
         ) : (
           <>
             <div className="rounded-lg border border-maher-border bg-maher-surface/60 p-3 text-center print:border-gray-300 print:bg-white">
-              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(mode, "কাজ")}</p>
+              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(dateMode, mode, "কাজ")}</p>
               <p className={`mt-1 text-xl font-bold ${
                 summary.count > 0
                   ? "text-maher-navy print:text-blue-700"
@@ -169,7 +244,7 @@ export function MonthlySummary({
               ) : null}
             </div>
             <div className="rounded-lg border border-maher-border bg-maher-surface/60 p-3 text-center print:border-gray-300 print:bg-white">
-              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(mode, "বিল")}</p>
+              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(dateMode, mode, "বিল")}</p>
               <p className={`mt-1 text-xl font-bold ${
                 summary.bill > 0
                   ? "text-maher-done print:text-green-700"
@@ -185,7 +260,7 @@ export function MonthlySummary({
               </p>
             </div>
             <div className="rounded-lg border border-maher-border bg-maher-surface/60 p-3 text-center print:border-gray-300 print:bg-white">
-              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(mode, "খরচ")}</p>
+              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(dateMode, mode, "খরচ")}</p>
               <p className={`mt-1 text-xl font-bold ${
                 summary.expense + summary.damageLoss > 0
                   ? "text-maher-money print:text-orange-700"
@@ -200,7 +275,7 @@ export function MonthlySummary({
               ) : null}
             </div>
             <div className="rounded-lg border border-maher-border bg-maher-surface/60 p-3 text-center print:border-gray-300 print:bg-white">
-              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(mode, "বাকি")}</p>
+              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(dateMode, mode, "বাকি")}</p>
               <p className={`mt-1 text-xl font-bold ${
                 summary.due > 0
                   ? "text-maher-due-ink print:text-red-700"
@@ -210,7 +285,7 @@ export function MonthlySummary({
               </p>
             </div>
             <div className="rounded-lg border border-maher-border bg-maher-surface/60 p-3 text-center print:border-gray-300 print:bg-white">
-              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(mode, "লাভ (Profit)")}</p>
+              <p className="text-sm text-muted-foreground print:text-gray-600">{unitLabel(dateMode, mode, "লাভ (Profit)")}</p>
               <p className={`mt-1 text-xl font-bold ${
                 summary.profit > 0
                   ? "text-maher-done print:text-green-700"

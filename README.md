@@ -422,10 +422,15 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   into the form. `Ctrl+K` focuses the input; below 1280px a 🔍 icon opens a top
   search sheet. The header compacts to three rows on phones/tablets and two rows
   from 1280px, so it never eats half the screen. Keyboard `←`/`→` changes day
-  (not while typing). The two search boxes state their scope: the header
-  search carries a **সব তারিখ** tag (global, any day), the service list's own
-  search carries an **এই তালিকায়** tag (filters only what is on screen) — both
-  via `data-scope` + `aria-label`/`title`, with placeholders untouched.
+  (not while typing). The two search boxes state their scope: the header search
+  keeps `🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)` and searches every day;
+  the service list's own search reads **এই তালিকায় খুঁজুন...** and filters only
+  what is on screen, with the searchable fields in its `aria-label`/`title`.
+  Both carry `data-scope`.
+- **নতুন সার্ভিস এন্ট্রি** — a primary button in the service masthead scrolls to
+  the entry form and puts the cursor in কাস্টমারের নাম; on a phone it switches
+  to the form tab first. The header chrome and the other masthead actions stay
+  where they were.
 - Technician cards — one per **active** technician (card count follows the
   roster), plus a greyed “নিষ্ক্রিয়” card for anyone who has left the shop but
   still has work on the shown date, so the day's cards always add up to
@@ -438,14 +443,36 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   refund memo. Only the service table's cost codes stay private. A returned job
   adds `+Nটি ফেরত` under কাজ; returned bills are excluded from বিল, বাকি and
   technician totals.
-- **📊 ওভারঅল রিপোর্ট** opens the range report in a dialog: presets
-  (বিগত ৩০ দিন / এই মাস / গত মাস) + custom থেকে–পর্যন্ত, then cards কাজ / বিল /
-  খরচ / **বাকি** / লাভ + date-range label. বিল shows **জমা** as a hint.
-  লাভ = বিল − খরচ − ড্যামেজ ক্ষতি. Returned refunds are grouped by the job's
-  service date (not the later refund timestamp).
-  Presets follow the navbar date;
-  custom stays fixed. Close with X or Escape. Dashboard printing still carries
-  the same report via a hidden print-only copy.
+- **📊 ওভারঅল রিপোর্ট** opens the report dialog: **একদিন / তারিখ রেঞ্জ / সব
+  তারিখ** (রেঞ্জ default), presets (বিগত ৩০ দিন / এই মাস / গত মাস) + custom
+  থেকে–পর্যন্ত in range mode, then cards কাজ / বিল / খরচ / **বাকি** / লাভ + the
+  window label. বিল shows **জমা** as a hint. লাভ = বিল − খরচ − ড্যামেজ ক্ষতি.
+  Returned refunds are grouped by the job's service date (not the later refund
+  timestamp). Below the cards a **কাস্টমার ডিটেইল রিপোর্ট** table lists every
+  row of the chosen window — তারিখ / বিল নং / কাস্টমার / ফোন / মডেল / সমস্যা /
+  টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি / ফেরত — with returned rows showing
+  their refund + return date and বাকি ৳0; 300 rows render first and **আরও
+  দেখুন** appends the rest. Presets follow the navbar date; custom stays fixed.
+  Close with X or Escape. Dashboard printing still carries the same report via a
+  hidden print-only copy.
+- **💰 বাকি তালিকা** — a status chip row **সব / পেন্ডিং / চলছে / সম্পন্ন /
+  ডেলিভারি / ফেরত** above the dues list, with live visit counts and the same
+  coloured dots as the service list. Chips filter the visit rows; **ফেরত**
+  explains that a returned job never carries বাকি and offers **সব দেখান**. The
+  row scrolls inside itself on narrow screens without widening the dialog.
+- **Report export (post-v1.2.0)** — the report dialog has an
+  “এই হিসাবের এক্সপোর্ট:” row with **PDF / CSV / Excel**, always following the
+  chosen window (একদিন / তারিখ রেঞ্জ / সব তারিখ) and its presets. All three
+  build locally (offline, no cloud): CSV is UTF-8 with BOM + formula-injection
+  guards, Excel is a real `.xlsx` with 3 sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস)
+  via SheetJS, PDF slices a print-friendly Bengali report sheet across multiple
+  A4 pages (first 1000 detail rows; CSV/Excel carry the rest). Every format
+  carries the totals plus a per-day breakdown and row-level list — including
+  **ফেরত / ফেরত তারিখ** for returned jobs — capped at 5000 rows with a warning;
+  per-row খরচ/IMEI/refund-damage notes are never exported (only the aggregate
+  খরচ appears). Files are stamped `MAHER-Report-<from>_<to>.*`, or
+  `MAHER-Report-all.*` for সব তারিখ. Export buttons exist only in the dialog,
+  never in the print copy.
 - **List date modes (post-v1.2.0)** — a segmented switch on the service list
   masthead: **একদিন** (default, byte-identical legacy view with the day nav and
   `←`/`→` keys), **তারিখ রেঞ্জ** (শুরু/শেষ pickers; starts as the selected day
@@ -456,16 +483,6 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   renders at most 300 rows per page behind a **মোট X টি** notice with an
   **আরও দেখুন** append button — day mode's `{date, services}` response is
   unchanged for every existing caller.
-- **Report export (post-v1.2.0)** — the report dialog has an
-  “এই রেঞ্জের এক্সপোর্ট:” row with **PDF / CSV / Excel**, always following the
-  active preset/range. All three build locally (offline, no cloud): CSV is
-  UTF-8 with BOM + formula-injection guards, Excel is a real `.xlsx` with 3
-  sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস) via SheetJS, PDF slices a
-  print-friendly Bengali report sheet across multiple A4 pages. Every format
-  carries the totals plus a per-day breakdown and row-level list, capped at
-  5000 rows with a warning; per-row খরচ/IMEI/refund-damage notes are never
-  exported (only the aggregate খরচ appears). Export buttons exist only in the
-  dialog, never in the print copy.
 - Entry form — all fields, **বাকি auto-calculates live**, Bengali digits
   accepted (`১৬০০` → 1600). Shop expense accepts a number or a keypad code
   (`*J#` → 1500). A plain number is converted to the canonical code on save
@@ -847,7 +864,7 @@ exist in the schema but are not yet driven by app code.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (171 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (174 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -884,7 +901,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  171 steps, including a real PDF print/read-back; run it on the target PC after
+  174 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
@@ -1028,6 +1045,22 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   refresh/backup/restore rail on the desk. The old Home dashboard widgets are
   retired; reports, dues, technicians and all data/backup behaviour are
   unchanged (`laneLanding.js`).
+- **One-click new entry** — **নতুন সার্ভিস এন্ট্রি** at the front of the
+  service masthead scrolls to the form and focuses কাস্টমারের নাম (on a phone it
+  switches to the form tab first); the header chrome and every other action stay
+  exactly where they were.
+- **Dues status chips** — **সব / পেন্ডিং / চলছে / সম্পন্ন / ডেলিভারি / ফেরত**
+  with live visit counts and the service list's pill styling. Chips filter the
+  visit rows, the row scrolls inside itself on narrow screens, and the **ফেরত**
+  empty state explains that a returned job never carries due (with **সব দেখান**
+  reset).
+- **Report date modes + customer detail** — the report dialog switches between
+  **একদিন / তারিখ রেঞ্জ / সব তারিখ** (রেঞ্জ default) and gains a paged
+  **কাস্টমার ডিটেইল রিপোর্ট** table below the summary cards (তারিখ / বিল নং /
+  কাস্টমার / ফোন / মডেল / সমস্যা / টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি /
+  ফেরত), including refund + return date for returned rows;
+  `/api/stats/monthly` gained an additive `?all=1` window. The print copy keeps
+  the old preset UI and never renders the mode switch.
 - **Premium Glossy blue-and-white redesign** — every briefed design value
   lives in `app/globals.css`: royal `#1748D8` primary, `#2863F5` secondary,
   `#568BFF` gloss, `#F3F7FD` page, white cards, `#17233D`/`#71819B` text,
@@ -1048,14 +1081,15 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   responses are byte-identical, and multi-date rows render under per-day
   section headers (table + cards), newest day first.
 - **Report export (PDF / CSV / Excel)** — the report dialog's new
-  “এই রেঞ্জের এক্সপোর্ট:” row always follows the active preset/range and
-  builds every file locally: `lib/export.ts` (BOM CSV + SheetJS `.xlsx` with
-  সারাংশ/দৈনিক ভাঙতি/সার্ভিস sheets) and `lib/report-pdf.ts` +
+  “এই হিসাবের এক্সপোর্ট:” row follows the chosen window (একদিন / তারিখ রেঞ্জ /
+  সব তারিখ) and builds every file locally: `lib/export.ts` (BOM CSV + SheetJS
+  `.xlsx` with সারাংশ/দৈনিক ভাঙতি/সার্ভিস sheets) and `lib/report-pdf.ts` +
   `components/report/ReportDocument.tsx` (canvas-sliced multi-page Bengali
-  A4). Rows are paged from the range scope up to 5000 with a cap warning;
-  expense amounts, write-off flags, IMEI and damage/refund notes never enter
-  a file (only the aggregate খরচ does). New `xlsx@0.18.5` dependency —
-  write-only, bundled, never parses untrusted input.
+  A4). Detail rows now carry **ফেরত / ফেরত তারিখ**, files are stamped
+  `MAHER-Report-all.*` for সব তারিখ, and the PDF caps its detail table at 1000
+  rows (CSV/Excel carry up to 5000); expense amounts, write-off flags, IMEI and
+  damage/refund notes never enter a file (only the aggregate খরচ does). New
+  `xlsx@0.18.5` dependency — write-only, bundled, never parses untrusted input.
 
 **Changed**
 - **Numbered device cards, one shared visit money block** — the first card is
@@ -1078,11 +1112,11 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **Stage/overdue summary line dropped** from the desk — the daily cards and
   list already carry the figures; `GET /api/services/overdue` still exists but
   the UI no longer calls it.
-- **Search scopes are explicit** — the header search shows a **সব তারিখ** tag
-  and `data-scope="global"` (searches every day), the list search shows an
-  **এই তালিকায়** tag and `data-scope="local"` (filters only rendered rows),
-  both with `aria-label`/`title` explaining the scope. Neither placeholder
-  changed.
+- **Search scopes are explicit** — the header search keeps its exact
+  placeholder and `data-scope="global"` (searches every day), while the list
+  search now reads **এই তালিকায় খুঁজুন...** with `data-scope="local"` (filters
+  only rendered rows) and the searchable fields in `aria-label`/`title`. The
+  redundant scope tag was removed; neither search moved or merged.
 - **বাকি তালিকা grouped by date** — visits are folded into per-day sections
   with a per-day due subtotal (newest first) on desktop and mobile; বিল/জমা/
   বাকি align in one column while keeping the exact `বিল: ৳X` text, density is
@@ -1110,7 +1144,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 **Tests** — default suites 13 → **17** (312 → **370** checks: +portable-keep,
 +laneG, +laneLanding, +header-calendar, Lane D 28→29, Lane F 8→22), design
 suite runs separately (19 checks). Full `npm test`: **17/17, 370/370, 0 FAIL**,
-live DB hash unchanged.
+live DB hash unchanged; `MANUAL-TEST.md` grew to **174** steps (new O11–O13).
 
 ### v1.2.0 — grouped visits, delivery dates & safer returns
 
