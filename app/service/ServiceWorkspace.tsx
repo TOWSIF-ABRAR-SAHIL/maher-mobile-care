@@ -846,64 +846,80 @@ export function ServiceWorkspace({
           onSearchReceipt={openReceipt}
         />
 
-        <PageLead actions={
-            <>
-              <Button
-                type="button"
-                size="sm"
-                data-testid="new-service-entry"
-                onClick={newEntry}
-                title="নতুন কাজের ফর্মে যান — কাস্টমারের নাম লিখে শুরু করুন"
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                নতুন সার্ভিস এন্ট্রি
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="open-report"
-                onClick={() => setShowReport(true)}
-                className="bg-white"
-              >
-                <BarChart3 className="mr-1 h-4 w-4" />
-                রিপোর্ট
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="open-dues"
-                onClick={() => setShowDues(true)}
-                className="border-maher-due/30 bg-white text-maher-due hover:bg-maher-due/10"
-              >
-                {duesButtonLabel}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={print}
-                className="bg-white"
-              >
-                <Printer className="mr-1 h-4 w-4" />
-                প্রিন্ট
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="open-technician-manager"
-                onClick={() => setShowTechManager(true)}
-                className="bg-white"
-                title="টেকনিশিয়ান যোগ / বদল / ডিলিট"
-              >
-                <Settings className="mr-1 h-4 w-4" />
-                টেকনিশিয়ান
-              </Button>
-            </>
-          }
-        />
+        {/* On xl the action row and the backup strip share one grid: the strip
+            slots into the empty left column instead of adding another
+            full-width row. Below xl the two simply stack. */}
+        <div className="flex flex-col gap-2 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end xl:gap-x-6 xl:gap-y-2">
+          <PageLead
+            className="xl:contents"
+            actions={
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  data-testid="new-service-entry"
+                  onClick={newEntry}
+                  title="নতুন কাজের ফর্মে যান — কাস্টমারের নাম লিখে শুরু করুন"
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  নতুন সার্ভিস এন্ট্রি
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="open-report"
+                  onClick={() => setShowReport(true)}
+                  className="bg-white"
+                >
+                  <BarChart3 className="mr-1 h-4 w-4" />
+                  রিপোর্ট
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="open-dues"
+                  onClick={() => setShowDues(true)}
+                  className="border-maher-due/30 bg-white text-maher-due hover:bg-maher-due/10"
+                >
+                  {duesButtonLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={print}
+                  className="bg-white"
+                >
+                  <Printer className="mr-1 h-4 w-4" />
+                  প্রিন্ট
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="open-technician-manager"
+                  onClick={() => setShowTechManager(true)}
+                  className="bg-white"
+                  title="টেকনিশিয়ান যোগ / বদল / ডিলিট"
+                >
+                  <Settings className="mr-1 h-4 w-4" />
+                  টেকনিশিয়ান
+                </Button>
+              </>
+            }
+          />
+          <ServiceUtilities
+            className="xl:col-start-1 xl:row-start-2"
+            lastBackup={lastBackup}
+            refreshing={refreshing}
+            backingUp={backingUp}
+            onRefresh={refreshAll}
+            onBackup={() => void backup()}
+            onRestore={() => setShowRestore(true)}
+          />
+        </div>
 
         <DailySummary
           stats={stats}
@@ -913,15 +929,6 @@ export function ServiceWorkspace({
           date={date}
           today={dhakaDateKey(new Date())}
           scope={statsScope}
-        />
-
-        <ServiceUtilities
-          lastBackup={lastBackup}
-          refreshing={refreshing}
-          backingUp={backingUp}
-          onRefresh={refreshAll}
-          onBackup={() => void backup()}
-          onRestore={() => setShowRestore(true)}
         />
 
         <div className="hidden print:block" data-testid="monthly-print">

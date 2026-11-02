@@ -347,7 +347,7 @@ lib/
                              daily breakdown, privacy column policy
   report-pdf.ts            → multi-page A4 report PDF (canvas-sliced capture)
   backup.ts                → shared localStorage keys/stamps for auto-backup
-  use-last-backup.ts       → hook: last-backup stamp (AutoBackup + utilities rail)
+  use-last-backup.ts       → hook: last-backup stamp (AutoBackup + backup strip)
   use-media-query.ts       → hook: CSS media query, SSR-safe (defaultValue first)
   generated/               → Prisma client output (generated, do not edit)
 prisma/
@@ -606,6 +606,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   full CSV download (Excel-safe Bengali) + “সর্বশেষ ব্যাকআপ” label. The CSV and
   snapshots carry the return/refund/damage, write-off, group and delivery
   columns.
+- The Service desk keeps **ব্যাকআপ** one click away in the compact strip beside
+  the stamp; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…** live behind **⋯ → ডেটা ও
+  ব্যাকআপ**, and the strip says **ডেটা এই PC-তে** instead of an online/offline
+  badge. Restore still uses its own 2-step confirmation dialog.
 - Auto snapshot on first load of the day (staff can forget safely).
 - Restore dialog = snapshot list + 2-step confirm. A restore first writes
   `backups/safety-*.db` (newest **5** kept) holding your *current* data, so a
@@ -864,7 +868,7 @@ exist in the schema but are not yet driven by app code.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (174 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (175 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -901,7 +905,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  174 steps, including a real PDF print/read-back; run it on the target PC after
+  175 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
   code-only cost column and the return/refund/damage ledger.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
@@ -1041,8 +1045,9 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   write them yet (foundation for sale-to-stock).
 - **Service desk is the landing page** — `/` redirects to `/service` and
   forwards bookmarked `date`/`edit`/`receipt`/`status`/`mode` params; the
-  navbar now has exactly two destinations (সার্ভিস / স্টক), with a slim
-  refresh/backup/restore rail on the desk. The old Home dashboard widgets are
+  navbar now has exactly two destinations (সার্ভিস / স্টক), with a compact
+  backup strip on the desk and refresh/restore behind the **⋯ ডেটা ও ব্যাকআপ**
+  dialog. The old Home dashboard widgets are
   retired; reports, dues, technicians and all data/backup behaviour are
   unchanged (`laneLanding.js`).
 - **One-click new entry** — **নতুন সার্ভিস এন্ট্রি** at the front of the
@@ -1092,6 +1097,13 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   `xlsx@0.18.5` dependency — write-only, bundled, never parses untrusted input.
 
 **Changed**
+- **Compact backup strip** — the old full-width রিফ্রেশ/ব্যাকআপ/রিস্টোর rail
+  became a slim strip under the service actions. **ব্যাকআপ** stays one click
+  away next to **সর্বশেষ ব্যাকআপ**; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…**
+  moved into the **⋯ → ডেটা ও ব্যাকআপ** dialog, so restore still asks for its
+  second confirmation click. The misleading online/offline badge is gone — the
+  strip states **ডেটা এই PC-তে**. Testids, snapshot/CSV backup and every API
+  stayed unchanged.
 - **Numbered device cards, one shared visit money block** — the first card is
   always ডিভাইস ১ (add up to eight one at a time from an inline control); each
   card keeps only model, problem and an optional bill (+ IMEI and its own

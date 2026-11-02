@@ -29,10 +29,11 @@ of this checklist **byte-identical** — see step L3.
 
 ## 🛑 Pre-test — do not skip
 
-- [ ] **0.1** Press **ব্যাকআপ**. Expect: toast "ব্যাকআপ হয়েছে", a CSV downloads, header shows "সর্বশেষ ব্যাকআপ" — *risk: নেই*
+- [ ] **0.1** Press **ব্যাকআপ** in the compact strip next to **সর্বশেষ ব্যাকআপ**. Expect: toast "ব্যাকআপ হয়েছে", a CSV downloads, the strip's stamp updates — *risk: নেই*
 - [ ] **0.2** Open the `backups/` folder. Expect: a new `maher-*.db` file — *risk: নেই*
 - [ ] **0.3** Count the files in `backups/`. Expect: 36 → 37 — *risk: নেই*
 - [ ] **0.4** Open `http://127.0.0.1:3000`. Expect: dashboard loads and "টেকনিশিয়ান অনুযায়ী" is visible — *risk: নেই*
+- [ ] **0.5** Open **⋯** beside **ব্যাকআপ**. Expect: the **ডেটা ও ব্যাকআপ** dialog shows the last-backup stamp, **ডেটা এই PC-তে**, and **এখনই ব্যাকআপ / রিফ্রেশ / ব্যাকআপ থেকে রিস্টোর…**; no অনলাইন/অফলাইন badge remains. Close it — *risk: নেই*
 
 ---
 
@@ -187,9 +188,9 @@ of this checklist **byte-identical** — see step L3.
 
 > Run this only after 0.1–0.3 succeeded. You are about to replace live data.
 
-- [ ] **I1** Press **ব্যাকআপ**. Expect: server snapshot + CSV download + toast — *risk: মাঝারি*
+- [ ] **I1** Press **ব্যাকআপ** in the strip. Expect: server snapshot + CSV download + toast — *risk: মাঝারি*
 - [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
-- [ ] **I3** Click **Restore**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
+- [ ] **I3** Open **⋯ → ব্যাকআপ থেকে রিস্টোর…**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
 - [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
 - [ ] **I5** Close the dialog instead of clicking **নিশ্চিত?** again (there is no cancel button — the second click is what executes). Expect: nothing changes — *risk: নেই*
 - [ ] **I6** Add a fresh `ZTEST99` entry, then Restore an older snapshot. Expect: `ZTEST99` **disappears** and the earlier data returns — *risk: সবচেয়ে বেশি*

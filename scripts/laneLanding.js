@@ -284,7 +284,11 @@ let browser = null;
     timeout: 15000,
   });
 
-  // ---------- L4: refresh hits the existing day endpoint ----------
+  // ---------- L4: refresh (behind the data menu) hits the day endpoint ----------
+  await page.click('[data-testid="service-data-menu"]');
+  await page.waitForSelector('[data-testid="service-refresh"]', {
+    timeout: 15000,
+  });
   const refreshed = await Promise.all([
     page.waitForResponse(
       (res) =>
@@ -293,6 +297,10 @@ let browser = null;
     ),
     page.click('[data-testid="service-refresh"]'),
   ]).then(([res]) => res.ok());
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="service-data-dialog"]'),
+    { polling: 100, timeout: 10000 }
+  );
   await sleep(300);
   check("L4", "service refresh reloads the day", refreshed);
 
@@ -340,17 +348,23 @@ let browser = null;
   );
 
   // ---------- L6: restore still requires its confirmation click ----------
+  await page.click('[data-testid="service-data-menu"]');
+  await page.waitForSelector('[data-testid="service-restore"]', {
+    timeout: 15000,
+  });
   await page.click('[data-testid="service-restore"]');
   await page.waitForFunction(
     () =>
-      document
-        .querySelector('[role="dialog"]')
-        ?.textContent?.includes("ব্যাকআপ থেকে ফিরিয়ে আনুন"),
+      [...document.querySelectorAll('[role="dialog"]')].some((dlg) =>
+        dlg.textContent?.includes("ব্যাকআপ থেকে ফিরিয়ে আনুন")
+      ),
     { polling: 200, timeout: 15000 }
   );
   await page.waitForFunction(
     () => {
-      const dlg = document.querySelector('[role="dialog"]');
+      const dlg = [...document.querySelectorAll('[role="dialog"]')].find((d) =>
+        d.textContent?.includes("ব্যাকআপ থেকে ফিরিয়ে আনুন")
+      );
       return !!dlg &&
         [...dlg.querySelectorAll("button")].some(
           (b) => b.textContent.trim() === "Restore"
@@ -359,7 +373,9 @@ let browser = null;
     { polling: 200, timeout: 15000 }
   );
   await page.evaluate(() => {
-    const dlg = document.querySelector('[role="dialog"]');
+    const dlg = [...document.querySelectorAll('[role="dialog"]')].find((d) =>
+      d.textContent?.includes("ব্যাকআপ থেকে ফিরিয়ে আনুন")
+    );
     const btn = dlg
       ? [...dlg.querySelectorAll("button")].find(
           (b) => b.textContent.trim() === "Restore"
@@ -369,15 +385,15 @@ let browser = null;
   });
   await page.waitForFunction(
     () =>
-      document
-        .querySelector('[role="dialog"]')
-        ?.textContent?.includes("নিশ্চিত?"),
+      [...document.querySelectorAll('[role="dialog"]')].some((dlg) =>
+        dlg.textContent?.includes("নিশ্চিত?")
+      ),
     { polling: 200, timeout: 10000 }
   );
-  const armed = await page.evaluate(
-    () =>
-      document.querySelector('[role="dialog"]')?.textContent?.includes("নিশ্চিত?") ??
-      false
+  const armed = await page.evaluate(() =>
+    [...document.querySelectorAll('[role="dialog"]')].some((dlg) =>
+      dlg.textContent?.includes("নিশ্চিত?")
+    )
   );
   await closeDialog();
   check("L6", "restore opens from Service and asks for confirmation", armed);
