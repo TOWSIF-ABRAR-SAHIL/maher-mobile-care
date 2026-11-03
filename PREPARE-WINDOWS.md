@@ -117,7 +117,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **17 suites, 370 checks**, live data er hash-o same ache.
+suite pass koreche — **17 suites, 373 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -168,7 +168,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **370/370 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **373/373 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa

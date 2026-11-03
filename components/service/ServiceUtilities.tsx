@@ -100,7 +100,7 @@ export function ServiceUtilities({
           onClick={onBackup}
           disabled={backingUp}
           className="h-7 gap-1 border-maher-navy/25 bg-white px-2 text-[11px] text-maher-navy hover:border-maher-navy/40 hover:bg-maher-blue-soft/60 hover:text-maher-navy"
-          title="ডেটাবেস snapshot + CSV ডাউনলোড"
+          title="ডেটাবেস snapshot + সাজানো Excel ডাউনলোড"
         >
           {backingUp ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -147,7 +147,12 @@ export function ServiceUtilities({
               {lastBackup ?? "এখনো ব্যাকআপ হয়নি"}
             </p>
             <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-              স্ন্যাপশট ও CSV — দুটোই এই PC-তে জমা থাকে, ইন্টারনেট লাগে না।
+              স্ন্যাপশট backups ফোল্ডারে জমা হয়, আর একটি সাজানো Excel ফাইল
+              ডাউনলোডে আসে — ইন্টারনেট লাগে না।
+            </p>
+            <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+              Excel-এ সারসংক্ষেপ, সার্ভিস তালিকা, দৈনিক হিসাব, পণ্য স্টক আর
+              সম্পূর্ণ ডেটা — আলাদা আলাদা শিটে।
             </p>
           </div>
 
@@ -166,7 +171,7 @@ export function ServiceUtilities({
               )}
               এখনই ব্যাকআপ
               <span className="ml-auto text-[10px] font-normal text-white/70">
-                snapshot + CSV
+                snapshot + Excel
               </span>
             </Button>
 

@@ -3,7 +3,7 @@
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 17 suites, 370 checks (see README §7);
+- **Automated coverage:** `npm test` → 17 suites, 373 checks (see README §7);
   the design contract runs separately → `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → 19 checks. E13–E20 below cover the return/refund and damage-loss
   ledger; B7/B7b, E1 and L2 pin the automatic expense codes and the two
@@ -29,7 +29,7 @@ of this checklist **byte-identical** — see step L3.
 
 ## 🛑 Pre-test — do not skip
 
-- [ ] **0.1** Press **ব্যাকআপ** in the compact strip next to **সর্বশেষ ব্যাকআপ**. Expect: toast "ব্যাকআপ হয়েছে", a CSV downloads, the strip's stamp updates — *risk: নেই*
+- [ ] **0.1** Press **ব্যাকআপ** in the compact strip next to **সর্বশেষ ব্যাকআপ**. Expect: toast "ব্যাকআপ হয়েছে — Excel কপি নামছে", an `.xlsx` file downloads, the strip's stamp updates — *risk: নেই*
 - [ ] **0.2** Open the `backups/` folder. Expect: a new `maher-*.db` file — *risk: নেই*
 - [ ] **0.3** Count the files in `backups/`. Expect: 36 → 37 — *risk: নেই*
 - [ ] **0.4** Open `http://127.0.0.1:3000`. Expect: dashboard loads and "টেকনিশিয়ান অনুযায়ী" is visible — *risk: নেই*
@@ -136,7 +136,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **E16** Create a completed `ZTEST` row: bill `1500`, advance `1500`; add damage loss `500` through ⚖️. Expect: its customer bill still shows ৳1500 / ৳1500 / ৳0 with the **PAID** seal; the damage loss appears only in the internal খরচ/লাভ report — *risk: মাঝারি*
 - [ ] **E17** Open 🧾 **বিল প্রিন্ট** on the returned row. Expect: the amber banner **“কাজটি সম্পন্ন হয়নি — মোবাইল ফেরত দেওয়া হয়েছে”**, a **ফেরত দেওয়া হয়েছে** line for ৳500, and **no PAID seal**. Search the paper for the damage note/amount: neither appears — *risk: নেই*
 - [ ] **E18** Click ✏️ on the returned row. Expect: the form opens, but **বিল / জমা / বাকি / অবস্থা** are read-only. Change the model or problem and save; expect a success toast while the bill, জমা, status **ফেরত** and refund stay unchanged. The ⚖️ damage tab still saves a correction — *risk: নেই*
-- [ ] **E19** Press **ব্যাকআপ**, open the CSV in Excel, and check the header. Expect: `damageLoss`, `damageNote`, `returnedAt`, `refundAmount`, `refundNote`, `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` are present, and the returned row has its refund/damage/write-off values — *risk: মাঝারি*
+- [ ] **E19** Press **ব্যাকআপ**, open the `.xlsx` in Excel, and open the **সম্পূর্ণ ডেটা (অডিট)** sheet. Expect: `damageLoss`, `damageNote`, `returnedAt`, `refundAmount`, `refundNote`, `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` are present, and the returned row has its refund/damage/write-off values — *risk: মাঝারি*
 - [ ] **E20** Restore the snapshot from E19. Expect: the returned status, refund amount and damage loss all come back; a pre-v1.1.2 snapshot (if available) still restores, with those fields `0`/blank. If the snapshot has a **plain-number** shop expense, the restored row must show a code and keep the same amount; restore must never expose or erase the number. *risk: সবচেয়ে বেশি*
 
 ---
@@ -188,8 +188,8 @@ of this checklist **byte-identical** — see step L3.
 
 > Run this only after 0.1–0.3 succeeded. You are about to replace live data.
 
-- [ ] **I1** Press **ব্যাকআপ** in the strip. Expect: server snapshot + CSV download + toast — *risk: মাঝারি*
-- [ ] **I2** Open the CSV in Excel. Expect: Bengali correct (BOM), all columns present (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
+- [ ] **I1** Press **ব্যাকআপ** in the strip. Expect: server snapshot + Excel workbook download + toast — *risk: মাঝারি*
+- [ ] **I2** Open the `.xlsx` in Excel. Expect: Bengali correct; sheets **সারসংক্ষেপ / সার্ভিস তালিকা / দৈনিক হিসাব / পণ্য স্টক / টেকনিশিয়ান / সম্পূর্ণ ডেটা (অডিট)**; frozen, filterable navy header; date/currency columns formatted; daily total row matches the report; the audit sheet has every column (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`, `imei`, `saleRef`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
 - [ ] **I3** Open **⋯ → ব্যাকআপ থেকে রিস্টোর…**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
 - [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
 - [ ] **I5** Close the dialog instead of clicking **নিশ্চিত?** again (there is no cancel button — the second click is what executes). Expect: nothing changes — *risk: নেই*
@@ -250,7 +250,7 @@ of this checklist **byte-identical** — see step L3.
 - [ ] **M8** Refund an unfinished row that has a shop cost and damage loss. Expect: the refund tab asks **খরচ হয়নি — বাদ দিন** vs **খরচ হয়েছে — ক্ষতি হিসেবে রাখুন**, and **ফেরত দিন** stays disabled until you choose. Choose **খরচ হয়নি — বাদ দিন** — *risk: মাঝারি*
 - [ ] **M9** Inspect that returned row and the daily/monthly খরচ/লাভ. Expect: the code and amount are still on the row with a grey **বাতিল** badge, but the parts cost is excluded from reports/profit; the damage loss is still included. Switching the choice back to **রাখুন** (or refunding another row that way) keeps the cost as a loss — *risk: মাঝারি*
 - [ ] **M10** Press the header **খরচ দেখান**. Expect: every row's decoded amount appears at once and the button becomes **খরচ লুকান**. Hide them, then click one row's own eye: only that row appears, for about 10 seconds. Customer bill/PDF still shows none of it — *risk: নেই*
-- [ ] **M11** Press **ব্যাকআপ** and open the CSV. Expect: `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` columns exist; the grouped rows share a `groupId`, the delivered row has a `deliveredAt`, and the written-off row says `YES` — *risk: মাঝারি*
+- [ ] **M11** Press **ব্যাকআপ** and open the **সম্পূর্ণ ডেটা (অডিট)** sheet. Expect: `expenseWrittenOff`, `groupId`, `deliveryDate` and `deliveredAt` columns exist; the grouped rows share a `groupId`, the delivered row has a `deliveredAt`, and the written-off row says `YES` — *risk: মাঝারি*
 - [ ] **M12** Restore that snapshot and reopen the grouped/returned rows. Expect: group badge, expected/actual dates and write-off badge all return; an older pre-v1.2.0 snapshot still restores, with those fields blank/`0`/`false` — *risk: সবচেয়ে বেশি*
 
 ---

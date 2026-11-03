@@ -39,7 +39,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint and typecheck pass on it). The current 370-check regression (and
+(build, lint and typecheck pass on it). The current 373-check regression (and
 the earlier v1.2.0 312-check run) also ran on **Node 24.15.0 / npm 11.12.1**
 on the Windows build host.
 
@@ -278,7 +278,8 @@ app/
     parts-shops/route.ts   → GET ?all=true parts-shop names for the form datalist
     stats/route.ts         → GET ?date= / ?from=&to= / ?all=1 daily + per-technician totals
     stats/monthly/route.ts → GET ?date= (rolling 30d) or ?from=&to= range
-    backup/route.ts        → GET = CSV download, POST = DB snapshot + prune
+    backup/route.ts        → GET = CSV or Excel workbook (?format=xlsx),
+                              POST = DB snapshot + prune
     backup/list/route.ts   → GET = snapshot list
     backup/restore/route.ts→ POST = restore snapshot (atomic + column-validated)
 components/
@@ -343,8 +344,12 @@ lib/
   contact.ts               → WhatsApp/phone message text
   shop.ts                  → shop name/address/phone (receipt + footer source)
   receipt-pdf.ts           → client-side receipt PDF file name + download
+  download.ts              → shared Blob → browser download helper
   export.ts                → report export builders (BOM CSV + SheetJS xlsx),
                              daily breakdown, privacy column policy
+  backup-workbook.ts       → server-side Excel backup workbook (ExcelJS):
+                             summary, service list, daily, stock, roster,
+                             archive and full audit sheets
   report-pdf.ts            → multi-page A4 report PDF (canvas-sliced capture)
   backup.ts                → shared localStorage keys/stamps for auto-backup
   use-last-backup.ts       → hook: last-backup stamp (AutoBackup + backup strip)
@@ -512,7 +517,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   that stamp, so a stale handover date can never print.
 - **IMEI (optional, post-v1.2.0)** — every device row can carry an IMEI
   (max 32 chars, stored exactly as typed). It is internal: the list and the
-  customer receipt never show it, but it is included in the CSV backup. The
+  customer receipt never show it, but it is included in the backup export
+  (Excel audit sheet and CSV). The
   former device-lock fields are gone from the form entirely — unlock
   credentials are not stored anywhere, and lock fields posted by an API client
   are ignored (`laneG.js` pins both rules).
@@ -605,9 +611,12 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 **Safety:**
 - Delete = archive (soft). Archive view (all dates) + 1-click restore.
 - Backup button = server snapshot (`backups/maher-*.db`, newest **30** kept) +
-  full CSV download (Excel-safe Bengali) + “সর্বশেষ ব্যাকআপ” label. The CSV and
-  snapshots carry the return/refund/damage, write-off, group and delivery
-  columns.
+  a real **Excel workbook** download (Bengali headers, frozen/filterable
+  headers, date/currency formats, totals) + “সর্বশেষ ব্যাকআপ” label. The
+  workbook has **সারসংক্ষেপ / সার্ভিস তালিকা / দৈনিক হিসাব / পণ্য স্টক /
+  টেকনিশিয়ান / আর্কাইভ / সম্পূর্ণ ডেটা (অডিট)** sheets; the audit sheet and
+  `GET /api/backup` CSV carry every column, including return/refund/damage,
+  write-off, group, delivery, IMEI and `saleRef`.
 - The Service desk keeps **ব্যাকআপ** one click away in the compact strip beside
   the stamp; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…** live behind **⋯ → ডেটা ও
   ব্যাকআপ**, and the strip says **ডেটা এই PC-তে** instead of an online/offline
@@ -728,7 +737,8 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   only when status becomes `Delivered` (cleared on reopen/return), so reports
   never confuse an expected date with an actual handover.
 - **IMEI is internal; lock data does not exist.** `imei` is optional per device
-  (≤ 32 chars, stored exactly as typed), travels in the CSV backup but never in
+  (≤ 32 chars, stored exactly as typed), travels in the backup export (Excel
+  audit sheet and CSV) but never in
   the service list or a receipt, and a blank edit clears it. Device-unlock
   credentials are not stored anywhere — no column, no export, no log — and lock
   fields posted by an API client are ignored (`laneG.js` pins both rules).
@@ -801,7 +811,7 @@ One table, `Service`, 28 columns (grouped below by role):
 | `deliveredAt` | DateTime? | actual handover timestamp, server-owned from the `Delivered` status |
 | `serviceDate` | DateTime | stored ~midday +06:00 so day bucketing is unambiguous |
 | `archived` | Boolean | soft-delete flag; hides the row from every list and stat |
-| `createdAt`, `updatedAt` | DateTime | audit trail (used by the CSV export) |
+| `createdAt`, `updatedAt` | DateTime | audit trail (used by the backup export) |
 
 There is deliberately **no payment-history table** — `advance` is the single
 payment figure the shop records, and `refundAmount` is its return memo. A
@@ -848,9 +858,9 @@ exist in the schema but are not yet driven by app code.
   not match the expected schema is refused before any row is touched. The
   return/refund/damage/write-off/group/delivery columns are optional on restore,
   so pre-v1.1.2 snapshots still work and those fields become `NULL`/`0`/`false`.
-- Same-disk backup does NOT protect against disk death/theft — copy the CSV
-  (or `backups/`) to a pen drive periodically. Browser code cannot write to
-  pen drives automatically (security rule) — this one step stays manual.
+- Same-disk backup does NOT protect against disk death/theft — copy the Excel
+  backup (or `backups/`) to a pen drive periodically. Browser code cannot write
+  to pen drives automatically (security rule) — this one step stays manual.
 - Daily rule for staff: morning auto-backup happens alone; **press Backup
   once before closing shop.**
 - Shop data never enters git: `.env`, `prisma/dev.db`, `backups/`, `node_modules`,
@@ -865,7 +875,7 @@ exist in the schema but are not yet driven by app code.
 
 ## 7. Test status
 
-`npm test` runs the full regression (17 suites, 370 checks) entirely on
+`npm test` runs the full regression (17 suites, 373 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
@@ -886,13 +896,13 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Current full run (post-v1.2.0): **17/17 suites, 370/370 checks** — Launcher
+- Current full run (post-v1.2.0): **17/17 suites, 373/373 checks** — Launcher
   decide 14 · Portable keep 10 · Expense upgrade 10 · E2E 9+13 · Lane A 26 ·
   Lanes B+C 24 · Lane D 29 · Lane E 18 · Lane F 22 · Lane G 18 · Lane Landing
-  10 · API 59 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
+  10 · API 62 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
   0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
 - The Counter Ledger design contract runs **separately** (it is deliberately
-  not in the default 370): `MAHER_TEST_SUITES=scripts/service-list-design.js
+  not in the default 373): `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → **19/19 checks**.
 - v1.2.0 release run (historical): **13/13 suites, 312/312 checks** — Launcher
   14 · Expense upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 ·
@@ -1034,8 +1044,9 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 
 **Added**
 - **IMEI per device** — optional field on every device card (max 32 chars,
-  stored exactly as typed), carried in the CSV backup, never shown in the
-  service list or on a receipt. `20261026140000_add_inventory` added the
+  stored exactly as typed), carried in the Excel audit sheet and CSV backup,
+  never shown in
+  the service list or on a receipt. `20261026140000_add_inventory` added the
   column; `laneG.js` (18 checks) pins its rules.
 - **Inventory foundation** — models `ProductCategory`, `Product`, `SaleItem`
   and `StockMovement` plus new routes `GET/POST /api/products`,
@@ -1045,6 +1056,13 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   manager dialog; creating a product logs an `OPENING` `StockMovement`.
   `SaleItem` and `Service.saleRef` exist in the schema but app code does not
   write them yet (foundation for sale-to-stock).
+- **Organised Excel backup** — the **ব্যাকআপ** button now downloads a real
+  `.xlsx` workbook instead of a flat CSV: **সারসংক্ষেপ / সার্ভিস তালিকা /
+  দৈনিক হিসাব / পণ্য স্টক / টেকনিশিয়ান / আর্কাইভ / সম্পূর্ণ ডেটা (অডিট)**
+  sheets with Bengali headers, frozen/filterable header rows, date and
+  currency formats, per-day and grand totals. Built server-side with ExcelJS
+  (`lib/backup-workbook.ts`); the `.db` snapshot stays the real backup, and
+  `GET /api/backup` keeps the CSV for scripts (now with `saleRef`).
 - **Service desk is the landing page** — `/` redirects to `/service` and
   forwards bookmarked `date`/`edit`/`receipt`/`status`/`mode` params; the
   navbar now has exactly two destinations (সার্ভিস / স্টক), with a compact
@@ -1486,7 +1504,7 @@ the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
 `prisma/dev.db` byte-identical. The current run (post-v1.2.0) is **17/17
-suites, 370/370 checks** plus the separately-run design contract (19 checks);
+suites, 373/373 checks** plus the separately-run design contract (19 checks);
 the earlier v1.1.2 packaged window was also driven by hand for the shop test
 above. Since v1.2.0 the package was rebuilt on Windows with the shop database
 preserved across rebuilds (`portable-keep` suite): `out/MAHER/` is 122.3 MB and

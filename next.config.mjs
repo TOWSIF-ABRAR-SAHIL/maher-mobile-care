@@ -12,8 +12,10 @@ const nextConfig = {
   // scripts/build-portable.mjs deletes those during packaging so no developer
   // shop data ever ships to a client. Do not relax that check.
   // better-sqlite3 is a native module — keep it out of the webpack bundle.
+  // exceljs is a large server-only workbook writer; externalizing keeps the
+  // API route bundle small and lets the standalone trace copy it intact.
   experimental: {
-    serverComponentsExternalPackages: ["better-sqlite3"],
+    serverComponentsExternalPackages: ["better-sqlite3", "exceljs"],
   },
 };
 

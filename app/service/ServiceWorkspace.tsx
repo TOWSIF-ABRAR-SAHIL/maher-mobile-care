@@ -643,7 +643,7 @@ export function ServiceWorkspace({
       const data = await collectReport();
       if (!data) return;
       const stamp = data.stamp;
-      const { downloadBlob } = await import("@/lib/export");
+      const { downloadBlob } = await import("@/lib/download");
       if (kind === "csv") {
         const { buildReportCsv } = await import("@/lib/export");
         downloadBlob(buildReportCsv(data), `MAHER-Report-${stamp}.csv`);
@@ -696,14 +696,21 @@ export function ServiceWorkspace({
       if (!snap.ok || !sj?.ok) {
         throw new Error(sj?.error || "ব্যাকআপ করা যায়নি");
       }
-      const link = document.createElement("a");
-      link.href = "/api/backup";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      // The snapshot is the real backup: publish its stamp before the slower
+      // Excel download, so a download failure never hides a safe snapshot.
       publishBackup();
+      const res = await fetch("/api/backup?format=xlsx", { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error("স্ন্যাপশট হয়েছে, কিন্তু Excel ফাইল তৈরি করা যায়নি");
+      }
+      const blob = await res.blob();
+      const { downloadBlob } = await import("@/lib/download");
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const fileName =
+        /filename="([^"]+)"/.exec(disposition)?.[1] ?? "maher-backup.xlsx";
+      downloadBlob(blob, fileName);
       toast.success(
-        `ব্যাকআপ হয়েছে (${sj.file ?? ""}, ${sj.services ?? 0}টি রেকর্ড)`
+        `ব্যাকআপ হয়েছে — Excel কপি নামছে (${sj.services ?? 0}টি সার্ভিস)`
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "ব্যাকআপ করা যায়নি");

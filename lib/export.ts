@@ -19,18 +19,6 @@ export const csvCell = (v: unknown): string => {
   return `"${guard}${s.replace(/"/g, '""')}"`;
 };
 
-export function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 export interface ReportData {
   from: string;
   to: string;

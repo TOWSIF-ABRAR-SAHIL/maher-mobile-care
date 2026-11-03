@@ -304,23 +304,33 @@ let browser = null;
   await sleep(300);
   check("L4", "service refresh reloads the day", refreshed);
 
-  // ---------- L5: backup snapshot + CSV anchor + stamp ----------
+  // ---------- L5: backup snapshot + Excel download + stamp ----------
   await page.evaluate(() => {
-    window.__backupHref = null;
+    window.__backupDownload = null;
+    window.__backupFetch = null;
+    const originalFetch = window.fetch;
+    window.fetch = function (...args) {
+      const url = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
+      if (url.includes("/api/backup?format=xlsx")) window.__backupFetch = url;
+      return originalFetch(...args);
+    };
     const original = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
-      if (typeof this.href === "string" && this.href.includes("/api/backup")) {
-        window.__backupHref = this.href;
+      if (typeof this.download === "string" && this.download.endsWith(".xlsx")) {
+        window.__backupDownload = this.download;
         return;
       }
       return original.call(this);
     };
   });
   await page.click('[data-testid="service-backup"]');
-  await page.waitForFunction(() => typeof window.__backupHref === "string", {
-    polling: 200,
-    timeout: 20000,
-  });
+  await page.waitForFunction(
+    () => typeof window.__backupDownload === "string",
+    {
+      polling: 200,
+      timeout: 20000,
+    }
+  );
   await page.waitForFunction(
     () =>
       document
@@ -331,7 +341,8 @@ let browser = null;
   const backup = await page.evaluate(() => {
     const section = document.querySelector('[data-testid="service-utilities"]');
     return {
-      href: window.__backupHref,
+      download: window.__backupDownload,
+      fetch: window.__backupFetch,
       label: [...(section?.querySelectorAll("p") || [])].find((p) =>
         p.textContent.includes("সর্বশেষ ব্যাকআপ")
       )?.textContent,
@@ -340,9 +351,11 @@ let browser = null;
   console.log("reached L5", JSON.stringify(backup));
   check(
     "L5",
-    "backup toast stamp + CSV anchor update in place",
-    typeof backup.href === "string" &&
-      backup.href.includes("/api/backup") &&
+    "backup stamp + Excel workbook download update in place",
+    typeof backup.download === "string" &&
+      backup.download.startsWith("maher-backup-") &&
+      backup.download.endsWith(".xlsx") &&
+      typeof backup.fetch === "string" &&
       !!backup.label,
     JSON.stringify(backup)
   );

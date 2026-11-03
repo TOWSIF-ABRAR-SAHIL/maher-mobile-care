@@ -370,25 +370,35 @@ let browser = null;
     polling: 200,
     timeout: 30000,
   });
-  // Backup both snapshots and starts a CSV download. Let the browser
-  // download abort a later navigation in headless mode, so capture the anchor
-  // request instead of writing a file.
+  // Backup takes a database snapshot, then fetches the Excel workbook and
+  // downloads it. Capture both requests instead of writing a file in headless
+  // mode so a later navigation is never aborted by the download.
   await page.evaluate(() => {
-    window.__backupHref = null;
+    window.__backupDownload = null;
+    window.__backupFetch = null;
+    const originalFetch = window.fetch;
+    window.fetch = function (...args) {
+      const url = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
+      if (url.includes("/api/backup?format=xlsx")) window.__backupFetch = url;
+      return originalFetch(...args);
+    };
     const original = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
-      if (typeof this.href === "string" && this.href.includes("/api/backup")) {
-        window.__backupHref = this.href;
+      if (typeof this.download === "string" && this.download.endsWith(".xlsx")) {
+        window.__backupDownload = this.download;
         return;
       }
       return original.call(this);
     };
   });
   await page.click('[data-testid="service-backup"]');
-  await page.waitForFunction(() => typeof window.__backupHref === "string", {
-    polling: 200,
-    timeout: 20000,
-  });
+  await page.waitForFunction(
+    () => typeof window.__backupDownload === "string",
+    {
+      polling: 200,
+      timeout: 20000,
+    }
+  );
   await page.waitForFunction(
     () =>
       document
@@ -402,13 +412,18 @@ let browser = null;
         (p) => p.textContent.includes("সর্বশেষ ব্যাকআপ")
       )?.textContent
   );
-  const href = await page.evaluate(() => window.__backupHref);
+  const download = await page.evaluate(() => window.__backupDownload);
+  const fetched = await page.evaluate(() => window.__backupFetch);
   console.log("reached C1");
   check(
     "C1",
-    "backup toast + label",
-    !!lbl && typeof href === "string" && href.includes("/api/backup"),
-    `${lbl} | ${href}`
+    "backup toast + Excel workbook download",
+    !!lbl &&
+      typeof download === "string" &&
+      download.startsWith("maher-backup-") &&
+      download.endsWith(".xlsx") &&
+      typeof fetched === "string",
+    `${lbl} | ${download} | ${fetched}`
   );
 
   // Back to the service desk for the receipt / print checks below.

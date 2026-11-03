@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
 import { resolveBackupDir } from "@/lib/db-path";
 import { dhakaDateKey } from "@/lib/dhaka";
+import { buildBackupWorkbook } from "@/lib/backup-workbook";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,35 @@ const csvCell = (v: unknown): string => {
   return `"${guard}${s.replace(/"/g, '""')}"`;
 };
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
+    if (req.nextUrl.searchParams.get("format") === "xlsx") {
+      const [services, products, technicians] = await Promise.all([
+        prisma.service.findMany({ orderBy: { id: "asc" } }),
+        prisma.product.findMany({
+          include: { category: { select: { name: true } } },
+          orderBy: { name: "asc" },
+        }),
+        prisma.technician.findMany({ orderBy: { name: "asc" } }),
+      ]);
+      const generatedAt = new Date();
+      const workbook = await buildBackupWorkbook({
+        services,
+        products,
+        technicians,
+        generatedAt,
+      });
+      const day = dhakaDateKey(generatedAt);
+      return new NextResponse(new Uint8Array(workbook), {
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="maher-backup-${day}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const rows = await prisma.service.findMany({ orderBy: { id: "asc" } });
     const header = [
       "id", "date", "customer", "phone", "model", "technician",
@@ -41,7 +69,7 @@ export async function GET(_req: NextRequest) {
       "expense", "expenseAmount", "partsShop",
       "damageLoss", "damageNote", "returnedAt", "refundAmount", "refundNote",
       "expenseWrittenOff", "groupId", "deliveryDate", "deliveredAt", "imei",
-      "archived", "created", "updated",
+      "saleRef", "archived", "created", "updated",
     ];
     const lines = [header.join(",")];
     for (const r of rows) {
@@ -71,6 +99,7 @@ export async function GET(_req: NextRequest) {
           r.deliveryDate ? dhakaDateKey(r.deliveryDate) : "",
           r.deliveredAt ? new Date(r.deliveredAt).toISOString() : "",
           csvCell(r.imei ?? ""),
+          csvCell(r.saleRef ?? ""),
           r.archived ? "YES" : "",
           new Date(r.createdAt).toISOString(),
           new Date(r.updatedAt).toISOString(),
@@ -84,6 +113,7 @@ export async function GET(_req: NextRequest) {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="maher-backup-${day}.csv"`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (err) {

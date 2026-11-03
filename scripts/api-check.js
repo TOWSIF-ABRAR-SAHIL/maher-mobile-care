@@ -2,6 +2,7 @@
  * Run directly only against MAHER_TEST_URL (npm test sets it).
  */
 const Database = require("better-sqlite3");
+const ExcelJS = require("exceljs");
 const fs = require("node:fs");
 const path = require("node:path");
 const { requireTestEnv } = require("./test-support");
@@ -239,6 +240,63 @@ async function main() {
     if (formulaRow.ok) createdIds.push(formulaRow.body.id);
     const csv = await fetch(`${BASE}/api/backup`).then((r) => r.text());
     check("C1", "CSV neutralizes formula cells", csv.includes(`"'${formulaName}"`), "guarded cell");
+
+    // The visible backup download is a styled, multi-sheet workbook; the CSV
+    // endpoint stays available for scripts and older bookmarks.
+    const xlsxRes = await fetch(`${BASE}/api/backup?format=xlsx`);
+    const xlsxBuf = Buffer.from(await xlsxRes.arrayBuffer());
+    const xlsxType = xlsxRes.headers.get("content-type") || "";
+    let xlsxBook = null;
+    try {
+      xlsxBook = new ExcelJS.Workbook();
+      await xlsxBook.xlsx.load(xlsxBuf);
+    } catch {
+      xlsxBook = null;
+    }
+    const sheetNames = xlsxBook ? xlsxBook.worksheets.map((w) => w.name) : [];
+    const expectedSheets = [
+      "সারসংক্ষেপ",
+      "সার্ভিস তালিকা",
+      "দৈনিক হিসাব",
+      "সম্পূর্ণ ডেটা (অডিট)",
+    ];
+    check(
+      "C2",
+      "XLSX backup is a real workbook with organised sheets",
+      xlsxRes.ok &&
+        xlsxType.includes("spreadsheetml") &&
+        expectedSheets.every((name) => sheetNames.includes(name)),
+      JSON.stringify({ status: xlsxRes.status, type: xlsxType, sheets: sheetNames })
+    );
+
+    const serviceSheet = xlsxBook?.getWorksheet("সার্ভিস তালিকা");
+    const auditSheet = xlsxBook?.getWorksheet("সম্পূর্ণ ডেটা (অডিট)");
+    check(
+      "C3",
+      "XLSX service header is bold, frozen and filterable",
+      !!serviceSheet &&
+        serviceSheet.views?.[0]?.state === "frozen" &&
+        serviceSheet.getCell("A4").font?.bold === true &&
+        !!serviceSheet.autoFilter,
+      JSON.stringify({
+        view: serviceSheet?.views?.[0] ?? null,
+        bold: serviceSheet?.getCell("A4").font?.bold ?? null,
+        filter: serviceSheet?.autoFilter ?? null,
+      })
+    );
+
+    let formulaCell = null;
+    auditSheet?.eachRow((row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (cell.value === formulaName) formulaCell = cell;
+      });
+    });
+    check(
+      "C4",
+      "XLSX audit sheet keeps every service row as text (no formulas)",
+      !!formulaCell && typeof formulaCell.value === "string",
+      JSON.stringify({ found: !!formulaCell, value: formulaCell?.value ?? null })
+    );
 
     if (!BACKUP_DIR) throw new Error("MAHER_BACKUP_DIR is required for the malformed-restore test");
     const malformed = "safety-20000101-000000-001.db";

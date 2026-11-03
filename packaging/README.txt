@@ -14,6 +14,14 @@ CHALANO
 
 NOTUN (v1.2.0-er por)
 ---------------------
+- **ব্যাকআপ** button ekhon ekta gochano Excel (.xlsx) file dey — age chilo
+  ekta lamba CSV. File khulle alada alada sheet: **সারসংক্ষেপ** (mot bill/
+  joma/baki/khoroch/labh), **সার্ভিস তালিকা**, **দৈনিক হিসাব**, **পণ্য স্টক**,
+  **টেকনিশিয়ান**, দরকার hole **আর্কাইভ**, ar **সম্পূর্ণ ডেটা (অডিট)**.
+  Header atke thake (scroll korleo dekha jay), date/taka thik format-e,
+  majhe majhe rongin row. Asol backup tobuo `data\backups` folder-er
+  `maher-*.db` file — Excel file-ta shudhu pore dekhar jonno; oita diye
+  restore hoy na.
 - Puro app-e notun rokom design: royal blue header/button, sada card
   fakeska blue page-e. Bangla label sob age-r motoi — kichu badolini
   hoyni.
@@ -33,7 +41,8 @@ NOTUN (v1.2.0-er por)
   "ডিভাইস ১"-e likhen, baaki device-e na (nahole ek-i khoroch bar bar
   hisabe dhore nibe).
 - Device card-e ekhon "IMEI Number" field (32 okkhor porjonto, optional).
-  ETA list ba customer bill-e kokhono dekhay na, shudhu CSV backup-e thake.
+  ETA list ba customer bill-e kokhono dekhay na, shudhu backup-er Excel
+  **সম্পূর্ণ ডেটা (অডিট)** sheet ar CSV-e thake.
   Age chilo "Device Lock" (PIN/Pattern/Password) — oita purotai fela
   diyeche: kono lock field ekhon na, API-te lock pathaleo ignore hoy.
 
