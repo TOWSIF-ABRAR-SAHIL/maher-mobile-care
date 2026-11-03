@@ -261,9 +261,10 @@ of this checklist **byte-identical** — see step L3.
   (a bookmarked `?date=` / `?edit=` still applies), and the header shows exactly
   two destination links: **সার্ভিস** and **স্টক** — *risk: নেই*
 - [ ] **N2** Look over the whole page — header, cards, form panel, list panel,
-  footer. Expect: the Premium Glossy blue-and-white theme (royal blue chrome and
-  primary buttons, white cards on a pale blue page, soft blue shadows, rounded
-  corners) with **every Bengali label unchanged** — *risk: নেই*
+  footer. Expect: the Counter Ledger theme (graphite navy chrome and primary
+  buttons, white cards on a neutral paper page, quiet steel-blue accents, muted
+  forest/ochre/brick meaning colours, flat surfaces with soft neutral shadows,
+  rounded corners) with **every Bengali label unchanged** — *risk: নেই*
 - [ ] **N3** At 1920×1080 with 150% Windows zoom (1280×720 CSS), try to scroll
   the service list sideways. Expect: **no horizontal scrollbar anywhere** — all
   columns fit, and header, daily cards, list and footer share one container

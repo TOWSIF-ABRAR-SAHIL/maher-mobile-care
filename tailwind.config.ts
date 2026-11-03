@@ -63,15 +63,14 @@ const config: Config = {
         },
       },
       boxShadow: {
-        // Layered, blue-tinted lift for white work surfaces (subtle, not the
-        // default flat grey).
-        card: "0 1px 2px 0 rgb(23 72 216 / 0.05), 0 14px 30px -22px rgb(23 35 61 / 0.5)",
+        // Neutral, tight lift for white work surfaces — no blue glow.
+        card: "0 1px 2px 0 rgb(16 24 40 / 0.04), 0 12px 26px -22px rgb(16 24 40 / 0.35)",
         panel:
-          "0 1px 2px 0 rgb(23 72 216 / 0.04), 0 22px 48px -32px rgb(23 35 61 / 0.55)",
-        // Stat cards: a 2px gloss rail along the top edge plus the soft lift.
-        rail: "inset 0 2px 0 0 rgb(86 139 255 / 0.45), 0 1px 2px 0 rgb(23 72 216 / 0.05), 0 14px 30px -22px rgb(23 35 61 / 0.5)",
+          "0 1px 2px 0 rgb(16 24 40 / 0.035), 0 20px 44px -32px rgb(16 24 40 / 0.4)",
+        // Stat cards: a quiet navy hairline along the top edge plus the lift.
+        rail: "inset 0 2px 0 0 rgb(34 61 87 / 0.18), 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 12px 26px -22px rgb(16 24 40 / 0.35)",
         // Elevated white surfaces (dialogs, dropdowns).
-        lift: "0 1px 2px 0 rgb(23 72 216 / 0.06), 0 28px 60px -34px rgb(23 35 61 / 0.6)",
+        lift: "0 1px 2px 0 rgb(16 24 40 / 0.05), 0 24px 52px -30px rgb(16 24 40 / 0.45)",
       },
       borderRadius: {
         lg: "var(--radius)",

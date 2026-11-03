@@ -294,7 +294,7 @@ export function HeaderSearch({
         title="সব তারিখ থেকে খুঁজবে — শুধু দেখা তালিকার জন্য সার্ভিস তালিকার সার্চ ব্যবহার করুন"
         aria-keyshortcuts="Control+K"
         autoComplete="off"
-        className={`h-9 w-64 rounded-lg border-white/35 bg-white/95 text-foreground shadow-[0_4px_14px_-8px_rgb(9_30_110/0.8)] placeholder:text-muted-foreground focus-visible:border-white focus-visible:ring-2 focus-visible:ring-white/60 xl:w-80 ${
+        className={`h-9 w-64 rounded-lg border-white/30 bg-white/95 text-foreground shadow-[0_1px_2px_0_rgb(16_24_40/0.18)] placeholder:text-muted-foreground focus-visible:border-white focus-visible:ring-2 focus-visible:ring-white/60 xl:w-80 ${
           query.trim() ? "" : "pr-20"
         }`}
       />

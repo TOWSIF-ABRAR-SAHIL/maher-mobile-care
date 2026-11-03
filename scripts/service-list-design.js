@@ -273,7 +273,7 @@ let browser = null;
     timeout: 20000,
   });
 
-  // ---------- D1: the royal chrome is #1748D8, glossed with a gradient ----
+  // ---------- D1: the chrome is graphite navy #223D57, flat and calm -------
   const brand = await page.evaluate(() => {
     const header = document.querySelector('[data-testid="app-header"]');
     const root = getComputedStyle(document.documentElement);
@@ -298,18 +298,18 @@ let browser = null;
   });
   check(
     "D1",
-    "header chrome is royal #1748D8 under a gloss gradient with white contrast",
-    brand.token === "224.8 80.8% 46.9%" &&
-      brand.hover === "225.6 81.8% 38.8%" &&
-      brand.pageBg === "216 71.4% 97.3%" &&
-      brand.headerBg === "rgb(23, 72, 216)" &&
-      brand.headerGloss &&
+    "header chrome is graphite navy #223D57 with a flat finish and white contrast",
+    brand.token === "209.4 43.8% 23.7%" &&
+      brand.hover === "209.3 47.3% 17.8%" &&
+      brand.pageBg === "210 20% 96.1%" &&
+      brand.headerBg === "rgb(34, 61, 87)" &&
+      !brand.headerGloss &&
       brand.headerSheen &&
-      brand.contrast >= 6.5,
+      brand.contrast >= 7,
     JSON.stringify(brand)
   );
 
-  // ---------- D1b: white panels are glossy — hairline + top wash + lift ----
+  // ---------- D1b: white panels are flat paper — hairline + lift ----------
   const panel = await page.evaluate(() => {
     const el = document.querySelector('[data-testid="daily-services"]');
     if (!el) return null;
@@ -324,11 +324,11 @@ let browser = null;
   });
   check(
     "D1b",
-    "the service panel is white with a #E0E8F5 hairline, a blue top wash and a soft lift",
+    "the service panel is white with a #D9E0E7 hairline, a flat finish and a soft lift",
     !!panel &&
       panel.bg === "rgb(255, 255, 255)" &&
-      panel.border === "rgb(224, 232, 245)" &&
-      panel.wash &&
+      panel.border === "rgb(217, 224, 231)" &&
+      !panel.wash &&
       panel.lift &&
       ["12px", "14px", "16px"].includes(panel.radius),
     JSON.stringify(panel)
@@ -377,7 +377,7 @@ let browser = null;
       tabs.items.length === 6 &&
       tabs.items.every((item, i) => item.text === expectedTabs[i]) &&
       tabs.items[0].pressed === "true" &&
-      tabs.items[0].bg === "rgb(23, 72, 216)" &&
+      tabs.items[0].bg === "rgb(34, 61, 87)" &&
       tabs.items.slice(1).every((item) => item.pressed === "false"),
     JSON.stringify(tabs)
   );
@@ -770,10 +770,10 @@ let browser = null;
       typeof handed === "object" &&
       late.text.startsWith("⚠️") &&
       late.text.includes(yesterday) &&
-      late.color === "rgb(229, 72, 77)" &&
+      late.color === "rgb(178, 58, 58)" &&
       !dueTodayLine.text.includes("⚠️") &&
       dueTodayLine.text.includes(TODAY) &&
-      dueTodayLine.color !== "rgb(229, 72, 77)" &&
+      dueTodayLine.color !== "rgb(178, 58, 58)" &&
       handed.text.startsWith("✅") &&
       !handed.text.includes("⚠️"),
     JSON.stringify({ late, dueTodayLine, handed })

@@ -395,7 +395,7 @@ scripts/
   header-calendar.js       → the navbar calendar closes on the 2nd click (5)
   launcher-decide.test.js  → launcher reuse / takeover / refuse rules (14 checks)
   portable-keep.test.js    → a portable rebuild keeps the shop DB intact (10 checks)
-  service-list-design.js   → Premium Glossy design contract (19 checks) — kept OUT
+  service-list-design.js   → Counter Ledger design contract (19 checks) — kept OUT
                               of the default run; run it with MAHER_TEST_SUITES
                               =scripts/service-list-design.js npm test
   seed-maher.ts            → 16 sample entries (tsx)
@@ -516,12 +516,14 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   former device-lock fields are gone from the form entirely — unlock
   credentials are not stored anywhere, and lock fields posted by an API client
   are ignored (`laneG.js` pins both rules).
-- **Premium Glossy look (post-v1.2.0)** — the whole app is a blue-and-white
-  dashboard: brand blues `#1748D8`/`#2863F5`/`#568BFF` on white, ink `#17233D`
-  headings, `#71819B` secondary text, `#E0E8F5` hairlines, 12–16px card radii
-  and 150–200ms transitions; status tones stay green `#16A36A`, amber `#E89A16`
-  and red `#E5484D`. `scripts/service-list-design.js` (19 checks) pins the
-  service-list half of that contract.
+- **Counter Ledger look (post-v1.2.0)** — the whole app is a calm accounting
+  desk: graphite-navy chrome `#223D57` on flat surfaces (no gloss sweep), a
+  neutral paper page `#F3F5F7`, white cards, ink `#1F2A36` headings, `#5E6B78`
+  secondary text, `#D9E0E7` hairlines, 12–16px card radii and 150–200ms
+  transitions; meaning colours are muted forest `#2E7D5C`, bronze `#8A5A12`
+  and brick `#B23A3A` (ochre `#9A6714` for warnings).
+  `scripts/service-list-design.js` (19 checks) pins the service-list half of
+  that contract.
 - **স্টক page (`/products`)** — eyebrow “স্টক রুম”, title “প্রোডাক্ট ও
   ইনভেন্টরি”: product list with search, price/stock, the category manager
   dialog and low-stock warnings, all served from the live `ProductCategory` /
@@ -889,7 +891,7 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   Lanes B+C 24 · Lane D 29 · Lane E 18 · Lane F 22 · Lane G 18 · Lane Landing
   10 · API 59 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
   0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
-- The Premium Glossy design contract runs **separately** (it is deliberately
+- The Counter Ledger design contract runs **separately** (it is deliberately
   not in the default 370): `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → **19/19 checks**.
 - v1.2.0 release run (historical): **13/13 suites, 312/312 checks** — Launcher
@@ -1066,13 +1068,14 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   ফেরত), including refund + return date for returned rows;
   `/api/stats/monthly` gained an additive `?all=1` window. The print copy keeps
   the old preset UI and never renders the mode switch.
-- **Premium Glossy blue-and-white redesign** — every briefed design value
-  lives in `app/globals.css`: royal `#1748D8` primary, `#2863F5` secondary,
-  `#568BFF` gloss, `#F3F7FD` page, white cards, `#17233D`/`#71819B` text,
-  `#E0E8F5` hairlines, `#16A36A`/`#E89A16`/`#E5484D` meaning colours, the
-  12–16 / 9–11 / 8–10px radius ladder, soft blue-tinted shadows, plus
-  `.gloss-chrome` / `.sheen` / `.gloss-primary` component classes and a
-  `prefers-reduced-motion` kill-switch. DOM, testids and Bengali labels were
+- **Counter Ledger palette** — every design value lives in `app/globals.css`:
+  graphite navy `#223D57` chrome/primary, steel blue `#35648C`/`#2F5F88`
+  accents, `#7C96AD` quiet highlight, `#F3F5F7` page, white cards,
+  `#1F2A36`/`#5E6B78` text, `#D9E0E7` hairlines, `#2E7D5C`/`#9A6714`/`#B23A3A`
+  meaning colours, the 12–16 / 9–11 / 8–10px radius ladder, soft neutral
+  shadows, and flat `.gloss-chrome` / `.sheen` / `.gloss-primary` hooks (kept
+  for compatibility, no gradients). The row action rail is neutral at rest
+  instead of a six-colour rainbow. DOM, testids and Bengali labels were
   deliberately left untouched; `scripts/service-list-design.js` (19 checks)
   guards the service-list half of the contract.
 - **List date modes** — the service list masthead gains a segmented switch:

@@ -3,21 +3,21 @@ import { formatTaka, STATUS_BN } from "@/lib/utils";
 import { dailyBreakdown, summaryRows, type ReportData } from "@/lib/export";
 
 const cell: React.CSSProperties = {
-  border: "1px solid #E0E8F5",
+  border: "1px solid #D9E0E7",
   padding: "6px 10px",
   fontSize: 13,
 };
 const right: React.CSSProperties = { ...cell, textAlign: "right" };
 const headCell: React.CSSProperties = {
   ...cell,
-  background: "#F3F7FD",
+  background: "#F3F5F7",
   fontWeight: 700,
 };
 
 /* Detail table: 12 columns must fit one 720px sheet, so cells are 10px,
    fixed-width and ellipsized instead of wrapping. */
 const detailCell: React.CSSProperties = {
-  border: "1px solid #E0E8F5",
+  border: "1px solid #D9E0E7",
   padding: "3px 4px",
   fontSize: 10,
   lineHeight: 1.35,
@@ -27,7 +27,7 @@ const detailCell: React.CSSProperties = {
 };
 const detailHead: React.CSSProperties = {
   ...detailCell,
-  background: "#F3F7FD",
+  background: "#F3F5F7",
   fontWeight: 700,
 };
 const detailHeadRight: React.CSSProperties = {
@@ -57,7 +57,7 @@ const DETAIL_LIMIT = 1000;
 
 /**
  * Print-friendly Bengali report sheet, rendered off-screen only (never in a
- * page) and captured by `createReportPdf`. Keeps the Premium Glossy palette
+ * page) and captured by `createReportPdf`. Keeps the Counter Ledger palette
  * on white so the PDF reads like the app, and carries the same window as the
  * dialog (একদিন / তারিখ রেঞ্জ / সব তারিখ): totals + daily roll-up + rows.
  */
@@ -71,14 +71,14 @@ export function ReportDocument({ data }: { data: ReportData }) {
         width: "720px",
         padding: "28px",
         background: "#ffffff",
-        color: "#17233D",
+        color: "#1F2A36",
         lineHeight: 1.5,
       }}
     >
       <div style={{ fontSize: 20, fontWeight: 700 }}>
         MAHER MOBILE CARE — ওভারঅল রিপোর্ট
       </div>
-      <div style={{ fontSize: 13, color: "#71819B", marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: "#5E6B78", marginBottom: 16 }}>
         {data.from && data.to
           ? `${dayLabel(data.from)} – ${dayLabel(data.to)} • ${data.from} – ${data.to}`
           : data.label}
@@ -173,13 +173,13 @@ export function ReportDocument({ data }: { data: ReportData }) {
         </tbody>
       </table>
       {data.rows.length > detail.length ? (
-        <div style={{ marginTop: 4, fontSize: 10, color: "#71819B" }}>
+        <div style={{ marginTop: 4, fontSize: 10, color: "#5E6B78" }}>
           প্রথম {detail.length}টি রো দেখানো হয়েছে — বাকি{" "}
           {data.rows.length - detail.length}টি CSV/Excel ফাইলে আছে।
         </div>
       ) : null}
 
-      <div style={{ marginTop: 18, fontSize: 11, color: "#71819B" }}>
+      <div style={{ marginTop: 18, fontSize: 11, color: "#5E6B78" }}>
         তৈরি: {new Date().toLocaleString("bn-BD")} • অফলাইন রিপোর্ট • মার্জিত
         খরচের বিস্তারিত আলাদা (প্রাইভেসি) • MAHER MOBILE CARE
       </div>

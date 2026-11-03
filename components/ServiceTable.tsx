@@ -784,7 +784,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -797,7 +797,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="বিল প্রিন্ট"
-            className="h-10 w-10 text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="বিল প্রিন্ট"
             onClick={() => onReceipt(s)}
           >
@@ -808,7 +808,7 @@ export function ServiceTable({
               asChild
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+              className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
               title="WhatsApp (chat/call)"
             >
               <a
@@ -825,7 +825,7 @@ export function ServiceTable({
               variant="ghost"
               size="icon"
               aria-label="ফোন নম্বর নেই"
-              className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+              className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
               title="ফোন নম্বর নেই"
               disabled
             >
@@ -836,7 +836,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="PDF শেয়ার"
-            className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="PDF শেয়ার"
             disabled={!s.phone.trim() || sharingId !== null}
             onClick={() => void sharePdf(s)}
@@ -855,7 +855,7 @@ export function ServiceTable({
                 ? "ড্যামেজ ক্ষতি"
                 : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "ড্যামেজ ক্ষতি"
@@ -869,7 +869,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -883,7 +883,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -1039,7 +1039,7 @@ export function ServiceTable({
         variant="ghost"
         size="icon"
         aria-label="বিল প্রিন্ট"
-        className="h-10 w-10 text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+        className="h-10 w-10 text-muted-foreground hover:text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
         title="বিল প্রিন্ট"
         onClick={() => onReceipt(s)}
       >
@@ -1050,7 +1050,7 @@ export function ServiceTable({
           asChild
           variant="ghost"
           size="icon"
-          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="WhatsApp (chat/call)"
         >
           <a
@@ -1067,7 +1067,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফোন নম্বর নেই"
-          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফোন নম্বর নেই"
           disabled
         >
@@ -1078,7 +1078,7 @@ export function ServiceTable({
         variant="ghost"
         size="icon"
         aria-label="PDF শেয়ার"
-        className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+        className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
         title="PDF শেয়ার"
         disabled={!s.phone.trim() || sharingId !== null}
         onClick={() => void sharePdf(s)}
@@ -1100,7 +1100,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -1115,7 +1115,7 @@ export function ServiceTable({
             aria-label={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
@@ -1127,7 +1127,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -1141,7 +1141,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className="h-10 w-10 text-muted-foreground hover:text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >

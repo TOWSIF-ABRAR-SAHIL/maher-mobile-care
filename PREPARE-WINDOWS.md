@@ -26,8 +26,8 @@ Notun (v1.2.0-er por):
 - **landing = service desk**: `/` ekhon `/service`-e redirect kore (purono
   bookmark-er date/edit/receipt/status param-o thik jaygay jay); header-e
   duitai destination: **সার্ভিস** ar **স্টক**;
-- **Premium Glossy design**: royal blue header/button, sada card fakeska blue
-  page-e — kono label/testid badolini hoyni; design contract alada suite-e
+- **Counter Ledger design**: graphite-navy header/button, sada card neutral
+  paper page-e — kono label/testid badolini hoyni; design contract alada suite-e
   (19 check);
 - **service talika side-e scroll kore na**: container 1280 → 1600 → 1840px
   chole, form column 340px (1536px+ 380px), table-er floor 678px — 1280px

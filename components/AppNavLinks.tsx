@@ -23,7 +23,7 @@ export function AppNavLinks({ className }: { className?: string }) {
       aria-label="প্রধান মেনু"
       data-testid="header-nav"
       className={cn(
-        "grid w-full grid-cols-2 gap-1 rounded-xl border border-white/20 bg-white/10 p-1",
+        "grid w-full grid-cols-2 gap-1 rounded-xl border border-white/15 bg-white/[0.07] p-1",
         "md:inline-flex md:w-auto md:justify-self-center",
         className
       )}
@@ -41,8 +41,8 @@ export function AppNavLinks({ className }: { className?: string }) {
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
               "md:h-8 md:justify-start md:px-3.5 md:text-[13px]",
               active
-                ? "bg-white text-maher-navy shadow-[0_4px_10px_-6px_rgb(9_30_110/0.9),inset_0_1px_0_0_rgb(255_255_255/0.9)]"
-                : "text-white/85 hover:bg-white/15 hover:text-white"
+                ? "bg-white text-maher-navy shadow-[0_1px_2px_0_rgb(16_24_40/0.28)]"
+                : "text-white/80 hover:bg-white/10 hover:text-white"
             )}
           >
             <Icon className="h-4 w-4 shrink-0" aria-hidden />

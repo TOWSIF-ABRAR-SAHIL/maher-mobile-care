@@ -18,7 +18,7 @@ export function BrandMark({ className }: { className?: string }) {
         className
       )}
     >
-      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/25 bg-white/10 shadow-[inset_0_1px_0_0_rgb(255_255_255/0.35)]">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/[0.08]">
         <Smartphone className="h-[18px] w-[18px] text-white" />
         <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-maher-done ring-2 ring-maher-navy" />
       </span>
@@ -26,7 +26,7 @@ export function BrandMark({ className }: { className?: string }) {
         <span className="block truncate text-[15px] font-bold leading-tight tracking-[0.055em] text-white sm:text-base">
           {SHOP.name}
         </span>
-        <span className="block truncate text-[10px] leading-tight text-white/90 sm:text-[11px]">
+        <span className="block truncate text-[10px] leading-tight text-white/75 sm:text-[11px]">
           {SHOP.chromeTagline}
         </span>
       </span>
