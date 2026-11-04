@@ -416,4 +416,11 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    kore **ডেলিভারি** korun: actual date ashbe, abar **চলছে** korle actual date
    muchhe jabe.
 
+8. **ব্যাকআপ** chapo ar `.xlsx` file-ta Excel-e kholo: **সারসংক্ষেপ /
+   সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)** — tin-ti sheet. **সার্ভিস খাতা**-y
+   12 column (**ক্রম / তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা / টেকনিশিয়ান /
+   অবস্থা / বিল / জমা / বাকি / ডেলিভারি**), purono tarikh age, serial `1..N`,
+   niche **মোট (সক্রিয়)** row. `data\backups`-e `maher-*.db` snapshot-o
+   toiri hobe — oita-i asol backup.
+
 ---

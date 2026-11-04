@@ -909,8 +909,8 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   14 · Expense upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 ·
   Lane E 18 · Lane F 8 · API 59 · Technician 25 · Responsive 74 · Date-nav 4,
   0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged. Since then:
-  portable-keep, Lane G, Lane Landing and header-calendar were added (+43
-  checks) and Lane D/F grew (+15).
+  portable-keep, Lane G, Lane Landing and header-calendar were added (+43),
+  Lane D/F grew (+15), and API grew 59→63 (+4) — 374 today.
 - v1.1.4 historical run: **11/11 suites, 298/298 checks** — same suites before
   Lane F and the date-nav regression were added.
 - v1.1.3 historical run: **11/11 suites, 230/230 checks** — same suites with
@@ -1487,8 +1487,8 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **370** automated checks pass (17 suites), and the live database is
-  byte-identical.
+- All **370** automated checks passed at that run (374 today, see §7), and the
+  live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
 executed on Windows — `buildHost: win32-x64`, bundled Node 22.14.0,
