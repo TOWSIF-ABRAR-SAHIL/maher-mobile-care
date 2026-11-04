@@ -3,7 +3,7 @@
 A human walkthrough of the whole shop app, for when you want to confirm by hand
 that nothing is broken before a busy day.
 
-- **Automated coverage:** `npm test` → 17 suites, 373 checks (see README §7);
+- **Automated coverage:** `npm test` → 17 suites, 374 checks (see README §7);
   the design contract runs separately → `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → 19 checks. E13–E20 below cover the return/refund and damage-loss
   ledger; B7/B7b, E1 and L2 pin the automatic expense codes and the two
@@ -189,7 +189,7 @@ of this checklist **byte-identical** — see step L3.
 > Run this only after 0.1–0.3 succeeded. You are about to replace live data.
 
 - [ ] **I1** Press **ব্যাকআপ** in the strip. Expect: server snapshot + Excel workbook download + toast — *risk: মাঝারি*
-- [ ] **I2** Open the `.xlsx` in Excel. Expect: Bengali correct; sheets **সারসংক্ষেপ / সার্ভিস তালিকা / দৈনিক হিসাব / পণ্য স্টক / টেকনিশিয়ান / সম্পূর্ণ ডেটা (অডিট)**; frozen, filterable navy header; date/currency columns formatted; daily total row matches the report; the audit sheet has every column (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`, `imei`, `saleRef`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
+- [ ] **I2** Open the `.xlsx` in Excel. Expect: Bengali correct; exactly three sheets **সারসংক্ষেপ / সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)**; the খাতা is one flat table with the 12 columns **ক্রম / তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা / টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি / ডেলিভারি**, serial `1..N`, oldest date first; frozen, filterable navy header; date/currency columns formatted; returned rows visible but left out of the bottom **মোট (সক্রিয়)** row; the audit sheet has every column (including `damageLoss`, `returnedAt`, `refundAmount`, `expenseWrittenOff`, `groupId`, `deliveryDate`, `deliveredAt`, `imei`, `saleRef`), and no cell starting with `=1+1` executes as a formula — *risk: নেই*
 - [ ] **I3** Open **⋯ → ব্যাকআপ থেকে রিস্টোর…**. Expect: the list shows each snapshot with a `safety` tag, size and record count — *risk: নেই*
 - [ ] **I4** Click Restore once. Expect: the button turns into **"নিশ্চিত?"** — *risk: নেই*
 - [ ] **I5** Close the dialog instead of clicking **নিশ্চিত?** again (there is no cancel button — the second click is what executes). Expect: nothing changes — *risk: নেই*

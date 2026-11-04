@@ -36,19 +36,17 @@ const csvCell = (v: unknown): string => {
 export async function GET(req: NextRequest) {
   try {
     if (req.nextUrl.searchParams.get("format") === "xlsx") {
-      const [services, products, technicians] = await Promise.all([
+      const [services, products] = await Promise.all([
         prisma.service.findMany({ orderBy: { id: "asc" } }),
         prisma.product.findMany({
           include: { category: { select: { name: true } } },
           orderBy: { name: "asc" },
         }),
-        prisma.technician.findMany({ orderBy: { name: "asc" } }),
       ]);
       const generatedAt = new Date();
       const workbook = await buildBackupWorkbook({
         services,
         products,
-        technicians,
         generatedAt,
       });
       const day = dhakaDateKey(generatedAt);

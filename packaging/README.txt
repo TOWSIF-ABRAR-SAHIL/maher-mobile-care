@@ -15,13 +15,15 @@ CHALANO
 NOTUN (v1.2.0-er por)
 ---------------------
 - **ব্যাকআপ** button ekhon ekta gochano Excel (.xlsx) file dey — age chilo
-  ekta lamba CSV. File khulle alada alada sheet: **সারসংক্ষেপ** (mot bill/
-  joma/baki/khoroch/labh), **সার্ভিস তালিকা**, **দৈনিক হিসাব**, **পণ্য স্টক**,
-  **টেকনিশিয়ান**, দরকার hole **আর্কাইভ**, ar **সম্পূর্ণ ডেটা (অডিট)**.
-  Header atke thake (scroll korleo dekha jay), date/taka thik format-e,
-  majhe majhe rongin row. Asol backup tobuo `data\backups` folder-er
-  `maher-*.db` file — Excel file-ta shudhu pore dekhar jonno; oita diye
-  restore hoy na.
+  ekta lamba CSV. File khulle tin-ti sheet: **সারসংক্ষেপ** (mot bill/joma/
+  baki/khoroch/labh), **সার্ভিস খাতা** ar **সম্পূর্ণ ডেটা (অডিট)**. খাতা
+  sheet-ta ekta soro table — **ক্রম / তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা /
+  টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি / ডেলিভারি** — purono tarikh age,
+  serial 1 theke suru, niche **মোট (সক্রিয়)** row. Header atke thake (scroll
+  korleo dekha jay), date/taka thik format-e. Ferot deya service-o list-e
+  thake, kintu mot-e jog hoy na; dokaner khoroch/parts/IMEI shudhu audit
+  sheet-e. Asol backup tobuo `data\backups` folder-er `maher-*.db` file —
+  Excel file-ta shudhu pore dekhar jonno; oita diye restore hoy na.
 - Puro app-e notun rokom design: royal blue header/button, sada card
   fakeska blue page-e. Bangla label sob age-r motoi — kichu badolini
   hoyni.

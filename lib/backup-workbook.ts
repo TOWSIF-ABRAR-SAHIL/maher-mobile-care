@@ -2,11 +2,10 @@
  * The Excel copy of a backup.
  *
  * The real backup is the `.db` snapshot (`POST /api/backup`). This workbook is
- * the human-readable copy the shopkeeper opens in Excel, so the sheets are
- * ordered by how they are read: overview -> service list -> daily totals ->
- * stock -> roster -> archived rows -> raw audit data.
+ * the human-readable copy the shopkeeper opens in Excel: a simple date-ordered
+ * service ledger, a one-page summary, and the full raw audit sheet.
  *
- * Nothing is dropped: the last sheet carries every Service field (including
+ * Nothing is dropped: the audit sheet carries every Service field (including
  * internal cost and IMEI) exactly like the CSV export.
  */
 import ExcelJS from "exceljs";
@@ -16,11 +15,7 @@ import { STATUS_BN } from "@/lib/utils";
 const FONT = "Nirmala UI";
 export const BACKUP_SHEETS = {
   summary: "সারসংক্ষেপ",
-  services: "সার্ভিস তালিকা",
-  daily: "দৈনিক হিসাব",
-  products: "পণ্য স্টক",
-  technicians: "টেকনিশিয়ান",
-  archived: "আর্কাইভ",
+  services: "সার্ভিস খাতা",
   audit: "সম্পূর্ণ ডেটা (অডিট)",
 } as const;
 
@@ -96,16 +91,9 @@ export interface BackupProduct {
   category: { name: string };
 }
 
-export interface BackupTechnician {
-  name: string;
-  isActive: boolean;
-  createdAt: Date;
-}
-
 export interface BackupWorkbookInput {
   services: BackupService[];
   products: BackupProduct[];
-  technicians: BackupTechnician[];
   generatedAt: Date;
 }
 
@@ -336,6 +324,13 @@ function tableSheet(
     baseRowStyle(row, columns, index);
   });
 
+  // Filter over the data itself, not just the header row, otherwise Excel
+  // opens the dropdown with nothing to filter.
+  ws.autoFilter = {
+    from: { row: HEADER_ROW, column: 1 },
+    to: { row: HEADER_ROW + rows.length, column: columns.length },
+  };
+
   return ws;
 }
 
@@ -475,80 +470,57 @@ function summarySheet(
 
 function serviceColumns(): Column[] {
   return [
-    { header: "আইডি", width: 6, align: "right" },
+    { header: "ক্রম", width: 6, align: "right" },
     { header: "তারিখ", width: 11, align: "center", numFmt: dateFmt },
     { header: "কাস্টমার", width: 20 },
     { header: "ফোন", width: 14 },
     { header: "মডেল", width: 17 },
-    { header: "টেকনিশিয়ান", width: 13 },
     { header: "সমস্যা", width: 28, wrap: true },
+    { header: "টেকনিশিয়ান", width: 13 },
     { header: "অবস্থা", width: 11, align: "center" },
     { header: "বিল (৳)", width: 10, align: "right", numFmt: moneyFmt },
     { header: "জমা (৳)", width: 10, align: "right", numFmt: moneyFmt },
     { header: "বাকি (৳)", width: 10, align: "right", numFmt: moneyFmt },
-    { header: "খরচ (৳)", width: 10, align: "right", numFmt: moneyFmt },
-    { header: "ড্যামেজ (৳)", width: 11, align: "right", numFmt: moneyFmt },
-    { header: "পার্টস দোকান", width: 15, wrap: true },
     { header: "ডেলিভারি", width: 11, align: "center", numFmt: dateFmt },
-    { header: "ফেরত তারিখ", width: 11, align: "center", numFmt: dateFmt },
-    { header: "রিফান্ড (৳)", width: 10, align: "right", numFmt: moneyFmt },
-    { header: "ভিজিট", width: 10, align: "center" },
   ];
-}
-
-function visitLabels(services: BackupService[]): Map<string, string> {
-  const order = new Map<string, number>();
-  const sizes = new Map<string, number>();
-  const byId = [...services].sort((a, b) => a.id - b.id);
-  for (const s of byId) {
-    if (!s.groupId) continue;
-    if (!order.has(s.groupId)) order.set(s.groupId, order.size + 1);
-    sizes.set(s.groupId, (sizes.get(s.groupId) ?? 0) + 1);
-  }
-  const labels = new Map<string, string>();
-  for (const [groupId, n] of order) {
-    labels.set(groupId, `G${n} (${sizes.get(groupId) ?? 1})`);
-  }
-  return labels;
 }
 
 function serviceSheet(
   wb: ExcelJS.Workbook,
-  name: string,
-  title: string,
-  subtitle: string,
   services: BackupService[],
-  visits: Map<string, string>
+  s: Summary
 ): void {
   const columns = serviceColumns();
   const ordered = [...services].sort((a, b) => {
-    const byDate = dhakaDateKey(b.serviceDate).localeCompare(
-      dhakaDateKey(a.serviceDate)
+    const byDate = dhakaDateKey(a.serviceDate).localeCompare(
+      dhakaDateKey(b.serviceDate)
     );
     return byDate !== 0 ? byDate : a.id - b.id;
   });
-  const rows = ordered.map((s) => [
-    s.id,
-    serviceDate(s),
-    s.customerName,
-    s.phone,
-    s.model,
-    s.technician,
-    s.problem,
-    bnStatus(s.status),
-    s.totalBill,
-    s.advance,
-    s.due,
-    s.expenseWrittenOff ? 0 : s.expenseAmount,
-    s.damageLoss,
-    s.partsShop ?? "",
-    optionalDate(s.deliveryDate),
-    s.status === "Returned" ? optionalDate(s.returnedAt) : null,
-    s.status === "Returned" ? s.refundAmount : 0,
-    s.groupId ? visits.get(s.groupId) ?? "" : "",
+  const rows = ordered.map((service, index) => [
+    index + 1,
+    serviceDate(service),
+    service.customerName,
+    service.phone,
+    service.model,
+    service.problem,
+    service.technician,
+    bnStatus(service.status),
+    service.totalBill,
+    service.advance,
+    service.due,
+    optionalDate(service.deliveryDate),
   ]);
 
-  const ws = tableSheet(wb, name, title, subtitle, columns, rows, C.steel);
+  const ws = tableSheet(
+    wb,
+    BACKUP_SHEETS.services,
+    "সার্ভিস খাতা",
+    "তারিখ অনুযায়ী পুরোনো থেকে নতুন · ফেরত সার্ভিস তালিকায় আছে, কিন্তু মোটে নেই · আর্কাইভ করা সার্ভিস অডিট শিটে",
+    columns,
+    rows,
+    C.steel
+  );
 
   // Colour the two columns the shopkeeper scans first.
   if (rows.length > 0) {
@@ -557,94 +529,21 @@ function serviceSheet(
       row.getCell(8).font = font(statusColor(service.status), false, 10);
       if (service.due > 0) row.getCell(11).font = font(C.danger, true, 10);
     });
-  }
-}
 
-function dailySheet(
-  wb: ExcelJS.Workbook,
-  s: Summary
-): void {
-  type Day = {
-    date: string;
-    count: number;
-    bill: number;
-    advance: number;
-    due: number;
-    expense: number;
-    damage: number;
-    profit: number;
-  };
-  const map = new Map<string, Day>();
-  for (const row of s.live) {
-    const key = dhakaDateKey(row.serviceDate);
-    const day =
-      map.get(key) ??
-      {
-        date: key,
-        count: 0,
-        bill: 0,
-        advance: 0,
-        due: 0,
-        expense: 0,
-        damage: 0,
-        profit: 0,
-      };
-    if (row.status !== "Returned") {
-      day.count += 1;
-      day.bill += row.totalBill;
-      day.advance += row.advance;
-      day.due += row.due;
-    }
-    day.expense += row.expenseWrittenOff ? 0 : row.expenseAmount;
-    day.damage += row.damageLoss;
-    day.profit = day.bill - day.expense - day.damage;
-    map.set(key, day);
-  }
-  const days = [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
-
-  const columns: Column[] = [
-    { header: "তারিখ", width: 13, align: "center", numFmt: dateFmt },
-    { header: "কাজ", width: 9, align: "right" },
-    { header: "বিল (৳)", width: 12, align: "right", numFmt: moneyFmt },
-    { header: "জমা (৳)", width: 12, align: "right", numFmt: moneyFmt },
-    { header: "বাকি (৳)", width: 12, align: "right", numFmt: moneyFmt },
-    { header: "খরচ (৳)", width: 12, align: "right", numFmt: moneyFmt },
-    { header: "ড্যামেজ (৳)", width: 12, align: "right", numFmt: moneyFmt },
-    { header: "লাভ (৳)", width: 12, align: "right", numFmt: moneyFmt },
-  ];
-
-  const rows = days.map((d) => [
-    dayDate(d.date),
-    d.count,
-    d.bill,
-    d.advance,
-    d.due,
-    d.expense,
-    d.damage,
-    d.profit,
-  ]);
-
-  const ws = tableSheet(
-    wb,
-    BACKUP_SHEETS.daily,
-    "দৈনিক হিসাব",
-    "প্রতিদিনের কাজ, বিল, জমা, বাকি, খরচ ও লাভ — নতুন দিন আগে",
-    columns,
-    rows,
-    C.steel
-  );
-
-  if (rows.length > 0) {
     const total = ws.getRow(HEADER_ROW + rows.length + 2);
     const values: (string | number)[] = [
-      "মোট",
-      s.active.length,
+      "মোট (সক্রিয়)",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
       s.bill,
       s.advance,
       s.due,
-      s.expense,
-      s.damageLoss,
-      s.profit,
+      "",
     ];
     values.forEach((value, i) => {
       const cell = total.getCell(i + 1);
@@ -667,107 +566,6 @@ function dailySheet(
     });
     total.height = 22;
   }
-}
-
-function productSheet(wb: ExcelJS.Workbook, products: BackupProduct[]): void {
-  const columns: Column[] = [
-    { header: "আইডি", width: 6, align: "right" },
-    { header: "নাম", width: 24 },
-    { header: "ক্যাটাগরি", width: 16 },
-    { header: "SKU", width: 14 },
-    { header: "ব্র্যান্ড", width: 14 },
-    { header: "স্টক", width: 8, align: "right" },
-    { header: "লো-স্টক সীমা", width: 11, align: "right" },
-    { header: "বিক্রয়মূল্য (৳)", width: 13, align: "right", numFmt: moneyFmt },
-    { header: "ক্রয়মূল্য (৳)", width: 13, align: "right", numFmt: moneyFmt },
-    { header: "সাপ্লায়ার", width: 16 },
-    { header: "স্ট্যাটাস", width: 12, align: "center" },
-    { header: "আর্কাইভ", width: 9, align: "center" },
-  ];
-  const rows = [...products]
-    .sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name))
-    .map((p) => {
-      const status = p.archived
-        ? "আর্কাইভড"
-        : p.stock <= 0
-          ? "স্টক শেষ"
-          : p.stock <= p.lowStockThreshold
-            ? "স্টক কম"
-            : "ঠিক আছে";
-      return [
-        p.id,
-        p.name,
-        p.category.name,
-        p.sku ?? "",
-        p.brand ?? "",
-        p.stock,
-        p.lowStockThreshold,
-        p.sellingPrice,
-        p.purchasePrice,
-        p.supplier ?? "",
-        status,
-        p.archived ? "হ্যাঁ" : "",
-      ];
-    });
-
-  const ws = tableSheet(
-    wb,
-    BACKUP_SHEETS.products,
-    "পণ্য ও স্টক",
-    "বর্তমান স্টক, দাম ও লো-স্টক অবস্থা — আর্কাইভ করা পণ্য নিচে",
-    columns,
-    rows,
-    C.steel
-  );
-
-  rows.forEach((values, index) => {
-    const row = ws.getRow(HEADER_ROW + 1 + index);
-    const status = String(values[10] ?? "");
-    const color =
-      status === "স্টক শেষ" ? C.danger : status === "স্টক কম" ? C.warn : C.success;
-    row.getCell(11).font = font(status === "আর্কাইভড" ? C.muted : color, false, 10);
-  });
-}
-
-function technicianSheet(
-  wb: ExcelJS.Workbook,
-  technicians: BackupTechnician[],
-  services: BackupService[]
-): void {
-  const columns: Column[] = [
-    { header: "নাম", width: 22 },
-    { header: "স্ট্যাটাস", width: 14, align: "center" },
-    { header: "সার্ভিস সংখ্যা", width: 13, align: "right" },
-    { header: "মোট বিল (৳)", width: 14, align: "right", numFmt: moneyFmt },
-    { header: "যোগ হয়েছে", width: 13, align: "center", numFmt: dateFmt },
-  ];
-  const rows = [...technicians]
-    .sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.name.localeCompare(b.name))
-    .map((t) => {
-      const mine = services.filter(
-        (s) =>
-          !s.archived &&
-          s.status !== "Returned" &&
-          s.technician.trim().toUpperCase() === t.name.trim().toUpperCase()
-      );
-      return [
-        t.name,
-        t.isActive ? "সক্রিয়" : "নিষ্ক্রিয়",
-        mine.length,
-        mine.reduce((sum, s) => sum + s.totalBill, 0),
-        optionalDate(t.createdAt),
-      ];
-    });
-
-  tableSheet(
-    wb,
-    BACKUP_SHEETS.technicians,
-    "টেকনিশিয়ান",
-    "সক্রিয় ও পুরোনো টেকনিশিয়ান, তাদের কাজ ও বিল",
-    columns,
-    rows,
-    C.steel
-  );
 }
 
 function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
@@ -857,32 +655,7 @@ export async function buildBackupWorkbook(
 
   const stats = summarize(input.services);
   summarySheet(wb, input, stats);
-
-  const visits = visitLabels(input.services);
-  serviceSheet(
-    wb,
-    BACKUP_SHEETS.services,
-    "সার্ভিস তালিকা",
-    "সক্রিয় সব সার্ভিস — নতুন তারিখ আগে; ভিজিট কলামে একসাথে আনা ডিভাইসের গ্রুপ",
-    stats.live,
-    visits
-  );
-
-  dailySheet(wb, stats);
-  productSheet(wb, input.products);
-  technicianSheet(wb, input.technicians, input.services);
-
-  if (stats.archived.length > 0) {
-    serviceSheet(
-      wb,
-      BACKUP_SHEETS.archived,
-      "আর্কাইভ করা সার্ভিস",
-      "সাধারণ তালিকা ও হিসাব থেকে লুকানো, কিন্তু ব্যাকআপে সম্পূর্ণ আছে",
-      stats.archived,
-      visits
-    );
-  }
-
+  serviceSheet(wb, stats.live, stats);
   auditSheet(wb, input.services);
 
   return Buffer.from(await wb.xlsx.writeBuffer());

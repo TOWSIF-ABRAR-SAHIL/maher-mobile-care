@@ -39,7 +39,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint and typecheck pass on it). The current 373-check regression (and
+(build, lint and typecheck pass on it). The current 374-check regression (and
 the earlier v1.2.0 312-check run) also ran on **Node 24.15.0 / npm 11.12.1**
 on the Windows build host.
 
@@ -348,8 +348,7 @@ lib/
   export.ts                → report export builders (BOM CSV + SheetJS xlsx),
                              daily breakdown, privacy column policy
   backup-workbook.ts       → server-side Excel backup workbook (ExcelJS):
-                             summary, service list, daily, stock, roster,
-                             archive and full audit sheets
+                             summary, date-ordered service ledger, full audit
   report-pdf.ts            → multi-page A4 report PDF (canvas-sliced capture)
   backup.ts                → shared localStorage keys/stamps for auto-backup
   use-last-backup.ts       → hook: last-backup stamp (AutoBackup + backup strip)
@@ -613,10 +612,12 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - Backup button = server snapshot (`backups/maher-*.db`, newest **30** kept) +
   a real **Excel workbook** download (Bengali headers, frozen/filterable
   headers, date/currency formats, totals) + “সর্বশেষ ব্যাকআপ” label. The
-  workbook has **সারসংক্ষেপ / সার্ভিস তালিকা / দৈনিক হিসাব / পণ্য স্টক /
-  টেকনিশিয়ান / আর্কাইভ / সম্পূর্ণ ডেটা (অডিট)** sheets; the audit sheet and
-  `GET /api/backup` CSV carry every column, including return/refund/damage,
-  write-off, group, delivery, IMEI and `saleRef`.
+  workbook has **সারসংক্ষেপ / সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)** sheets;
+  the ledger is one flat 12-column table, oldest date first with a running
+  **ক্রম** (তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা / টেকনিশিয়ান / অবস্থা /
+  বিল / জমা / বাকি / ডেলিভারি), and the audit sheet plus `GET /api/backup`
+  CSV carry every column, including cost, return/refund/damage, write-off,
+  group, delivery, IMEI and `saleRef`.
 - The Service desk keeps **ব্যাকআপ** one click away in the compact strip beside
   the stamp; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…** live behind **⋯ → ডেটা ও
   ব্যাকআপ**, and the strip says **ডেটা এই PC-তে** instead of an online/offline
@@ -875,7 +876,7 @@ exist in the schema but are not yet driven by app code.
 
 ## 7. Test status
 
-`npm test` runs the full regression (17 suites, 373 checks) entirely on
+`npm test` runs the full regression (17 suites, 374 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
@@ -896,13 +897,13 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Current full run (post-v1.2.0): **17/17 suites, 373/373 checks** — Launcher
+- Current full run (post-v1.2.0): **17/17 suites, 374/374 checks** — Launcher
   decide 14 · Portable keep 10 · Expense upgrade 10 · E2E 9+13 · Lane A 26 ·
   Lanes B+C 24 · Lane D 29 · Lane E 18 · Lane F 22 · Lane G 18 · Lane Landing
-  10 · API 62 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
+  10 · API 63 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
   0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
 - The Counter Ledger design contract runs **separately** (it is deliberately
-  not in the default 373): `MAHER_TEST_SUITES=scripts/service-list-design.js
+  not in the default 374): `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → **19/19 checks**.
 - v1.2.0 release run (historical): **13/13 suites, 312/312 checks** — Launcher
   14 · Expense upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 ·
@@ -1057,12 +1058,16 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   `SaleItem` and `Service.saleRef` exist in the schema but app code does not
   write them yet (foundation for sale-to-stock).
 - **Organised Excel backup** — the **ব্যাকআপ** button now downloads a real
-  `.xlsx` workbook instead of a flat CSV: **সারসংক্ষেপ / সার্ভিস তালিকা /
-  দৈনিক হিসাব / পণ্য স্টক / টেকনিশিয়ান / আর্কাইভ / সম্পূর্ণ ডেটা (অডিট)**
-  sheets with Bengali headers, frozen/filterable header rows, date and
-  currency formats, per-day and grand totals. Built server-side with ExcelJS
+  `.xlsx` workbook instead of a flat CSV, in the shopkeeper's reading order:
+  **সারসংক্ষেপ / সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)**. The খাতা sheet is a
+  simple flat ledger — **ক্রম / তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা /
+  টেকনিশিয়ান / অবস্থা / বিল / জমা / বাকি / ডেলিভারি** — sorted oldest date
+  first, serial `1..N`, with a frozen/filterable header, date and currency
+  formats, and a bottom **মোট (সক্রিয়)** row. Returned rows stay visible but
+  are excluded from totals; internal cost, damage, parts shop, IMEI and group
+  data live only in the audit sheet. Built server-side with ExcelJS
   (`lib/backup-workbook.ts`); the `.db` snapshot stays the real backup, and
-  `GET /api/backup` keeps the CSV for scripts (now with `saleRef`).
+  `GET /api/backup` keeps the full CSV for scripts (now with `saleRef`).
 - **Service desk is the landing page** — `/` redirects to `/service` and
   forwards bookmarked `date`/`edit`/`receipt`/`status`/`mode` params; the
   navbar now has exactly two destinations (সার্ভিস / স্টক), with a compact
@@ -1174,10 +1179,12 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   `scripts/portable-keep.test.js` (PK-01…PK-10).
 - **Header calendar toggles closed** on a second click of its button.
 
-**Tests** — default suites 13 → **17** (312 → **370** checks: +portable-keep,
-+laneG, +laneLanding, +header-calendar, Lane D 28→29, Lane F 8→22), design
-suite runs separately (19 checks). Full `npm test`: **17/17, 370/370, 0 FAIL**,
-live DB hash unchanged; `MANUAL-TEST.md` grew to **174** steps (new O11–O13).
+**Tests** — default suites 13 → **17** and 312 → **374** checks across the
+unreleased work (+portable-keep, +laneG, +laneLanding, +header-calendar,
+Lane D 28→29, Lane F 8→22, the intermediate regressions and the
+backup-ledger check), design suite runs separately (19 checks). Full
+`npm test`: **17/17, 374/374, 0 FAIL**, live DB hash unchanged;
+`MANUAL-TEST.md` grew to **175** steps (new O11–O13).
 
 ### v1.2.0 — grouped visits, delivery dates & safer returns
 
@@ -1504,7 +1511,7 @@ the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
 `prisma/dev.db` byte-identical. The current run (post-v1.2.0) is **17/17
-suites, 373/373 checks** plus the separately-run design contract (19 checks);
+suites, 374/374 checks** plus the separately-run design contract (19 checks);
 the earlier v1.1.2 packaged window was also driven by hand for the shop test
 above. Since v1.2.0 the package was rebuilt on Windows with the shop database
 preserved across rebuilds (`portable-keep` suite): `out/MAHER/` is 122.3 MB and

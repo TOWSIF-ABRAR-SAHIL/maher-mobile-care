@@ -256,8 +256,7 @@ async function main() {
     const sheetNames = xlsxBook ? xlsxBook.worksheets.map((w) => w.name) : [];
     const expectedSheets = [
       "সারসংক্ষেপ",
-      "সার্ভিস তালিকা",
-      "দৈনিক হিসাব",
+      "সার্ভিস খাতা",
       "সম্পূর্ণ ডেটা (অডিট)",
     ];
     check(
@@ -265,11 +264,12 @@ async function main() {
       "XLSX backup is a real workbook with organised sheets",
       xlsxRes.ok &&
         xlsxType.includes("spreadsheetml") &&
+        sheetNames.length === expectedSheets.length &&
         expectedSheets.every((name) => sheetNames.includes(name)),
       JSON.stringify({ status: xlsxRes.status, type: xlsxType, sheets: sheetNames })
     );
 
-    const serviceSheet = xlsxBook?.getWorksheet("সার্ভিস তালিকা");
+    const serviceSheet = xlsxBook?.getWorksheet("সার্ভিস খাতা");
     const auditSheet = xlsxBook?.getWorksheet("সম্পূর্ণ ডেটা (অডিট)");
     check(
       "C3",
@@ -282,6 +282,70 @@ async function main() {
         view: serviceSheet?.views?.[0] ?? null,
         bold: serviceSheet?.getCell("A4").font?.bold ?? null,
         filter: serviceSheet?.autoFilter ?? null,
+      })
+    );
+
+    const expectedHeader = [
+      "ক্রম",
+      "তারিখ",
+      "কাস্টমার",
+      "ফোন",
+      "মডেল",
+      "সমস্যা",
+      "টেকনিশিয়ান",
+      "অবস্থা",
+      "বিল (৳)",
+      "জমা (৳)",
+      "বাকি (৳)",
+      "ডেলিভারি",
+    ];
+    const serviceHeader = serviceSheet
+      ? serviceSheet.getRow(4).values.slice(1, 13).map((v) => String(v ?? ""))
+      : [];
+    const serials = [];
+    const serviceDates = [];
+    if (serviceSheet) {
+      for (let r = 5; r <= serviceSheet.rowCount; r += 1) {
+        const serial = serviceSheet.getCell(r, 1).value;
+        if (typeof serial !== "number") break;
+        serials.push(serial);
+        const value = serviceSheet.getCell(r, 2).value;
+        serviceDates.push(value instanceof Date ? value.getTime() : null);
+      }
+    }
+    const serialOk =
+      serials.length > 0 && serials.every((serial, i) => serial === i + 1);
+    const oldestFirst = serviceDates.every(
+      (time, i) =>
+        time !== null &&
+        (i === 0 || (serviceDates[i - 1] !== null && time >= serviceDates[i - 1]))
+    );
+    // ExcelJS returns an object before save but a "A4:L512" string after load.
+    const filterToRow = (() => {
+      const filter = serviceSheet?.autoFilter;
+      if (!filter) return null;
+      if (typeof filter === "string") {
+        const last = filter.split(":")[1];
+        const row = Number(last?.replace(/\D/g, ""));
+        return Number.isFinite(row) && row > 0 ? row : null;
+      }
+      return filter.to?.row ?? null;
+    })();
+    check(
+      "C5",
+      "XLSX service ledger is a simple oldest-first serial list",
+      expectedHeader.every((header, i) => serviceHeader[i] === header) &&
+        serialOk &&
+        oldestFirst &&
+        filterToRow === 4 + serials.length,
+      JSON.stringify({
+        header: serviceHeader,
+        serials: serials.length,
+        firstSerial: serials[0] ?? null,
+        lastSerial: serials[serials.length - 1] ?? null,
+        oldestFirst,
+        filterToRow,
+        dates: serviceDates.map((d) => (d ? new Date(d).toISOString().slice(0, 10) : null)),
       })
     );
 
