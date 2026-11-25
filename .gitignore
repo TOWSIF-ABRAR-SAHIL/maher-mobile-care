@@ -12,11 +12,18 @@
 # misc
 .DS_Store
 *.pem
-# The admin keygen keypair is intentionally versioned in this PRIVATE repo so
-# the isolated licensing suite can mint test keys. It must never be copied into
-# out/MAHER/ or any shop-facing package.
-!tools/keygen-crm/keys/private.pem
-!tools/keygen-crm/keys/public.pem
+# The admin keygen tool and its keys stay on this machine only. They must
+# never be pushed to GitHub or copied into out/MAHER/ or any shop package.
+/tools/
+
+# Local agent notes, scratch scripts and built installers stay off GitHub.
+/dist/
+/AGENTS.md
+/CLAUDE.md
+/opencode.json
+/d.py
+/fix-submit.py
+/lint.log
 
 # debug
 npm-debug.log*

@@ -26,7 +26,19 @@ requireTestEnv();
 
 const ROOT = path.resolve(__dirname, "..");
 const BASE = resolveTestBase();
-const PRIVATE_KEY_FILE = path.join(ROOT, "tools", "keygen-crm", "keys", "private.pem");
+const KEYGEN_ROOT = path.join(ROOT, "tools", "keygen-crm");
+const PRIVATE_KEY_FILE = path.join(KEYGEN_ROOT, "keys", "private.pem");
+const KEYGEN_README_FILE = path.join(KEYGEN_ROOT, "README.md");
+// The admin tool is local-only and excluded from GitHub. A clean checkout has
+// no key to mint test licences with, so skip this isolated suite instead of
+// crashing the whole regression run; dev machines with the tool run it in full.
+if (!fs.existsSync(PRIVATE_KEY_FILE) || !fs.existsSync(KEYGEN_README_FILE)) {
+  console.log(
+    "SKIP [offline-licensing] local admin keygen tool is absent; " +
+      "no private key is required for the rest of the regression suite"
+  );
+  process.exit(0);
+}
 const PRIVATE_PEM = fs.readFileSync(PRIVATE_KEY_FILE, "utf8");
 const CLOCK_MESSAGE =
   "কম্পিউটারের তারিখ ও সময় পরিবর্তন শনাক্ত হয়েছে। অনুগ্রহ করে সঠিক সময় ঠিক করুন।";
@@ -1355,10 +1367,7 @@ let browser = null;
     };
     walk(outRoot);
   }
-  const keygenReadme = fs.readFileSync(
-    path.join(ROOT, "tools", "keygen-crm", "README.md"),
-    "utf8"
-  );
+  const keygenReadme = fs.readFileSync(KEYGEN_README_FILE, "utf8");
   check(
     "H1",
     "private key stays in the admin tool; client code and release bundles carry only the public key",

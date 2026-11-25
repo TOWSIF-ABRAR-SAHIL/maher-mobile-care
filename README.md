@@ -1428,7 +1428,10 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   activation. `tools/keygen-crm/` is the standalone admin CLI + localhost GUI
   (dark/light mode, all six tier choices, customer search, renewal alerts) with
   the private key, a SQLite customer ledger and one-click WhatsApp messages.
-  The isolated `scripts/offline-licensing.test.js` suite pins machine binding,
+  This admin folder is local-only and excluded from GitHub; a clean checkout
+  without it skips the isolated licensing suite with a clear notice instead of
+  failing the full regression. The isolated
+  `scripts/offline-licensing.test.js` suite pins machine binding,
   signature/expiry rejection, exact tier durations, clock tampering, all four
   locked routes, activation, renewal, CRM isolation and GUI endpoints; every
   legacy suite gets its own license file and an explicit unlocked-trial bypass,
