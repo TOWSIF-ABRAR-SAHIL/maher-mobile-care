@@ -2,10 +2,12 @@
 
 import { MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useShopSettings } from "@/components/ShopSettingsProvider";
 import { telHref, whatsAppHref } from "@/lib/contact";
 import type { ServiceDTO } from "@/lib/types";
 
 export function ContactButtons({ service }: { service: ServiceDTO }) {
+  const { settings } = useShopSettings();
   return (
     <div className="flex flex-wrap gap-1.5">
       <Button asChild size="sm" variant="outline">
@@ -20,7 +22,7 @@ export function ContactButtons({ service }: { service: ServiceDTO }) {
         className="bg-green-600 text-white hover:bg-green-700"
       >
         <a
-          href={whatsAppHref(service)}
+          href={whatsAppHref(service, settings.shopName)}
           target="_blank"
           rel="noreferrer"
           title={`WhatsApp: ${service.phone}`}

@@ -31,8 +31,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { preservePackageData, releaseHold, restorePackageData } from "./portable-keep.mjs";
+
+const require = createRequire(import.meta.url);
+const { runtimePreflight } = require("./portable-runtime.cjs");
+const { restoreMissingEntryPoints } = require("./portable-module-entries.cjs");
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -49,6 +54,12 @@ const BETTER_SQLITE3_URL =
 
 const outDir = path.resolve(repoRoot, process.argv[2] ?? path.join(repoRoot, "out", "MAHER"));
 const cacheDir = path.join(os.tmpdir(), "maher-portable-cache");
+
+// MAHER_DESKTOP=1 produces a staging package for the Electron installer. The
+// app then owns its data in AppData, so a local data/ folder is neither kept nor
+// created — otherwise an old portable shop.db could overwrite the real one.
+const desktop = process.env.MAHER_DESKTOP === "1";
+const keepOptions = { desktop };
 
 const log = (m) => console.log(`[portable] ${m}`);
 
@@ -83,14 +94,42 @@ process.on("exit", () => {
   }
 });
 
-/** Downloads once into cache, then reuses. */
+/** Lists an archive's entries without extracting; a truncated download fails. */
+function validateArchive(file, fileName) {
+  const windowsZip = process.platform === "win32" && /\.zip$/i.test(fileName);
+  const command = /\.zip$/i.test(fileName) ? (windowsZip ? "tar" : "unzip") : "tar";
+  const args = /\.zip$/i.test(fileName)
+    ? windowsZip ? ["-tf", file] : ["-t", file]
+    : ["-tzf", file];
+  try {
+    execFileSync(command, args, {
+      stdio: "ignore",
+      ...(windowsZip ? { shell: true } : {}),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Archives that had to be re-fetched. Their extracted folders may hold a
+// half-written binary from the earlier bad download, so they must be thrown
+// away instead of being reused because the file happens to exist.
+const redownloaded = new Set();
+
+/** Downloads once into cache, then reuses only archives that pass validation. */
 function cachedDownload(url, fileName) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const target = path.join(cacheDir, fileName);
 
   if (fs.existsSync(target) && fs.statSync(target).size > 0) {
-    log(`using cached ${fileName}`);
-    return target;
+    if (validateArchive(target, fileName)) {
+      log(`using cached ${fileName}`);
+      return target;
+    }
+    log(`cached ${fileName} is invalid — re-downloading`);
+    fs.rmSync(target, { force: true });
+    redownloaded.add(fileName);
   }
 
   log(`downloading ${fileName} ...`);
@@ -100,6 +139,9 @@ function cachedDownload(url, fileName) {
     });
   } catch {
     fail(`could not download ${fileName} from ${url}`);
+  }
+  if (!validateArchive(target, fileName)) {
+    fail(`downloaded ${fileName} is corrupt or incomplete (${url})`);
   }
   return target;
 }
@@ -226,8 +268,10 @@ async function verifyPackageRuns(sandbox) {
         const technicians = await fetch(`http://127.0.0.1:${probePort}/api/technicians`, { signal: AbortSignal.timeout(5000) });
         if (!technicians.ok) throw new Error(`GET /api/technicians returned HTTP ${technicians.status}`);
         const roster = await technicians.json();
-        if (!Array.isArray(roster?.technicians) || roster.technicians.length === 0) {
-          throw new Error("GET /api/technicians returned an empty roster");
+        // The array shape proves Prisma/SQLite are live. A fresh install has
+        // no seeded staff, so roster length is not a packaging health signal.
+        if (!Array.isArray(roster?.technicians)) {
+          throw new Error("GET /api/technicians did not return a roster array");
         }
 
         const stats = await fetch(`http://127.0.0.1:${probePort}/api/stats`, { signal: AbortSignal.timeout(5000) });
@@ -237,12 +281,19 @@ async function verifyPackageRuns(sandbox) {
           throw new Error("GET /api/stats did not return technician stats, so the database is not really being read");
         }
 
-        log(`package verified outside the repo: health OK, roster OK (${roster.technicians.length}), stats OK (${statBody.techStats.length})`);
+        // Backup pulls in workbook helpers that the three checks above never
+        // touch. This is what catches ESM entry files omitted by the tracer.
+        const backup = await fetch(`http://127.0.0.1:${probePort}/api/backup`, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!backup.ok) throw new Error(`GET /api/backup returned HTTP ${backup.status}`);
+
+        log(`package verified outside the repo: health OK, roster OK (${roster.technicians.length}), stats OK (${statBody.techStats.length}), backup OK`);
         return;
       } catch (error) {
         const message = error?.message ?? String(error);
         // These are real failures, not "not ready yet".
-        if (/returned HTTP|empty roster|did not return technician/.test(message)) throw new Error(message);
+        if (/returned HTTP|did not return a roster array|did not return technician/.test(message)) throw new Error(message);
       }
     }
     throw new Error(`the server never became ready.\n${output.slice(-1500)}`);
@@ -300,7 +351,7 @@ if (!fs.existsSync(standalone)) {
 // plain-language message rather than half-deleting the package, which is what
 // happened when a rebuild ran while the app was open.
 try {
-  keptPackageData = preservePackageData(outDir);
+  keptPackageData = preservePackageData(outDir, os.tmpdir(), keepOptions);
 } catch (error) {
   fail(`could not copy the shop data out of the old package first (${error?.message ?? error})`);
 }
@@ -317,7 +368,7 @@ try {
   // than leaving a package that is missing its database.
   if (keptPackageData) {
     try {
-      const putBack = restorePackageData(outDir, keptPackageData);
+      const putBack = restorePackageData(outDir, keptPackageData, keepOptions);
       if (putBack.skipped.length === 0) {
         dataRestored = true;
         releaseHold(keptPackageData);
@@ -563,6 +614,16 @@ fs.mkdirSync(path.join(appDir, "scripts"), { recursive: true });
       log(`copied ${label}`);
     }
 
+    // Next's standalone trace follows only the CJS side of package exports.
+    // ESM entry files such as generator-function/require.mjs are left behind in
+    // the repository, and /api/backup then fails with MODULE_NOT_FOUND only in
+    // the shipped package. Copy just those missing entry points across.
+    const restoredEntries = restoreMissingEntryPoints({
+      sourceModules: path.join(repoRoot, "node_modules"),
+      targetModules: path.join(appDir, "node_modules"),
+    });
+    log(`restored ${restoredEntries.length} module entry files omitted by the Next trace`);
+
     // 4. Strip developer data that the Next 14 trace pulled in.
 for (const leak of ["backups", ".env", "prisma/dev.db", "prisma/dev.db-journal"]) {
   const full = path.join(appDir, leak);
@@ -573,21 +634,35 @@ for (const leak of ["backups", ".env", "prisma/dev.db", "prisma/dev.db-journal"]
 }
 
 // 5. The Windows Node runtime, bundled so the client installs nothing.
-const nodeZip = cachedDownload(NODE_ZIP_URL, `node-v${NODE_VERSION}-win-x64.zip`);
+const nodeZipName = `node-v${NODE_VERSION}-win-x64.zip`;
+const nodeZip = cachedDownload(NODE_ZIP_URL, nodeZipName);
 const nodeExtract = path.join(cacheDir, `node-v${NODE_VERSION}-win-x64`);
-if (!fs.existsSync(path.join(nodeExtract, "node.exe"))) {
+const extractedNode = path.join(nodeExtract, "node.exe");
+const checkNode = () =>
+  fs.existsSync(extractedNode)
+    ? runtimePreflight(extractedNode, NODE_VERSION, NODE_ABI)
+    : { ok: false, reason: "node.exe is missing from the extracted archive" };
+let nodePreflight = checkNode();
+if (redownloaded.has(nodeZipName) || !nodePreflight.ok) {
+  if (!nodePreflight.ok) log(`cached runtime failed preflight (${nodePreflight.reason}) — re-extracting`);
   fs.rmSync(nodeExtract, { recursive: true, force: true });
   log("extracting node.exe ...");
+  const isWindows = process.platform === "win32";
   try {
-    // Same Windows reason as the npm call above: a .cmd shim (stock Windows
-    // has no unzip, so PATH may provide one) cannot be spawned directly.
-    execFileSync("unzip", ["-q", "-o", nodeZip, "-d", cacheDir], {
-      stdio: ["ignore", "inherit", "inherit"],
-      ...(process.platform === "win32" ? { shell: true } : {}),
-    });
+    // Stock Windows has no unzip, but Windows 10+ ships bsdtar as tar.exe,
+    // which reads .zip archives. Keep unzip for Linux build hosts.
+    execFileSync(isWindows ? "tar" : "unzip",
+      isWindows ? ["-xf", nodeZip, "-C", cacheDir] : ["-q", "-o", nodeZip, "-d", cacheDir], {
+        stdio: ["ignore", "inherit", "inherit"],
+        ...(isWindows ? { shell: true } : {}),
+      });
   } catch {
-    fail("could not extract the Node zip (is unzip installed?)");
+    fail("could not extract the Node zip (Windows needs built-in tar; Linux needs unzip)");
   }
+  nodePreflight = checkNode();
+}
+if (!nodePreflight.ok) {
+  fail(`bundled node.exe is not runnable (${nodePreflight.reason})`);
 }
 const runtimeDir = path.join(outDir, "runtime");
 copyDir(nodeExtract, runtimeDir);
@@ -595,13 +670,14 @@ const nodeExe = path.join(runtimeDir, "node.exe");
 if (!fs.existsSync(nodeExe)) {
   fail("node.exe not found after extracting the runtime");
 }
-log(`bundled Node ${NODE_VERSION} (node.exe)`);
+log(`bundled Node ${NODE_VERSION} (node.exe) — preflight ${nodePreflight.reason}`);
 
 // 6. The Windows better-sqlite3 binary, replacing the Linux one.
-const bs3Tar = cachedDownload(BETTER_SQLITE3_URL, `better-sqlite3-v${BETTER_SQLITE3_VERSION}-node-v${NODE_ABI}-win32-x64.tar.gz`);
+const bs3TarName = `better-sqlite3-v${BETTER_SQLITE3_VERSION}-node-v${NODE_ABI}-win32-x64.tar.gz`;
+const bs3Tar = cachedDownload(BETTER_SQLITE3_URL, bs3TarName);
 const bs3Extract = path.join(cacheDir, `bs3-${NODE_ABI}-win32-x64`);
 const bs3BinaryRel = path.join("build", "Release", "better_sqlite3.node");
-if (!fs.existsSync(path.join(bs3Extract, bs3BinaryRel))) {
+if (redownloaded.has(bs3TarName) || !fs.existsSync(path.join(bs3Extract, bs3BinaryRel))) {
   fs.rmSync(bs3Extract, { recursive: true, force: true });
   // Release archives may or may not wrap files in a top-level `package/`
   // directory, so extract and then look for the binary either way.
@@ -632,26 +708,34 @@ fs.mkdirSync(bs3TargetDir, { recursive: true });
 fs.copyFileSync(bs3Node, path.join(bs3TargetDir, "better_sqlite3.node"));
 log(`installed Windows better-sqlite3 ${BETTER_SQLITE3_VERSION} (Node ${NODE_VERSION} ABI ${NODE_ABI})`);
 
-// 7. Launchers + the client readme the shopkeeper actually reads.
-fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER MOBILE CARE.bat"), path.join(outDir, "MAHER MOBILE CARE.bat"));
-fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER STOP.bat"), path.join(outDir, "MAHER STOP.bat"));
-fs.copyFileSync(path.join(repoRoot, "packaging", "start-maher.bat"), path.join(outDir, "start-maher.bat"));
+// 7. Launchers + the client readme the shopkeeper actually reads. The .bat
+// launchers belong to the portable package only; the desktop build gets an EXE.
+if (!desktop) {
+  fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER MOBILE CARE.bat"), path.join(outDir, "MAHER MOBILE CARE.bat"));
+  fs.copyFileSync(path.join(repoRoot, "packaging", "MAHER STOP.bat"), path.join(outDir, "MAHER STOP.bat"));
+  fs.copyFileSync(path.join(repoRoot, "packaging", "start-maher.bat"), path.join(outDir, "start-maher.bat"));
+}
 fs.copyFileSync(path.join(repoRoot, "packaging", "README.txt"), path.join(outDir, "README.txt"));
-log("copied launchers");
+log(desktop ? "copied client readme (desktop staging)" : "copied launchers");
 
-// 8. Data directory placeholder + manifest.
-const dataDir = path.join(outDir, "data");
-fs.mkdirSync(dataDir, { recursive: true });
-fs.writeFileSync(
-  path.join(dataDir, "KEEP-THIS-FOLDER.txt"),
-  [
-    "MAHER MOBILE CARE stores the shop database and backups in this folder.",
-    "",
-    "Do not delete this folder. To move the shop to another computer, copy it.",
-    "To upgrade the app, only replace the files OUTSIDE this folder.",
-    "",
-  ].join("\n")
-);
+// 8. Data directory placeholder + manifest. Desktop must NOT ship a data/
+// folder: the only shop-data root for the EXE is AppData.
+if (!desktop) {
+  const dataDir = path.join(outDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dataDir, "KEEP-THIS-FOLDER.txt"),
+    [
+      "MAHER MOBILE CARE stores the shop database and backups in this folder.",
+      "",
+      "Do not delete this folder. To move the shop to another computer, copy it.",
+      "To upgrade the app, only replace the files OUTSIDE this folder.",
+      "",
+    ].join("\n")
+  );
+} else {
+  log("no local data/ in desktop staging — AppData is the only shop-data root");
+}
 
 const manifest = {
   app: "MAHER MOBILE CARE",
@@ -673,7 +757,7 @@ assertNoShopData(outDir);
 // isolation check below copies the package without data/, so restoring here
 // cannot weaken it.
 if (keptPackageData) {
-  const restored = restorePackageData(outDir, keptPackageData);
+  const restored = restorePackageData(outDir, keptPackageData, keepOptions);
   if (restored.restored.length > 0) {
     log(`restored ${restored.restored.join(" + ")} from the previous package`);
   }

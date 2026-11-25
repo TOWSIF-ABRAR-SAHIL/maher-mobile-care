@@ -1,0 +1,47 @@
+{
+  "appId": "com.maher.mobilecare.desktop",
+  "productName": "MSS",
+  "artifactName": "MSS-Setup-${version}.${ext}",
+  "asar": true,
+  "nodeGypRebuild": false,
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "package.json",
+    "main.cjs",
+    "preload.cjs",
+    "env.cjs"
+  ],
+  "extraResources": [
+    {
+      "from": "app",
+      "to": "app",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "runtime",
+      "to": "runtime",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "include": "packaging/mss-installer.nsh",
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "MSS",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true
+  }
+}

@@ -60,6 +60,8 @@ const config: Config = {
           done: "hsl(var(--maher-done))",
           due: "hsl(var(--maher-due))",
           "due-ink": "hsl(var(--maher-due-ink))",
+          premium: "hsl(var(--maher-premium))",
+          "premium-ink": "hsl(var(--maher-premium-ink))",
         },
       },
       boxShadow: {

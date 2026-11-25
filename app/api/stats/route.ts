@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { dhakaDateKey, dhakaRangeBounds, isDateKey } from "@/lib/dhaka";
 import { FALLBACK_TECHNICIANS, parseBnNumber } from "@/lib/utils";
 import { cardRows } from "@/lib/technicians";
+import {
+  effectiveRepairCost,
+  partsCostOf,
+} from "@/lib/parts";
+import { partsCostByService } from "@/lib/parts-data";
 import type { StatsResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +60,9 @@ export async function GET(req: NextRequest) {
         ...(bounds ? { serviceDate: { gte: bounds.start, lte: bounds.end } } : {}),
       },
       select: {
+        id: true,
         technician: true,
+        entryKind: true,
         totalBill: true,
         advance: true,
         due: true,
@@ -64,17 +71,24 @@ export async function GET(req: NextRequest) {
         expenseWrittenOff: true,
         damageLoss: true,
         refundAmount: true,
+        inspectionFee: true,
         shopExpense: true,
       },
     });
+    // One grouped query: a device with itemized parts reports their sum, a
+    // device without parts keeps its decoded shop-expense amount.
+    const partsCosts = await partsCostByService(rows.map((r) => r.id));
     const activeRows = rows.filter((r) => r.status !== "Returned");
     const returnedRows = rows.filter((r) => r.status === "Returned");
+    // Product anchors carry no technician and are not repair jobs: their money
+    // stays in the day totals, but device/technician counts skip them.
+    const deviceRows = activeRows.filter((r) => r.entryKind !== "PRODUCT");
 
-    const specs = await cardRows(activeRows.map((r) => r.technician));
+    const specs = await cardRows(deviceRows.map((r) => r.technician));
     const techStats = specs.map(({ technician, isActive }) => {
       // Case-insensitive so a card total can never drift from the day total
       // just because a historical row was typed in a different case.
-      const mine = activeRows.filter(
+      const mine = deviceRows.filter(
         (r) => r.technician.toUpperCase() === technician.toUpperCase()
       );
       return {
@@ -90,14 +104,20 @@ export async function GET(req: NextRequest) {
       ...(range ? { range } : {}),
       techStats,
       today: {
-        count: activeRows.length,
-        bill: activeRows.reduce((s, r) => s + r.totalBill, 0),
+        count: deviceRows.length,
+        // Returned rows are not active jobs, but a retained inspection fee is
+        // real labor revenue: it enters the day's bill (and therefore profit).
+        bill:
+          activeRows.reduce((s, r) => s + r.totalBill, 0) +
+          returnedRows.reduce((s, r) => s + r.inspectionFee, 0),
         due: activeRows.reduce((s, r) => s + r.due, 0),
         advance: activeRows.reduce((s, r) => s + r.advance, 0),
         // A returned job whose parts were unused/returned never cost the shop;
-        // keep the row for audit but skip its amount in every report.
+        // keep the row for audit but skip its amount in every report. A device
+        // with itemized parts uses their sum instead of the lump code.
         expense: rows.reduce(
-          (s, r) => s + (r.expenseWrittenOff ? 0 : r.expenseAmount),
+          (s, r) =>
+            s + effectiveRepairCost(r, partsCostOf(partsCosts, r.id)),
           0
         ),
         damageLoss: rows.reduce((s, r) => s + r.damageLoss, 0),

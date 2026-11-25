@@ -24,7 +24,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function waitForDashboard(page) {
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   // Let the media-query effect and the initial API fetches settle.
@@ -195,9 +195,9 @@ async function main() {
         );
         check(
           `A${width}`,
-          `${width}px shows exactly two nav destinations`,
-          state.navCount === 2 &&
-            state.navLabels.join(",") === "সার্ভিস,প্রোডাক্ট" &&
+          `${width}px shows exactly four nav destinations (Dashboard first)`,
+          state.navCount === 4 &&
+            state.navLabels.join(",") === "ড্যাশবোর্ড,সার্ভিস,প্রোডাক্ট,পার্টস" &&
             !state.navOverflow &&
             state.dateNavVisible,
           `links=${state.navCount}, labels=${state.navLabels.join("|")}, overflow=${state.navOverflow}`
@@ -309,6 +309,15 @@ async function main() {
         }
 
         if (width === 390 || width === 768) {
+          // Reports and dues moved to the Dashboard so the Service desk can
+          // stay front-desk only; check their dialogs there.
+          await page.goto(`${BASE}/dashboard`, {
+            waitUntil: "networkidle0",
+            timeout: 60000,
+          });
+          await page.waitForSelector('[data-testid="open-report"]', {
+            timeout: 15000,
+          });
           await openAndCheckDialog(
             page,
             width,

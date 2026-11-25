@@ -9,6 +9,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const Database = require("better-sqlite3");
 
 const ROOT = path.resolve(__dirname, "..");
 const IS_WINDOWS = process.platform === "win32";
@@ -16,9 +17,31 @@ const NPM = IS_WINDOWS ? "npm.cmd" : "npm";
 const NPX = IS_WINDOWS ? "npx.cmd" : "npx";
 const NEXT_BIN = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
 
+/** Historic suites assume this roster is bookable. Fresh installs ship an
+ *  empty roster, so the harness restores it on throwaway DBs only. */
+const LEGACY_TEST_TECHNICIANS = ["NURUL", "RONI", "ASRAFUL", "NAYEM"];
+const CLEAN_SLATE_SUITE = "scripts/clean-slate-fresh-install.js";
+
+function seedTestTechnicians(dbFile) {
+  const db = new Database(dbFile);
+  try {
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO "Technician" ("name", "isActive", "createdAt") VALUES (?, 1, CURRENT_TIMESTAMP)'
+    );
+    db.transaction((names) => {
+      for (const name of names) insert.run(name);
+    })(LEGACY_TEST_TECHNICIANS);
+  } finally {
+    db.close();
+  }
+}
+
 const DEFAULT_SUITES = [
   "scripts/launcher-decide.test.js",
   "scripts/portable-keep.test.js",
+  "scripts/user-data-dir.test.js",
+  "scripts/electron-env.test.js",
+  "scripts/desktop-package.test.js",
   "scripts/expense-upgrade.test.js",
   "scripts/e2e-maher.js",
   "scripts/e2e-p0.js",
@@ -28,12 +51,38 @@ const DEFAULT_SUITES = [
   "scripts/laneE.js",
   "scripts/laneF.js",
   "scripts/laneG.js",
+  "scripts/laneH.js",
+  "scripts/laneI.js",
+  "scripts/laneJ.js",
+  "scripts/laneK.js",
+  "scripts/laneL.js",
   "scripts/laneLanding.js",
+  "scripts/product-dashboard.js",
+  "scripts/service-part-resolution.js",
+  "scripts/parts-date-shop-filter.js",
+  "scripts/service-return-workflow.js",
+  "scripts/form-field-order.js",
   "scripts/api-check.js",
   "scripts/technician-mgmt.js",
   "scripts/responsive-check.js",
   "scripts/date-nav-flicker.js",
   "scripts/header-calendar.js",
+  "scripts/real-viewport.js",
+  "scripts/customer-address-warranty.js",
+  "scripts/white-label.js",
+  "scripts/dashboard-premium.js",
+  "scripts/clean-slate-fresh-install.js",
+  "scripts/mss-rebrand-contract.js",
+  "scripts/mss-update-contract.js",
+  "scripts/mss-installer-contract.js",
+  "scripts/cipher-sync.js",
+  "scripts/settings-save-pipeline.js",
+  "scripts/backup-restore-overhaul.js",
+  "scripts/power-failure-resilience.js",
+  "scripts/custom-db-path.test.js",
+  "scripts/secret-code.test.js",
+  "scripts/dashboard-cipher-qc.js",
+  "scripts/offline-licensing.test.js",
 ];
 
 function resolveLiveDatabaseFile() {
@@ -70,12 +119,31 @@ function run(command, args, env, label) {
 
 function freePort() {
   return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => resolve(address.port));
-    });
+    const tryBind = (attempt) => {
+      if (attempt > 80) {
+        // Fall back to an OS-assigned port as a last resort.
+        const server = net.createServer();
+        server.on("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address();
+          server.close(() => resolve(address.port));
+        });
+        return;
+      }
+      const port = 31000 + Math.floor(Math.random() * 9000);
+      const server = net.createServer();
+      let settled = false;
+      server.on("error", () => {
+        if (settled) return;
+        server.close(() => tryBind(attempt + 1));
+      });
+      server.listen(port, "127.0.0.1", () => {
+        if (settled) return;
+        settled = true;
+        server.close(() => resolve(port));
+      });
+    };
+    tryBind(0);
   });
 }
 
@@ -132,6 +200,7 @@ async function runSuite(suite, index, tempRoot, baseEnv) {
   const suiteDir = path.join(tempRoot, `${index}-${slug}`);
   const dbFile = path.join(suiteDir, `${slug}.db`);
   const backupDir = path.join(suiteDir, "backups");
+  const isLicensingSuite = suite.endsWith("offline-licensing.test.js");
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
   fs.mkdirSync(backupDir, { recursive: true });
 
@@ -140,6 +209,14 @@ async function runSuite(suite, index, tempRoot, baseEnv) {
     MAHER_DB_PATH: dbFile,
     DATABASE_URL: `file:${dbFile}`,
     MAHER_BACKUP_DIR: backupDir,
+    // One throwaway licence file per suite: no suite can activate or expire
+    // another suite's state, and no test ever touches the shop's data folder.
+    MAHER_LICENSE_FILE: path.join(suiteDir, "maher-license-state.json"),
+    // Legacy suites get a deterministic unlocked trial; the licensing suite
+    // exercises the real clock, signature and activation paths instead.
+    ...(isLicensingSuite
+      ? { MAHER_LICENSE_TEST_MODE: "1" }
+      : { MAHER_LICENSE_BYPASS: "1" }),
   };
   await run(
     NPX,
@@ -157,6 +234,9 @@ async function runSuite(suite, index, tempRoot, baseEnv) {
     env,
     `prisma generate (${suite})`
   );
+  // Only the clean-slate suite inspects an untouched install; every other
+  // suite gets the legacy roster back on its private throwaway database.
+  if (suite !== CLEAN_SLATE_SUITE) seedTestTechnicians(dbFile);
 
   console.log(`\n===== ${suite} =====`);
   console.log(`Throwaway database: ${dbFile}`);
@@ -226,6 +306,8 @@ async function main() {
       MAHER_DB_PATH: buildDb,
       DATABASE_URL: `file:${buildDb}`,
       MAHER_BACKUP_DIR: path.join(buildDir, "backups"),
+      MAHER_LICENSE_FILE: path.join(buildDir, "maher-license-state.json"),
+      MAHER_LICENSE_BYPASS: "1",
     };
     fs.mkdirSync(buildEnv.MAHER_BACKUP_DIR, { recursive: true });
     await run(NPX, ["prisma", "migrate", "deploy"], buildEnv, "prisma migrate deploy");

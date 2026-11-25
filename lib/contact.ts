@@ -14,18 +14,21 @@ export function telHref(phone: string): string {
   return `tel:${digits.startsWith("880") ? `+${digits}` : digits}`;
 }
 
-export function whatsAppHref(service: {
-  id: number;
-  phone: string;
-  model: string;
-  due: number;
-}): string {
+export function whatsAppHref(
+  service: {
+    id: number;
+    phone: string;
+    model: string;
+    due: number;
+  },
+  shopName = ""
+): string {
   const paymentLine =
     service.due > 0
       ? `${formatTaka(service.due)} বাকি আছে।`
       : "সম্পূর্ণ টাকা পরিশোধ হয়েছে। ধন্যবাদ।";
   const message =
-    `আসসালামু আলাইকুম, MAHER MOBILE CARE থেকে বলছি। ` +
+    `আসসালামু আলাইকুম, ${shopName.trim() || "আপনার দোকান"} থেকে বলছি। ` +
     `বিল নং ${service.id} (${service.model})-এর ${paymentLine}`;
   return `https://wa.me/${normalizeBdPhone(service.phone)}?text=${encodeURIComponent(
     message

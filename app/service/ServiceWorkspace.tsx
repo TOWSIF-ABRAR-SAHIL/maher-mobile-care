@@ -1,44 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  loadPartShopNames,
+  mergePartShopNames,
+  savePartShopName,
+} from "@/lib/part-shops";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import {
-  BarChart3,
-  ClipboardList,
-  Loader2,
-  Plus,
-  Printer,
-  Settings,
-} from "lucide-react";
+import { ClipboardList, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { AppHeader } from "@/components/AppHeader";
-import { DailySummary } from "@/components/DailySummary";
+import { useAppHeader } from "@/components/AppChrome";
 import { MonthlySummary } from "@/components/MonthlySummary";
-import { OutstandingDues, type DuesResponse } from "@/components/OutstandingDues";
-import { PageLead } from "@/components/PageLead";
+import { PaymentDialog } from "@/components/PaymentDialog";
 import { Receipt, ReceiptBundle, ReceiptDialog } from "@/components/Receipt";
-import { ReportDetails } from "@/components/ReportDetails";
-import { ReportDocument } from "@/components/report/ReportDocument";
-import { RestoreDialog } from "@/components/RestoreDialog";
+import { useShopSettings } from "@/components/ShopSettingsProvider";
 import { ServiceForm } from "@/components/ServiceForm";
 import { ServiceTable } from "@/components/ServiceTable";
-import { ServiceUtilities } from "@/components/service/ServiceUtilities";
 import { ShopFooter } from "@/components/ShopFooter";
-import { TechnicianManager } from "@/components/TechnicianManager";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { publishBackup } from "@/lib/backup";
 import { dhakaDateKey, dayLabel, monthContaining, shiftDateKey, shiftMonth } from "@/lib/dhaka";
-import { useLastBackup } from "@/lib/use-last-backup";
-import { cn, STATUSES, toBnDigits, type ServiceStatus } from "@/lib/utils";
-import type { ReportData } from "@/lib/export";
+import { cn, formatTaka, STATUSES, type ServiceStatus } from "@/lib/utils";
 import type {
   ListMode,
   MonthlyResponse,
@@ -72,6 +53,7 @@ export function ServiceWorkspace({
   initialProductMode?: boolean;
   initialServiceMode?: boolean;
 }) {
+  const { settings: shopSettings } = useShopSettings();
   const [date, setDate] = useState(
     () => initialDate || dhakaDateKey(new Date())
   );
@@ -83,15 +65,8 @@ export function ServiceWorkspace({
   const [editing, setEditing] = useState<ServiceDTO | null>(null);
   const [receipt, setReceipt] = useState<ServiceDTO | null>(null);
   const [receiptGroup, setReceiptGroup] = useState<ServiceDTO[] | null>(null);
+  const [paymentTarget, setPaymentTarget] = useState<ServiceDTO | null>(null);
   const receiptGroupReq = useRef(0);
-  const [showTechManager, setShowTechManager] = useState(false);
-  const [showReport, setShowReport] = useState(false);
-  const [showDues, setShowDues] = useState(false);
-  const [dues, setDues] = useState<DuesResponse | null>(null);
-  const [duesLoading, setDuesLoading] = useState(true);
-  const [backingUp, setBackingUp] = useState(false);
-  const [showRestore, setShowRestore] = useState(false);
-  const lastBackup = useLastBackup();
   const [technicians, setTechnicians] = useState<string[]>([]);
   const [partsShops, setPartsShops] = useState<string[]>([]);
   const [techFilter, setTechFilter] = useState<string | null>(null);
@@ -106,7 +81,6 @@ export function ServiceWorkspace({
   const paramsConsumed = useRef(false);
   const reqId = useRef(0);
   const monthlyReq = useRef(0);
-  const duesReq = useRef(0);
   const loadedOnce = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -213,12 +187,21 @@ export function ServiceWorkspace({
     try {
       const res = await fetch("/api/parts-shops");
       const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.shops)) {
-        setPartsShops(data.shops.filter((s: unknown) => typeof s === "string"));
-      }
+      const remote =
+        res.ok && Array.isArray(data.shops)
+          ? data.shops.filter((s: unknown) => typeof s === "string")
+          : [];
+      setPartsShops(mergePartShopNames(loadPartShopNames(), remote));
     } catch {
-      /* suggestions are optional; free text still works */
+      setPartsShops(loadPartShopNames());
     }
+  }, []);
+
+  /** Called from a new entry's parts row so shops can be added while entering. */
+  const addPartShop = useCallback((name: string) => {
+    const stored = savePartShopName(name);
+    setPartsShops((current) => mergePartShopNames(stored, current));
+    toast.success(`“${name}” দোকান তালিকায় যোগ হয়েছে`);
   }, []);
 
   const load = useCallback(async (day: string, showSkeleton: boolean) => {
@@ -300,34 +283,13 @@ export function ServiceWorkspace({
         ? `day:${date}`
         : `range:${range.from}_${range.to}`;
 
-  const fetchDues = useCallback(async () => {
-    const my = ++duesReq.current;
-    try {
-      const d = await getJSON<DuesResponse>("/api/services/dues");
-      if (duesReq.current !== my) return;
-      setDues(d);
-    } catch {
-      if (duesReq.current === my) setDues(null);
-    } finally {
-      if (duesReq.current === my) setDuesLoading(false);
-    }
-  }, []);
-
-  /** One manual refresh for every panel on the desk. */
+  /** One manual refresh for the day list and its daily stats. */
   const refreshAll = useCallback(() => {
     void load(dateRef.current, false);
     void fetchMonthly(currentWindow());
-    void fetchDues();
     void loadTechnicians();
     void loadPartsShops();
-  }, [
-    load,
-    fetchMonthly,
-    currentWindow,
-    fetchDues,
-    loadTechnicians,
-    loadPartsShops,
-  ]);
+  }, [load, fetchMonthly, currentWindow, loadTechnicians, loadPartsShops]);
 
   useEffect(() => {
     void fetchMonthly(currentWindow());
@@ -338,10 +300,6 @@ export function ServiceWorkspace({
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    void fetchDues();
-  }, [fetchDues, dataVersion]);
 
   useEffect(() => {
     void load(date, !loadedOnce.current);
@@ -441,9 +399,13 @@ export function ServiceWorkspace({
     setRange({ from, to });
   };
 
-  const print = () => {
+  const print = async () => {
     if (loading || refreshing || !stats || !monthly) {
       toast.error("পুরো পেজ লোড হওয়ার পর প্রিন্ট করুন");
+      return;
+    }
+    if (window.maherDesktop?.isElectron) {
+      await window.maherDesktop.printReceipt();
       return;
     }
     window.print();
@@ -514,9 +476,9 @@ export function ServiceWorkspace({
       flushSync(() => {
         root.render(
           group ? (
-            <ReceiptBundle services={group} />
+            <ReceiptBundle services={group} profile={shopSettings} />
           ) : (
-            <Receipt service={service} />
+            <Receipt service={service} profile={shopSettings} />
           )
         );
       });
@@ -534,7 +496,7 @@ export function ServiceWorkspace({
         "@/lib/receipt-pdf"
       );
       const blob = await createReceiptPdf(receiptNode);
-      const result = await sharePdfBlob(service, blob);
+      const result = await sharePdfBlob(service, blob, shopSettings.shopName);
       if (result === "shared") {
         toast.success("PDF শেয়ার হয়েছে");
       } else if (result === "downloaded") {
@@ -557,168 +519,6 @@ export function ServiceWorkspace({
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Report export — always follows the ACTIVE report scope (একদিন / তারিখ
-   * রেঞ্জ / সব তারিখ). Rows come from the same paged source the on-screen
-   * detail table uses, totals from the monthly summary fetched for exactly
-   * this window. Fully local: no cloud, no third-party service.
-   * ------------------------------------------------------------------ */
-  const [exporting, setExporting] = useState<null | "pdf" | "csv" | "excel">(
-    null
-  );
-  const EXPORT_PAGE = 500;
-  const EXPORT_MAX = 5000;
-
-  /** Rows for the dialog's detail table (paged, same window as the totals). */
-  const [reportRows, setReportRows] = useState<ServiceDTO[] | null>(null);
-  const [reportRowsLoading, setReportRowsLoading] = useState(false);
-  const reportRowsReq = useRef(0);
-
-  const fetchWindowRows = useCallback(
-    async (cap: number): Promise<{ rows: ServiceDTO[]; capped: boolean }> => {
-      const w = currentWindow();
-      const scope = w ? `from=${w.from}&to=${w.to}` : "all=1";
-      const rows: ServiceDTO[] = [];
-      let offset = 0;
-      let hasMore = true;
-      while (hasMore && rows.length < cap) {
-        const page = await getJSON<ServicesListResponse>(
-          `/api/services?${scope}&limit=${EXPORT_PAGE}&offset=${offset}`
-        );
-        rows.push(...(page.services ?? []));
-        hasMore = !!page.hasMore;
-        offset = rows.length;
-      }
-      return { rows, capped: hasMore };
-    },
-    [currentWindow]
-  );
-
-  // Keep the detail table in sync while the dialog is open; drop it on close
-  // so reopening always shows the current window (no stale rows).
-  useEffect(() => {
-    if (!showReport) {
-      setReportRows(null);
-      return;
-    }
-    const my = ++reportRowsReq.current;
-    setReportRowsLoading(true);
-    fetchWindowRows(EXPORT_MAX)
-      .then(({ rows }) => {
-        if (reportRowsReq.current === my) setReportRows(rows);
-      })
-      .catch(() => {
-        if (reportRowsReq.current === my) setReportRows([]);
-      })
-      .finally(() => {
-        if (reportRowsReq.current === my) setReportRowsLoading(false);
-      });
-  }, [showReport, reportWindowKey, fetchWindowRows]);
-
-  const collectReport = async (): Promise<ReportData | null> => {
-    if (!monthly) return null;
-    const w = currentWindow();
-    const { rows, capped } = await fetchWindowRows(EXPORT_MAX);
-    if (capped) {
-      toast.warning("রিপোর্টে সর্বোচ্চ ৫০০০ রেকর্ড — রেঞ্জ ছোট করে আবার চেষ্টা করুন");
-    }
-    return {
-      from: w?.from ?? "",
-      to: w?.to ?? "",
-      label: w ? `${w.from} – ${w.to}` : "সব তারিখ",
-      stamp: w ? `${w.from}_${w.to}` : "all",
-      summary: monthly.summary,
-      rows,
-    };
-  };
-
-  const exportReport = async (kind: "pdf" | "csv" | "excel") => {
-    if (exporting) return;
-    if (!monthly) {
-      toast.error("রিপোর্ট লোড হওয়ার পর এক্সপোর্ট করুন");
-      return;
-    }
-    setExporting(kind);
-    try {
-      const data = await collectReport();
-      if (!data) return;
-      const stamp = data.stamp;
-      const { downloadBlob } = await import("@/lib/download");
-      if (kind === "csv") {
-        const { buildReportCsv } = await import("@/lib/export");
-        downloadBlob(buildReportCsv(data), `MAHER-Report-${stamp}.csv`);
-      } else if (kind === "excel") {
-        const { buildReportXlsx } = await import("@/lib/export");
-        downloadBlob(buildReportXlsx(data), `MAHER-Report-${stamp}.xlsx`);
-      } else {
-        const host = document.createElement("div");
-        host.setAttribute("aria-hidden", "true");
-        host.style.cssText =
-          "position:fixed;left:-10000px;top:0;width:760px;background:#fff;pointer-events:none;z-index:-1;";
-        document.body.appendChild(host);
-        const root = createRoot(host);
-        try {
-          flushSync(() => {
-            root.render(<ReportDocument data={data} />);
-          });
-          if (document.fonts?.ready) {
-            await document.fonts.ready;
-          }
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-          );
-          const node = host.querySelector<HTMLElement>("[data-report-doc]");
-          if (!node) throw new Error("রিপোর্ট তৈরি করা যায়নি");
-          const { createReportPdf } = await import("@/lib/report-pdf");
-          downloadBlob(await createReportPdf(node), `MAHER-Report-${stamp}.pdf`);
-        } finally {
-          root.unmount();
-          host.remove();
-        }
-      }
-      toast.success("রিপোর্ট ডাউনলোড হয়েছে");
-    } catch (error) {
-      console.error("Report export failed", error);
-      toast.error(
-        error instanceof Error ? error.message : "এক্সপোর্ট করা যায়নি"
-      );
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const backup = async () => {
-    if (backingUp) return;
-    setBackingUp(true);
-    try {
-      const snap = await fetch("/api/backup", { method: "POST" });
-      const sj = await snap.json().catch(() => ({}));
-      if (!snap.ok || !sj?.ok) {
-        throw new Error(sj?.error || "ব্যাকআপ করা যায়নি");
-      }
-      // The snapshot is the real backup: publish its stamp before the slower
-      // Excel download, so a download failure never hides a safe snapshot.
-      publishBackup();
-      const res = await fetch("/api/backup?format=xlsx", { cache: "no-store" });
-      if (!res.ok) {
-        throw new Error("স্ন্যাপশট হয়েছে, কিন্তু Excel ফাইল তৈরি করা যায়নি");
-      }
-      const blob = await res.blob();
-      const { downloadBlob } = await import("@/lib/download");
-      const disposition = res.headers.get("Content-Disposition") ?? "";
-      const fileName =
-        /filename="([^"]+)"/.exec(disposition)?.[1] ?? "maher-backup.xlsx";
-      downloadBlob(blob, fileName);
-      toast.success(
-        `ব্যাকআপ হয়েছে — Excel কপি নামছে (${sj.services ?? 0}টি সার্ভিস)`
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "ব্যাকআপ করা যায়নি");
-    } finally {
-      setBackingUp(false);
-    }
-  };
-
   const edit = (service: ServiceDTO) => {
     setEditing(service);
     setMobileTab("form");
@@ -734,21 +534,22 @@ export function ServiceWorkspace({
     setEditing(null);
     setMobileTab("form");
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => {
+    const focusFirstField = () => {
       const field = formRef.current?.querySelector<HTMLElement>(
         'input:not([type="hidden"]), select, textarea'
       );
       field?.focus({ preventScroll: true });
-    }, 350);
-  };
-
-  const editFromDues = (service: ServiceDTO) => {
-    setShowDues(false);
-    edit(service);
-  };
-  const receiptFromDues = (service: ServiceDTO) => {
-    setShowDues(false);
-    openReceipt(service);
+    };
+    // Phones swap surfaces on the next paint, so they keep the short delay.
+    // On desktop the form is already on screen — focus it straight away and
+    // never lose the first keystrokes while the page smooth-scrolls.
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(focusFirstField)
+      );
+    } else {
+      window.setTimeout(focusFirstField, 350);
+    }
   };
 
   // Deep links from search and old Home bookmarks: open the exact row, or the
@@ -799,19 +600,20 @@ export function ServiceWorkspace({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshAll]);
 
-  const duesButtonLabel = duesLoading
-    ? "💰 বাকি তালিকা (হিসাব হচ্ছে…)"
-    : dues
-      ? `💰 বাকি তালিকা (${toBnDigits(dues.count)}টি • ৳${toBnDigits(
-          dues.totalDue.toLocaleString("en-IN")
-        )})`
-      : "💰 বাকি তালিকা";
-
-  const statusParam: "All" | ServiceStatus =
+  const statusParam: "All" | ServiceStatus | "Due" =
     initialStatus === "All" ||
+    initialStatus === "Due" ||
     (STATUSES as readonly string[]).includes(initialStatus ?? "")
-      ? (initialStatus as "All" | ServiceStatus)
+      ? (initialStatus as "All" | ServiceStatus | "Due")
       : "All";
+
+  // The masthead is rendered once by the root layout (AppChrome) so it stays
+  // put while routing; hand it this desk's search behaviour.
+  useAppHeader({
+    searchRefreshKey: dataVersion,
+    onSearchEdit: edit,
+    onSearchReceipt: openReceipt,
+  });
 
   /** Headline label of the daily cards: the shown window, not always "today". */
   const statsScope =
@@ -822,7 +624,11 @@ export function ServiceWorkspace({
         : `${dayLabel(listRange.from)} – ${dayLabel(listRange.to)}`;
 
   return (
-    <div className="min-h-dvh bg-maher-surface">
+    // The masthead now lives in the root layout (AppChrome), outside this
+    // wrapper, so a full-viewport min-height here would stack on top of the
+    // bar and force a vertical scrollbar. Subtract the measured chrome height
+    // (bar + its pt-2: 122px on phones, 68px from md up).
+    <div className="min-h-[calc(100dvh-122px)] bg-maher-surface md:min-h-[calc(100dvh-68px)]">
       <div
         data-testid="day-refreshing"
         aria-hidden={!refreshing}
@@ -843,101 +649,10 @@ export function ServiceWorkspace({
 
       <main
         data-refreshing={refreshing ? "true" : "false"}
-        className={`mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1600px] 2xl:max-w-[1840px] ${
+        className={`mx-auto w-full max-w-7xl space-y-2 px-3 py-2 xl:max-w-[1600px] 2xl:max-w-[1840px] ${
           receipt ? "print:hidden" : ""
         }`}
       >
-        <AppHeader
-          searchRefreshKey={dataVersion}
-          onSearchEdit={edit}
-          onSearchReceipt={openReceipt}
-        />
-
-        {/* On xl the action row and the backup strip share one grid: the strip
-            slots into the empty left column instead of adding another
-            full-width row. Below xl the two simply stack. */}
-        <div className="flex flex-col gap-2 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end xl:gap-x-6 xl:gap-y-2">
-          <PageLead
-            className="xl:contents"
-            actions={
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  data-testid="new-service-entry"
-                  onClick={newEntry}
-                  title="নতুন কাজের ফর্মে যান — কাস্টমারের নাম লিখে শুরু করুন"
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  নতুন সার্ভিস এন্ট্রি
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-testid="open-report"
-                  onClick={() => setShowReport(true)}
-                  className="bg-white"
-                >
-                  <BarChart3 className="mr-1 h-4 w-4" />
-                  রিপোর্ট
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-testid="open-dues"
-                  onClick={() => setShowDues(true)}
-                  className="border-maher-due/30 bg-white text-maher-due hover:bg-maher-due/10"
-                >
-                  {duesButtonLabel}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={print}
-                  className="bg-white"
-                >
-                  <Printer className="mr-1 h-4 w-4" />
-                  প্রিন্ট
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-testid="open-technician-manager"
-                  onClick={() => setShowTechManager(true)}
-                  className="bg-white"
-                  title="টেকনিশিয়ান যোগ / বদল / ডিলিট"
-                >
-                  <Settings className="mr-1 h-4 w-4" />
-                  টেকনিশিয়ান
-                </Button>
-              </>
-            }
-          />
-          <ServiceUtilities
-            className="xl:col-start-1 xl:row-start-2"
-            lastBackup={lastBackup}
-            refreshing={refreshing}
-            backingUp={backingUp}
-            onRefresh={refreshAll}
-            onBackup={() => void backup()}
-            onRestore={() => setShowRestore(true)}
-          />
-        </div>
-
-        <DailySummary
-          stats={stats}
-          loading={loading}
-          selected={techFilter}
-          onSelect={setTechFilter}
-          date={date}
-          today={dhakaDateKey(new Date())}
-          scope={statsScope}
-        />
-
         <div className="hidden print:block" data-testid="monthly-print">
           <MonthlySummary
             summary={monthly?.summary ?? null}
@@ -999,9 +714,38 @@ export function ServiceWorkspace({
                 (initialProductMode ? "new-product" : "new-service")
               }
               initial={editing}
+              initialProducts={
+                editing
+                  ? editing.entryKind === "PRODUCT"
+                    ? (editing.saleItems ?? [])
+                    : editing.groupId
+                      ? (services.find(
+                          (s) =>
+                            s.groupId === editing.groupId &&
+                            s.entryKind === "PRODUCT" &&
+                            !s.archived
+                        )?.saleItems ?? [])
+                      : []
+                  : []
+              }
+              initialAnchorId={
+                editing
+                  ? editing.entryKind === "PRODUCT"
+                    ? editing.id
+                    : editing.groupId
+                      ? (services.find(
+                          (s) =>
+                            s.groupId === editing.groupId &&
+                            s.entryKind === "PRODUCT" &&
+                            !s.archived
+                        )?.id ?? null)
+                      : null
+                  : null
+              }
               serviceDate={date}
               technicians={technicians}
               partsShops={partsShops}
+              onAddPartShop={addPartShop}
               initialProductMode={initialProductMode}
               onSaved={() => {
                 setEditing(null);
@@ -1036,6 +780,7 @@ export function ServiceWorkspace({
               onRangeChange={changeListRange}
               onEdit={edit}
               onReceipt={openReceipt}
+              onPayment={(service) => setPaymentTarget(service)}
               onSharePdf={shareReceiptPdf}
               technicianFilter={techFilter}
               onClearTechnician={() => setTechFilter(null)}
@@ -1056,63 +801,6 @@ export function ServiceWorkspace({
         </div>
       </main>
 
-      <Dialog open={showReport} onOpenChange={setShowReport}>
-        <DialogContent
-          data-testid="report-dialog"
-          className="max-h-[92dvh] sm:max-w-5xl"
-        >
-          <DialogHeader className="sr-only">
-            <DialogTitle>ওভারঅল রিপোর্ট</DialogTitle>
-            <DialogDescription>
-              একদিন, তারিখ রেঞ্জ বা সব তারিখের সার্ভিস, বাকি ও লাভের হিসাব
-            </DialogDescription>
-          </DialogHeader>
-          <MonthlySummary
-            summary={monthly?.summary ?? null}
-            range={range}
-            mode={rangeMode}
-            dateMode={reportMode}
-            day={date}
-            onDateMode={setReportMode}
-            onDayChange={setDate}
-            onPreset={pickPreset}
-            onCustom={pickCustom}
-            loading={loading}
-            exporting={exporting}
-            onExportPdf={() => void exportReport("pdf")}
-            onExportCsv={() => void exportReport("csv")}
-            onExportExcel={() => void exportReport("excel")}
-          />
-          <ReportDetails
-            rows={reportRows}
-            loading={reportRowsLoading}
-            dateMode={reportMode}
-            day={date}
-            range={range}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showDues} onOpenChange={setShowDues}>
-        <DialogContent
-          data-testid="dues-dialog"
-          className="max-h-[92dvh] sm:max-w-6xl"
-        >
-          <DialogHeader className="sr-only">
-            <DialogTitle>বাকি তালিকা</DialogTitle>
-            <DialogDescription>
-              সব তারিখের বাকি কাস্টমার, বিল, জমা ও যোগাযোগ
-            </DialogDescription>
-          </DialogHeader>
-          <OutstandingDues
-            dues={dues}
-            loading={duesLoading}
-            onEdit={editFromDues}
-            onReceipt={receiptFromDues}
-          />
-        </DialogContent>
-      </Dialog>
-
       <ShopFooter className={receipt ? "print:hidden" : ""} />
 
       <ReceiptDialog
@@ -1122,26 +810,14 @@ export function ServiceWorkspace({
         onPrint={print}
       />
 
-      <RestoreDialog
-        open={showRestore}
-        onClose={() => setShowRestore(false)}
-        onRestored={() => {
-          setShowRestore(false);
-          setDataVersion((value) => value + 1);
-          void load(dateRef.current, false);
-          void fetchMonthly(currentWindow());
-          void loadTechnicians();
-          void loadPartsShops();
-        }}
-      />
-
-      <TechnicianManager
-        open={showTechManager}
-        onClose={() => setShowTechManager(false)}
+      <PaymentDialog
+        service={paymentTarget}
+        onClose={() => setPaymentTarget(null)}
         onChanged={() => {
-          void loadTechnicians();
+          setPaymentTarget(null);
           setDataVersion((v) => v + 1);
           void load(dateRef.current, false);
+          void fetchMonthly(currentWindow());
         }}
       />
 

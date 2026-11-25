@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ContactButtons } from "@/components/ContactButtons";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatusChips, type StatusFilter } from "@/components/StatusChips";
-import { formatTaka, STATUSES, toBnDigits } from "@/lib/utils";
+import { formatTaka, STATUSES } from "@/lib/utils";
 import { bengaliDateLabel, dhakaDateKey } from "@/lib/dhaka";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ServiceDTO } from "@/lib/types";
@@ -148,7 +148,7 @@ export function OutstandingDues({
         </span>
       </span>
       <span className="text-muted-foreground">
-        {toBnDigits(section.visits.length)}টি বাকি •{" "}
+        {section.visits.length}টি বাকি •{" "}
         <b className="tabular-nums text-maher-due-ink">
           {formatTaka(section.totalDue)}
         </b>
@@ -187,13 +187,14 @@ export function OutstandingDues({
           value={statusFilter}
           onChange={setStatusFilter}
           label="অবস্থা দিয়ে বাকি তালিকা ফিল্টার"
+          includeDue={false}
         />
       ) : null}
       {loading ? (
         <p className="py-6 text-center text-sm text-muted-foreground">তালিকা আসছে…</p>
       ) : !dues ? (
         <p className="py-6 text-center text-sm text-maher-due-ink">
-          বাকি তালিকা আনা যায়নি — Sync করুন।
+          বাকি তালিকা আনা যায়নি — রিফ্রেশ করুন।
         </p>
       ) : dues.services.length === 0 ? (
         <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">

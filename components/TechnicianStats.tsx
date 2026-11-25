@@ -26,9 +26,6 @@ export function TechnicianStats({
           <Users className="h-4 w-4 text-muted-foreground" />
           টেকনিশিয়ান অনুযায়ী দৈনিক কাজের হিসাব
         </h2>
-        <p className="text-xs text-muted-foreground">
-          কার্ডে ক্লিক করে শুধু ওই টেকনিশিয়ানের কাজ দেখুন
-        </p>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
         {loading

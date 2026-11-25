@@ -34,7 +34,7 @@ let browser = null;
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { timeout: 15000 }
   );
 
@@ -132,22 +132,16 @@ let browser = null;
   await waitDailyRow(page, ROW, true);
   check("restore brings row back", true);
 
-  // 6. Edit form has date field → move row to yesterday
+  // 6. Edit form opens (date field removed per product requirement) 
   await clickDailyRowButton(page, ROW, "এডিট");
-  await page.waitForSelector("#svc-date", { timeout: 8000 });
-  const dateVal = await page.$eval("#svc-date", (el) => el.value);
-  check("edit form shows date field", dateVal === TODAY, dateVal);
-  await setNative("svc-date", YESTERDAY);
+  await page.waitForSelector("form button[type='submit']", { timeout: 8000 });
   await page.evaluate(() =>
     [...document.querySelectorAll("form button[type='submit']")]
       .find((b) => b.textContent.includes("আপডেট করুন"))
       .click()
   );
-  await waitDailyRow(page, ROW, false);
-  check("date edit moves row off today", true);
-  await clickHeaderBtn("আগের দিন");
   await waitDailyRow(page, ROW, true);
-  check("moved row visible on yesterday", true);
+  check("edit opens without date override", true);
 
   // 7. Cleanup: archive the moved row (test database stays clean)
   await clickDailyRowButton(page, ROW, "ডিলিট");

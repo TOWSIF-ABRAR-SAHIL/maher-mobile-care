@@ -1,5 +1,7 @@
 import { dhakaDateKey, isDateKey, serviceDateFromKey } from "./dhaka";
 import { normalizeShopExpense } from "./expense-code";
+import type { CipherConfig } from "./secret-code";
+import { normalizeParts, type ValidatedPart } from "./parts";
 import {
   FLOW_STATUSES,
   FALLBACK_TECHNICIANS,
@@ -10,7 +12,7 @@ import {
 
 /** Matches every user-facing validation error thrown by this module. */
 export const SERVICE_VALIDATION_PATTERN =
-  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|অনেক বড়|সঠিক তারিখ|ভুল ডেটা|গোপন কোড|পার্টস কেনার দোকান|বদলানো|must be|Invalid date/;
+  /আবশ্যক|বাছুন|লিখুন|দিন|বেশি|সঠিক সংখ্যা|অনেক বড়|সঠিক তারিখ|ভুল ডেটা|গোপন কোড|পার্টস|বদলানো|must be|Invalid date/;
 
 /** Advance (জমা) may never exceed the bill — anything above the bill is
  *  overpay, not a valid ledger value. */
@@ -37,10 +39,20 @@ export interface ServiceFormValues {
   /** Internal only: shop-borne damage repair/compensation. */
   damageLoss?: string;
   damageNote?: string;
+  /** Internal only: what was actually done on this device. Never printed. */
+  solution?: string;
+  /** Customer terms for the visit; printed only on the customer copy. */
+  condition?: string;
   /** Expected handover date (YYYY-MM-DD), optional. */
   deliveryDate?: string;
   /** Optional handset IMEI (stored as text; blank means no IMEI). */
   imei?: string;
+  /** Optional customer address, shared by every device of the visit. */
+  customerAddress?: string;
+  /** Optional warranty term for this device. */
+  warranty?: string;
+  /** Itemized repair parts for this device (replaces the shop-cost lump). */
+  parts?: unknown;
   serviceDate?: string;
 }
 
@@ -54,6 +66,8 @@ export interface ServiceFormValues {
  * still works if the technician request fails.
  */
 export interface ValidationContext {
+  /** Active secret-code cipher from ShopSettings (defaults to keypad). */
+  cipher?: CipherConfig;
   allowedTechnicians?: readonly string[];
   /**
    * UI-only hint: the product-sale mode reuses `model`/`problem`, so the
@@ -61,6 +75,12 @@ export interface ValidationContext {
    * changes — API routes simply omit this flag and keep the service wording.
    */
   productSale?: boolean;
+  /**
+   * Edit-mode hint: an existing part line may omit its supplier/purchase date
+   * (the database merge keeps the previous values). New lines are always
+   * required to send both. Create mode leaves this off.
+   */
+  partsRequirePurchaseInfo?: boolean;
 }
 
 export interface ValidatedServicePayload {
@@ -76,11 +96,19 @@ export interface ValidatedServicePayload {
   shopExpense: string | null;
   expenseAmount: number;
   partsShop: string | null;
+  solution: string | null;
+  condition: string | null;
   damageLoss: number;
   damageNote: string | null;
   deliveryDate: Date | null;
   /** Optional: NULL when the form left it blank. */
   imei: string | null;
+  /** Optional visit-level customer address; NULL when left blank. */
+  customerAddress: string | null;
+  /** Optional per-device warranty term; NULL when left blank. */
+  warranty: string | null;
+  /** Itemized parts; empty means "no parts, use the shop-expense lump". */
+  parts: ValidatedPart[];
   serviceDateKey: string;
   serviceDate: Date;
 }
@@ -101,6 +129,11 @@ function readBody(body: unknown): Record<string, unknown> {
 const MAX_PARTS_SHOP_LENGTH = 100;
 const MAX_NOTE_LENGTH = 300;
 const MAX_IMEI_LENGTH = 32;
+const MAX_CUSTOMER_ADDRESS_LENGTH = 200;
+const MAX_WARRANTY_LENGTH = 100;
+/** Work-done note per device and customer terms per visit. */
+export const MAX_SOLUTION_LENGTH = 500;
+export const MAX_CONDITION_LENGTH = 500;
 
 /**
  * Optional handset IMEI. Blank → NULL. The field is never required, so a job
@@ -112,6 +145,26 @@ export function optionalImei(value: unknown): string | null {
   if (!text) return null;
   if (text.length > MAX_IMEI_LENGTH) {
     throw new Error("IMEI নম্বর ৩২ অক্ষরের বেশি হতে পারবে না");
+  }
+  return text;
+}
+
+/** Optional customer address. Blank → NULL; long values are rejected. */
+export function optionalCustomerAddress(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > MAX_CUSTOMER_ADDRESS_LENGTH) {
+    throw new Error("কাস্টমারের ঠিকানা ২০০ অক্ষরের বেশি হতে পারবে না");
+  }
+  return text;
+}
+
+/** Optional warranty term. Blank → NULL; long values are rejected. */
+export function optionalWarranty(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > MAX_WARRANTY_LENGTH) {
+    throw new Error("ওয়ারেন্টির মেয়াদ ১০০ অক্ষরের বেশি হতে পারবে না");
   }
   return text;
 }
@@ -132,6 +185,24 @@ export function optionalNote(value: unknown, field: string): string | null {
   if (!text) return null;
   if (text.length > MAX_NOTE_LENGTH) {
     throw new Error(`${field} ৩০০ অক্ষরের বেশি হতে পারবে না`);
+  }
+  return text;
+}
+
+/**
+ * Optional long descriptive text (solution/condition). Blank becomes NULL and
+ * an over-long value is rejected with the shared Bengali message. Both fields
+ * are descriptive only — they never affect money.
+ */
+export function optionalLongText(
+  value: unknown,
+  field: string,
+  max: number
+): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (text.length > max) {
+    throw new Error(`${field} ৫০০ অক্ষরের বেশি হতে পারবে না`);
   }
   return text;
 }
@@ -211,7 +282,7 @@ export function validateServicePayload(
     throw new Error(OVERPAY_MESSAGE);
   }
 
-  const normalizedExpense = normalizeShopExpense(values.shopExpense);
+  const normalizedExpense = normalizeShopExpense(values.shopExpense, ctx?.cipher);
   if (normalizedExpense.kind === "invalid") {
     throw new Error(
       normalizedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
@@ -220,6 +291,16 @@ export function validateServicePayload(
   const shopExpense = normalizedExpense.stored;
   const expenseAmount = normalizedExpense.amount ?? 0;
   const partsShop = optionalPartsShop(values.partsShop);
+  const solution = optionalLongText(
+    values.solution,
+    "সমাধান",
+    MAX_SOLUTION_LENGTH
+  );
+  const condition = optionalLongText(
+    values.condition,
+    "শর্ত",
+    MAX_CONDITION_LENGTH
+  );
   const damageLossRaw = String(values.damageLoss ?? "").trim();
   const damageLoss =
     damageLossRaw === "" ? 0 : parseServiceAmount(values.damageLoss, "ড্যামেজ ক্ষতি");
@@ -232,6 +313,12 @@ export function validateServicePayload(
     ? serviceDateFromKey(deliveryDateRaw)
     : null;
   const imei = optionalImei(values.imei);
+  const customerAddress = optionalCustomerAddress(values.customerAddress);
+  const warranty = optionalWarranty(values.warranty);
+  const parts = normalizeParts(values.parts, {
+    requirePurchaseInfo: ctx?.partsRequirePurchaseInfo !== false,
+    cipher: ctx?.cipher,
+  });
   const serviceDateKey =
     values.serviceDate && values.serviceDate.trim() !== ""
       ? values.serviceDate.trim()
@@ -253,10 +340,15 @@ export function validateServicePayload(
     shopExpense,
     expenseAmount,
     partsShop,
+    solution,
+    condition,
     damageLoss,
     damageNote,
     deliveryDate,
     imei,
+    customerAddress,
+    warranty,
+    parts,
     serviceDateKey,
     serviceDate: serviceDateFromKey(serviceDateKey),
   };
@@ -283,6 +375,8 @@ export function validateServiceCreate(
           : String(raw.status),
       shopExpense: String(raw.shopExpense ?? ""),
       partsShop: String(raw.partsShop ?? ""),
+      solution: raw.solution == null ? undefined : String(raw.solution),
+      condition: raw.condition == null ? undefined : String(raw.condition),
       damageLoss: String(raw.damageLoss ?? ""),
       damageNote: String(raw.damageNote ?? ""),
       deliveryDate:
@@ -290,6 +384,12 @@ export function validateServiceCreate(
           ? undefined
           : String(raw.deliveryDate),
       imei: raw.imei == null ? undefined : String(raw.imei),
+      customerAddress:
+        raw.customerAddress == null
+          ? undefined
+          : String(raw.customerAddress),
+      warranty: raw.warranty == null ? undefined : String(raw.warranty),
+      parts: raw.parts,
       serviceDate:
         raw.serviceDate == null || raw.serviceDate === ""
           ? undefined
@@ -299,6 +399,46 @@ export function validateServiceCreate(
   );
 }
 
+/** Customer/date fields shared by every row of a visit (device or product). */
+export interface ValidatedVisitShared {
+  customerName: string;
+  phone: string;
+  serviceDateKey: string;
+  serviceDate: Date;
+  /** Customer terms shared by every device row of the visit. */
+  condition: string | null;
+  /** Optional delivery address shared by every row/product of the visit. */
+  customerAddress: string | null;
+}
+
+/**
+ * Validates the visit-level fields once, before devices/product lines are
+ * built. Product-only entries have no technician/model, so they cannot go
+ * through `validateServiceCreate`.
+ */
+export function validateVisitShared(body: unknown): ValidatedVisitShared {
+  const raw = readBody(body);
+  const customerName = requiredText(raw.customerName, "কাস্টমারের নাম দিন");
+  const phone = requiredText(raw.phone, "মোবাইল নম্বর দিন");
+  const keyRaw =
+    raw.serviceDate == null ? "" : String(raw.serviceDate).trim();
+  const serviceDateKey = keyRaw || dhakaDateKey(new Date());
+  if (!isDateKey(serviceDateKey)) {
+    throw new Error("সঠিক তারিখ দিন");
+  }
+  return {
+    customerName,
+    phone,
+    serviceDateKey,
+    serviceDate: serviceDateFromKey(serviceDateKey),
+    condition: optionalLongText(
+      raw.condition,
+      "শর্ত",
+      MAX_CONDITION_LENGTH
+    ),
+    customerAddress: optionalCustomerAddress(raw.customerAddress),
+  };
+}
 export interface ValidatedServiceUpdate {
   customerName?: string;
   phone?: string;
@@ -312,10 +452,16 @@ export interface ValidatedServiceUpdate {
   shopExpense?: string | null;
   expenseAmount?: number;
   partsShop?: string | null;
+  solution?: string | null;
+  condition?: string | null;
   damageLoss?: number;
   damageNote?: string | null;
   deliveryDate?: Date | null;
   imei?: string | null;
+  customerAddress?: string | null;
+  warranty?: string | null;
+  /** Present only when the caller sent a parts list ([] clears them). */
+  parts?: ValidatedPart[];
   deliveredAt?: Date | null;
   serviceDate?: Date;
 }
@@ -391,8 +537,25 @@ export function validateServiceUpdate(
     data.partsShop = optionalPartsShop(raw.partsShop);
   }
 
+  // Descriptive only. A blank value clears the field; omitting it leaves the
+  // stored note untouched (partial PUT semantics).
+  if (raw.solution !== undefined) {
+    data.solution = optionalLongText(
+      raw.solution,
+      "সমাধান",
+      MAX_SOLUTION_LENGTH
+    );
+  }
+  if (raw.condition !== undefined) {
+    data.condition = optionalLongText(
+      raw.condition,
+      "শর্ত",
+      MAX_CONDITION_LENGTH
+    );
+  }
+
   if (raw.shopExpense !== undefined) {
-    const normalizedExpense = normalizeShopExpense(raw.shopExpense);
+    const normalizedExpense = normalizeShopExpense(raw.shopExpense, ctx?.cipher);
     if (normalizedExpense.kind === "invalid") {
       throw new Error(
         normalizedExpense.error ?? "দোকান খরচে সঠিক সংখ্যা বা গোপন কোড দিন"
@@ -421,6 +584,22 @@ export function validateServiceUpdate(
   // field leaves it untouched (partial PUT semantics).
   if (raw.imei !== undefined) {
     data.imei = optionalImei(raw.imei);
+  }
+  // Same partial semantics as IMEI: blank clears, omission leaves untouched.
+  if (raw.customerAddress !== undefined) {
+    data.customerAddress = optionalCustomerAddress(raw.customerAddress);
+  }
+  if (raw.warranty !== undefined) {
+    data.warranty = optionalWarranty(raw.warranty);
+  }
+
+  // Itemized parts are descriptive money on the shop side: they never touch
+  // bill/advance/due, so a paid slip may still itemize what it consumed.
+  if (raw.parts !== undefined) {
+    data.parts = normalizeParts(raw.parts, {
+      requirePurchaseInfo: false,
+      cipher: ctx?.cipher,
+    });
   }
 
   return data;

@@ -1,4 +1,19 @@
 import { parseBnNumber } from "./utils";
+import {
+  buildCipherMap,
+  encodeWithCipher,
+  KEYPAD_CIPHER,
+  normalizeCipherConfig,
+  type CipherConfig,
+} from "./secret-code";
+
+/**
+ * Every function here keeps its original single-argument behaviour: the
+ * default cipher is the historical keypad map, so old ledger codes and all
+ * existing tests stay byte-identical. An explicit `config` from ShopSettings
+ * switches the mapping (custom 10-character word) without touching any money
+ * arithmetic in the callers.
+ */
 
 /**
  * Shop-expense input accepts either a normal amount ("1500") or a keypad
@@ -86,13 +101,23 @@ const ENCODE_DIGITS: Record<string, string> = {
  * Convert a validated numeric expense into its canonical keypad code.
  * Examples: 1500 → *J#, 800 → T#, 450 → GJ+, 0 → +.
  */
-export function encodeShopExpenseAmount(amount: number): string {
+export function encodeShopExpenseAmount(
+  amount: number,
+  config: CipherConfig = KEYPAD_CIPHER
+): string {
   if (
     !Number.isSafeInteger(amount) ||
     amount < 0 ||
     amount > MAX_SHOP_EXPENSE
   ) {
     throw new Error(SHOP_EXPENSE_AMOUNT_ERROR);
+  }
+  const active = normalizeCipherConfig(config);
+  if (active.mode === "custom") {
+    // Shared with the Dashboard converter so a configured 00 glyph folds zero
+    // pairs identically everywhere. A legacy word has no separate 00 glyph,
+    // so this still produces the same codes as before (1500 → AEJJ).
+    return encodeWithCipher(amount, active);
   }
 
   // Use the canonical decimal form, not the typed text: "001500" and "1500"
@@ -129,7 +154,55 @@ function normalizeDigits(value: string): string {
  * spaces and ৳ are accepted). Everything else must be made only of letters,
  * digits and the three keypad symbols; otherwise the form refuses to save.
  */
-export function decodeShopExpense(raw: unknown): DecodedShopExpense {
+/** Custom-word decoding, mirroring the legacy keypad rules exactly. */
+function decodeCustomExpense(
+  raw: unknown,
+  config: CipherConfig
+): DecodedShopExpense {
+  const input = String(raw ?? "").trim();
+  if (!input) return { kind: "empty", raw: "", amount: 0, error: null };
+
+  const numeric = parseBnNumber(input);
+  if (numeric !== null) {
+    if (!Number.isSafeInteger(numeric) || numeric > MAX_SHOP_EXPENSE) {
+      return invalid(input, SHOP_EXPENSE_AMOUNT_ERROR);
+    }
+    return { kind: "number", raw: input, amount: numeric, error: null };
+  }
+
+  const compact = normalizeDigits(input).replace(/[,\s৳]/g, "");
+  if (!compact) return { kind: "empty", raw: "", amount: 0, error: null };
+  if (compact.length > MAX_CODE_LENGTH) {
+    return invalid(input, SHOP_EXPENSE_LENGTH_ERROR);
+  }
+
+  const map = buildCipherMap(config);
+  let digits = "";
+  for (const ch of compact) {
+    const upper = ch.toUpperCase();
+    if (!map.allowed.has(upper)) return invalid(input, SHOP_EXPENSE_ERROR);
+    digits += map.decode[upper] ?? upper;
+  }
+  if (!/^\d+$/.test(digits)) return invalid(input, SHOP_EXPENSE_ERROR);
+
+  const amount = parseInt(digits, 10);
+  if (
+    !Number.isFinite(amount) ||
+    !Number.isSafeInteger(amount) ||
+    amount > MAX_SHOP_EXPENSE
+  ) {
+    return invalid(input, SHOP_EXPENSE_AMOUNT_ERROR);
+  }
+  return { kind: "code", raw: input, amount, error: null };
+}
+
+export function decodeShopExpense(
+  raw: unknown,
+  config: CipherConfig = KEYPAD_CIPHER
+): DecodedShopExpense {
+  const active = normalizeCipherConfig(config);
+  if (active.mode === "custom") return decodeCustomExpense(raw, active);
+
   const input = String(raw ?? "").trim();
   if (!input) {
     return { kind: "empty", raw: "", amount: 0, error: null };
@@ -181,8 +254,11 @@ export function decodeShopExpense(raw: unknown): DecodedShopExpense {
  * - Empty → NULL / 0.
  * - Invalid → error, never written.
  */
-export function normalizeShopExpense(raw: unknown): NormalizedShopExpense {
-  const decoded = decodeShopExpense(raw);
+export function normalizeShopExpense(
+  raw: unknown,
+  config: CipherConfig = KEYPAD_CIPHER
+): NormalizedShopExpense {
+  const decoded = decodeShopExpense(raw, config);
   if (decoded.kind === "empty") {
     return { ...decoded, stored: null, converted: false };
   }
@@ -192,7 +268,7 @@ export function normalizeShopExpense(raw: unknown): NormalizedShopExpense {
   if (decoded.kind === "number") {
     return {
       ...decoded,
-      stored: encodeShopExpenseAmount(decoded.amount),
+      stored: encodeShopExpenseAmount(decoded.amount, config),
       converted: true,
     };
   }
@@ -200,6 +276,9 @@ export function normalizeShopExpense(raw: unknown): NormalizedShopExpense {
 }
 
 /** True only for a valid code input, never for a plain number. */
-export function isShopExpenseCode(raw: unknown): boolean {
-  return decodeShopExpense(raw).kind === "code";
+export function isShopExpenseCode(
+  raw: unknown,
+  config: CipherConfig = KEYPAD_CIPHER
+): boolean {
+  return decodeShopExpense(raw, config).kind === "code";
 }

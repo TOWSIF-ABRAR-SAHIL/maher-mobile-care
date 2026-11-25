@@ -2,7 +2,9 @@
 
 import { STATUS_BN, STATUSES, type ServiceStatus } from "@/lib/utils";
 
-export type StatusFilter = "All" | ServiceStatus;
+/** `Due` is a virtual chip: it filters by outstanding money, not by status.
+ *  Mirrors /api/services/dues (`due > 0`, never a Returned row). */
+export type StatusFilter = "All" | ServiceStatus | "Due";
 
 /**
  * The one status chip row, shared by the service list and the dues dialog so
@@ -12,7 +14,9 @@ export type StatusFilter = "All" | ServiceStatus;
  *
  * The markup is copied verbatim from the original service-list block (the
  * `div.mb-3` wrapper and `svc-status-tabs` testid are pinned by tests), so
- * swapping it in changes no DOM the contracts see.
+ * swapping it in changes no DOM the contracts see. `Due` is appended last so
+ * the first six chips keep their pinned positions; the dues dialog opts out
+ * because every row it shows is already unpaid.
  */
 export function StatusChips({
   counts,
@@ -20,15 +24,21 @@ export function StatusChips({
   onChange,
   testid,
   label = "অবস্থা দিয়ে ফিল্টার",
+  includeDue = true,
 }: {
-  /** Keyed by status, plus `All`; missing keys render as 0. */
+  /** Keyed by status, plus `All` and optionally `Due`; missing keys render 0. */
   counts: Record<string, number>;
   value: StatusFilter;
   onChange: (status: StatusFilter) => void;
   /** `svc-status-tabs` (list) or `dues-status-tabs` (dues dialog). */
   testid: string;
   label?: string;
+  /** The dues dialog passes false — its rows are all due by definition. */
+  includeDue?: boolean;
 }) {
+  const chips: StatusFilter[] = includeDue
+    ? ["All", ...STATUSES, "Due"]
+    : ["All", ...STATUSES];
   return (
     <div className="relative mb-3">
       <div
@@ -38,12 +48,12 @@ export function StatusChips({
         className="-mx-1 overflow-x-auto px-1 print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex w-max min-w-full items-center gap-1.5">
-          {(["All", ...STATUSES] as const).map((st) => {
+          {chips.map((st) => {
             const active = value === st;
             const dot =
               st === "All"
                 ? "bg-maher-ink"
-                : st === "Pending"
+                : st === "Pending" || st === "Due"
                   ? "bg-maher-due"
                   : st === "In-Progress"
                     ? "bg-maher-navy"
@@ -58,23 +68,29 @@ export function StatusChips({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onChange(st)}
-                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition ${
+                className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10 ${
                   active
-                    ? "border-maher-navy bg-maher-navy text-white shadow-sm"
-                    : "border-maher-border bg-white text-foreground hover:border-maher-navy/40 hover:bg-maher-surface/60 hover:text-maher-navy"
+                    ? "border-maher-navy bg-maher-navy text-white"
+                    : "border-slate-200/80 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-900"
                 }`}
               >
                 <span
                   aria-hidden
-                  className={`h-1.5 w-1.5 rounded-full ${
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                     active ? "bg-white/80" : dot
                   }`}
                 />
-                <span>{st === "All" ? "সব" : STATUS_BN[st]}</span>
+                <span>
+                  {st === "All"
+                    ? "সব"
+                    : st === "Due"
+                      ? "বাকি"
+                      : STATUS_BN[st]}
+                </span>
                 {" "}
                 <span
-                  className={`tabular-nums ${
-                    active ? "text-white/75" : "text-muted-foreground"
+                  className={`tabular-nums rounded-full px-1.5 py-0.5 text-[11px] leading-none ${
+                    active ? "bg-white/15 text-white/90" : "bg-slate-100 text-slate-500"
                   }`}
                 >
                   ({counts[st] ?? 0})

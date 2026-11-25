@@ -95,7 +95,7 @@ async function setTextarea(page, id, value) {
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
 
@@ -326,7 +326,7 @@ async function setTextarea(page, id, value) {
 
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await waitDailyRow(page, DAMAGE_DONE, true);

@@ -6,9 +6,9 @@ import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
 import type { ServiceDTO } from "@/lib/types";
 
 /**
- * Shared brand-blue chrome: brand left, two destinations centred, global
+ * Shared brand-blue chrome: brand left, three destinations centred, global
  * search right. Phones get two rows — brand + search, then a full-width
- * two-tab rail — while tablets and desktops stay on one measured row.
+ * three-tab rail — while tablets and desktops stay on one measured row.
  */
 export function AppHeader({
   searchRefreshKey = 0,
@@ -46,6 +46,7 @@ export function AppHeader({
 
         <AppNavLinks className="col-span-2 row-start-2 md:col-span-1 md:col-start-2 md:row-start-1 md:w-auto md:justify-self-center" />
       </div>
+
     </header>
   );
 }

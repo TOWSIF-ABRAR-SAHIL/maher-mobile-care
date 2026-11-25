@@ -46,6 +46,10 @@
     --maher-done: 154.9 46.2% 33.5%;     /* #2E7D5C muted forest success */
     --maher-due: 0 50.8% 46.3%;          /* #B23A3A muted brick — edges, badges */
     --maher-due-ink: 0 54.1% 40.2%;      /* #9E2F2F danger for small text (AA) */
+    /* Subscription hub accents — restrained indigo for lifetime, flat emerald
+       for paid terms, ochre for the trial. Never used for ledger money. */
+    --maher-premium: 263 46% 44%;         /* lifetime accent */
+    --maher-premium-ink: 258 52% 31%;     /* AA text on tinted lifetime pills */
     --maher-card-shadow: 0 1px 2px 0 rgb(16 24 40 / 0.04),
       0 12px 26px -22px rgb(16 24 40 / 0.35);
   }
@@ -82,6 +86,13 @@
     /* Kill stray horizontal scroll (toasts, portals) without breaking
        position:sticky — clip, unlike hidden, keeps sticky working. */
     overflow-x: clip;
+  }
+  html {
+    /* The service desk is taller than the inventory view. Reserve the
+       scrollbar track up front so crossing /service ↔ /products (where the
+       page grows/shrinks past the fold) never nudges the whole chrome
+       sideways. Works together with overflow-x: clip above. */
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-maher-surface text-foreground antialiased;
@@ -152,5 +163,63 @@
   }
   .ledger-rule {
     @apply h-px w-full bg-maher-border;
+  }
+
+  /* Subscription hub. One restrained slate gradient at the top edge, flat
+     surfaces everywhere below; glass panels only ever sit on the dark hero. */
+  .license-hero {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--maher-navy)) 0%,
+      hsl(var(--maher-navy-light)) 62%,
+      hsl(var(--maher-royal)) 150%
+    );
+  }
+  .license-glass {
+    background: hsl(var(--maher-navy-light) / 0.42);
+    border: 1px solid rgb(255 255 255 / 0.16);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+  .license-track {
+    @apply h-2 w-full overflow-hidden rounded-full;
+    background: hsl(var(--maher-surface-strong));
+  }
+  .license-fill {
+    @apply h-full rounded-full;
+    transition: width 200ms ease-out;
+  }
+  .license-fill--emerald {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--maher-done)),
+      hsl(var(--maher-royal))
+    );
+  }
+  .license-fill--amber {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--maher-warning)),
+      hsl(var(--maher-money))
+    );
+  }
+  .license-pill {
+    @apply inline-flex items-center whitespace-nowrap rounded-full border bg-white px-3 py-1 text-xs font-bold;
+  }
+  .license-pill--emerald {
+    color: hsl(var(--maher-done));
+    border-color: hsl(var(--maher-done) / 0.45);
+  }
+  .license-pill--amber {
+    color: hsl(var(--maher-warning));
+    border-color: hsl(var(--maher-warning) / 0.45);
+  }
+  .license-pill--purple {
+    color: hsl(var(--maher-premium-ink));
+    border-color: hsl(var(--maher-premium) / 0.45);
+  }
+  .license-pill--rose {
+    color: hsl(var(--maher-due-ink));
+    border-color: hsl(var(--maher-due) / 0.45);
   }
 }

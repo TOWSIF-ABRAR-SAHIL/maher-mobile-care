@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Settings,
 } from "lucide-react";
-import { AppNavLinks } from "@/components/AppNavLinks";
 import { Button } from "@/components/ui/button";
 import { HeaderDatePicker } from "@/components/HeaderDatePicker";
 import { HeaderSearch, MobileSearch } from "@/components/HeaderSearch";
@@ -66,9 +65,9 @@ export function Header({
                 দৈনিক সার্ভিস ট্র্যাকার ও টেকনিশিয়ান ড্যাশবোর্ড
               </p>
             </div>
-            {/* Module switcher. On phones it replaces the subtitle line so the
-                header keeps its measured height; from md both fit. */}
-            <AppNavLinks className="mt-0.5 md:mt-1" />
+            {/* Archived legacy shell (not imported). The live module switcher
+                lives in AppHeader → AppNavLinks; do not reintroduce a second
+                copy of the navbar here. */}
             {/* Desktop keeps the header to two lines: the backup time moves
                 into the Backup button's tooltip instead of a third line. */}
             <p className="text-xs text-white/60 xl:hidden print:hidden">

@@ -1,33 +1,41 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Archive,
   Boxes,
-  Coins,
-  Layers,
+  Eye,
+  EyeOff,
   Loader2,
   Package,
   PackagePlus,
-  PackageX,
   Pencil,
   Plus,
   Search,
   Settings2,
   ShoppingBag,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AppHeader } from "@/components/AppHeader";
+import { useAppHeader } from "@/components/AppChrome";
 import { PageLead } from "@/components/PageLead";
 import { ShopFooter } from "@/components/ShopFooter";
 import { ProductDialog } from "@/components/ProductDialog";
 import { CategoryManagerDialog } from "@/components/CategoryManagerDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -55,16 +63,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { dhakaDateKey } from "@/lib/dhaka";
-import { formatNum, formatTaka } from "@/lib/utils";
+import { formatNum, formatTaka, parseBnNumber } from "@/lib/utils";
 import type {
   ProductDTO,
   ProductListResponse,
   ServiceDTO,
   StockStatus,
 } from "@/lib/types";
-
-type StatusFilter = "all" | StockStatus;
-type SortKey = "name" | "recent" | "stock" | "selling";
 
 const STATUS_STYLE: Record<StockStatus, string> = {
   in: "border-maher-done/35 bg-maher-done/10 text-maher-done",
@@ -75,7 +80,13 @@ const STATUS_STYLE: Record<StockStatus, string> = {
 const STATUS_TEXT: Record<StockStatus, string> = {
   in: "স্টকে আছে",
   low: "কম স্টক",
-  out: "স্টক নেই",
+  out: "স্টক শেষ",
+};
+
+const DOT_STYLE: Record<StockStatus, string> = {
+  in: "bg-maher-done",
+  low: "bg-maher-warning",
+  out: "bg-maher-due",
 };
 
 export default function ProductsPage() {
@@ -86,9 +97,14 @@ export default function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
   const [categoryId, setCategoryId] = useState("all");
-  const [sort, setSort] = useState<SortKey>("name");
+  const [stockStatus, setStockStatus] = useState<StockStatus | "all">("all");
+  const [valueVisible, setValueVisible] = useState(false);
+
+  const [restockTarget, setRestockTarget] = useState<ProductDTO | null>(null);
+  const [restockQty, setRestockQty] = useState("");
+  const [restockError, setRestockError] = useState<string | null>(null);
+  const [restocking, setRestocking] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<ProductDTO | null>(null);
@@ -98,12 +114,6 @@ export default function ProductsPage() {
 
   const reqId = useRef(0);
 
-  // ?status=low deep-links from the old stock pulse still work.
-  useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("status");
-    if (raw === "in" || raw === "low" || raw === "out") setStatus(raw);
-  }, []);
-
   const load = useCallback(async () => {
     const my = ++reqId.current;
     setRefreshing(true);
@@ -111,9 +121,10 @@ export default function ProductsPage() {
     try {
       const params = new URLSearchParams();
       if (query.trim()) params.set("q", query.trim());
-      if (status !== "all") params.set("status", status);
       if (categoryId !== "all") params.set("categoryId", categoryId);
-      params.set("sort", sort);
+      if (stockStatus !== "all") params.set("status", stockStatus);
+      // The simplified list keeps one predictable order (name A→Z).
+      params.set("sort", "name");
 
       const res = await fetch(`/api/products?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
@@ -132,7 +143,7 @@ export default function ProductsPage() {
         setRefreshing(false);
       }
     }
-  }, [query, status, categoryId, sort]);
+  }, [query, categoryId, stockStatus]);
 
   // Typing waits a beat; switching a filter is immediate.
   useEffect(() => {
@@ -156,13 +167,55 @@ export default function ProductsPage() {
   };
 
   const filtersActive =
-    query.trim() !== "" || status !== "all" || categoryId !== "all";
+    query.trim() !== "" || categoryId !== "all" || stockStatus !== "all";
 
   /** One click back to the full inventory from an empty filtered view. */
   const clearFilters = () => {
     setQuery("");
-    setStatus("all");
     setCategoryId("all");
+    setStockStatus("all");
+  };
+
+  // The internal valuation is masked again after ten seconds on the counter.
+  useEffect(() => {
+    if (!valueVisible) return;
+    const timer = setTimeout(() => setValueVisible(false), 10000);
+    return () => clearTimeout(timer);
+  }, [valueVisible]);
+
+  const openRestock = (product: ProductDTO) => {
+    setRestockTarget(product);
+    setRestockQty("");
+    setRestockError(null);
+  };
+
+  const submitRestock = async () => {
+    if (!restockTarget || restocking) return;
+    const quantity = parseBnNumber(restockQty);
+    if (quantity === null || quantity < 1) {
+      setRestockError("সঠিক সংখ্যা দিন (কমপক্ষে ১)");
+      return;
+    }
+    setRestocking(true);
+    setRestockError(null);
+    try {
+      const res = await fetch(`/api/products/${restockTarget.id}/restock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity, reason: "কুইক স্টক ইন" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "স্টক যোগ করা যায়নি");
+      toast.success(`${quantity} পিস স্টকে যোগ হয়েছে`);
+      setRestockTarget(null);
+      await load();
+    } catch (err) {
+      setRestockError(
+        err instanceof Error ? err.message : "স্টক যোগ করা যায়নি"
+      );
+    } finally {
+      setRestocking(false);
+    }
   };
 
   /** Global search belongs to the shared chrome; from inventory it opens the
@@ -200,72 +253,31 @@ export default function ProductsPage() {
   const products = data?.products ?? [];
   const categories = data?.categories ?? [];
 
-  const cards = [
-    {
-      label: "মোট প্রোডাক্ট",
-      value: summary ? formatNum(summary.totalProducts) : "—",
-      hint: "টি আইটেম",
-      icon: Package,
-      tone: "text-maher-navy",
-    },
-    {
-      label: "ক্যাটাগরি",
-      value: summary ? formatNum(summary.categories) : "—",
-      hint: "টি বিভাগ",
-      icon: Layers,
-      tone: "text-maher-royal",
-    },
-    {
-      label: "মোট ইউনিট",
-      value: summary ? formatNum(summary.units) : "—",
-      hint: "পিস স্টকে",
-      icon: Boxes,
-      tone: "text-maher-navy-light",
-    },
-    {
-      label: "কম স্টক",
-      value: summary ? formatNum(summary.lowStock) : "—",
-      hint: "সীমার নিচে/সমান",
-      icon: AlertTriangle,
-      tone: "text-maher-warning",
-    },
-    {
-      label: "স্টক নেই",
-      value: summary ? formatNum(summary.outOfStock) : "—",
-      hint: "শূন্য স্টক",
-      icon: PackageX,
-      tone: "text-maher-due",
-    },
-    {
-      label: "ইনভেন্টরি মূল্য",
-      value: summary ? formatTaka(summary.inventoryValue) : "—",
-      hint: "স্টক × ক্রয় মূল্য",
-      icon: Coins,
-      tone: "text-maher-money",
-    },
-  ];
+  // Same persistent masthead as the service desk; inventory search opens the
+  // matching service row back on /service.
+  useAppHeader({
+    searchRefreshKey: 0,
+    onSearchEdit: openServiceFromSearch,
+    onSearchReceipt: openServiceFromSearch,
+  });
 
   return (
-    <div className="min-h-dvh bg-maher-surface">
+    <div className="flex min-h-dvh flex-col bg-maher-surface">
       <div
         aria-hidden={!refreshing}
         className={`fixed inset-x-0 top-0 z-[60] h-0.5 bg-maher-navy transition-opacity duration-150 ${
           refreshing ? "animate-pulse opacity-100" : "opacity-0"
         }`}
       />
-      <main className="mx-auto w-full max-w-7xl space-y-3 px-3 py-3 xl:max-w-[1600px] 2xl:max-w-[1840px]">
-        <AppHeader
-          searchRefreshKey={0}
-          onSearchEdit={openServiceFromSearch}
-          onSearchReceipt={openServiceFromSearch}
-        />
-
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-2 px-3 py-2 xl:max-w-[1600px] 2xl:max-w-[1840px]">
         <PageLead
           eyebrow="স্টক রুম"
           title="প্রোডাক্ট ও ইনভেন্টরি"
-          description="স্টক, দাম, ক্যাটাগরি ও কম-স্টকের সতর্কতা — সবই আসল ইনভেন্টরি ডেটা থেকে।"
           meta={
-            <span className="inline-flex items-center rounded-full border border-maher-border bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <span
+              data-testid="product-count-badge"
+              className="inline-flex items-center rounded-full border border-maher-border bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+            >
               {summary ? `${formatNum(summary.totalProducts)}টি প্রোডাক্ট` : "…"}
             </span>
           }
@@ -278,7 +290,7 @@ export default function ProductsPage() {
                 className="bg-white"
               >
                 <Settings2 className="mr-1 h-4 w-4" />
-                ক্যাটাগরি
+                ক্যাটাগরি ব্যবস্থাপনা
               </Button>
               <Button type="button" onClick={openCreate}>
                 <Plus className="mr-1 h-4 w-4" />
@@ -288,96 +300,130 @@ export default function ProductsPage() {
           }
         />
 
-        {/* Summary cards — always describe the whole active inventory. */}
         <section
-          aria-label="ইনভেন্টরি সারসংক্ষেপ"
-          data-testid="inventory-summary"
-          className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
+          aria-label="সারাংশ কার্ড"
+          data-testid="product-metrics"
+          className="grid grid-cols-2 gap-2 lg:grid-cols-4"
         >
-          {cards.map(({ label, value, hint, icon: Icon, tone }) => (
-            <div
-              key={label}
-              className="rounded-xl border border-maher-border bg-white p-3 shadow-rail sheen"
-            >
-              <div className="flex items-center justify-between gap-1">
-                <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">
-                  {label}
-                </p>
-                <Icon className={`h-4 w-4 shrink-0 ${tone}`} />
-              </div>
-              <p className="mt-1 truncate text-lg font-bold tracking-tight sm:text-xl">
-                {value}
+          <div
+            data-testid="product-metric-total"
+            className="rounded-xl border border-maher-border bg-white px-3 py-2 shadow-card"
+          >
+            <div className="flex items-start justify-between gap-1">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                মোট প্রোডাক্ট / আইটেম
               </p>
-              <p className="text-[10px] text-muted-foreground sm:text-[11px]">
-                {hint}
-              </p>
-            </div>
-          ))}
-        </section>
-
-        {/* Toolbar */}
-        <section
-          aria-label="ফিল্টার"
-          className="flex flex-col gap-2 rounded-xl border border-maher-border bg-white p-2.5 shadow-card lg:flex-row lg:items-center"
-        >
-          <div className="relative min-w-0 lg:flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="নাম, SKU, ক্যাটাগরি বা বারকোড খুঁজুন"
-              className="pl-8"
-              aria-label="প্রোডাক্ট খুঁজুন"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:w-auto">
-            <Select
-              value={status}
-              onValueChange={(value) => setStatus(value as StatusFilter)}
-            >
-              <SelectTrigger className="lg:w-[135px]" aria-label="স্টক অবস্থা">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">সব স্টক</SelectItem>
-                <SelectItem value="in">স্টকে আছে</SelectItem>
-                <SelectItem value="low">কম স্টক</SelectItem>
-                <SelectItem value="out">স্টক নেই</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger className="lg:w-[150px]" aria-label="ক্যাটাগরি">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">সব ক্যাটাগরি</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={String(category.id)}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={sort}
-              onValueChange={(value) => setSort(value as SortKey)}
-            >
-              <SelectTrigger
-                className="col-span-2 sm:col-span-1 lg:w-[150px]"
-                aria-label="সাজান"
+              <span
+                data-testid="product-metric-icon-total"
+                aria-hidden="true"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-600"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">নাম (ক→খ)</SelectItem>
-                <SelectItem value="recent">নতুন আগে</SelectItem>
-                <SelectItem value="stock">স্টক (বেশি→কম)</SelectItem>
-                <SelectItem value="selling">দাম (বেশি→কম)</SelectItem>
-              </SelectContent>
-            </Select>
+                <Package className="h-3.5 w-3.5" />
+              </span>
+            </div>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-maher-navy">
+              {summary ? `${formatNum(summary.totalProducts)}টি আইটেম` : "…"}
+            </p>
+          </div>
+          <div
+            data-testid="product-metric-stock"
+            className="rounded-xl border border-maher-border bg-white px-3 py-2 shadow-card"
+          >
+            <div className="flex items-start justify-between gap-1">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                মোট মজুদ স্টক
+              </p>
+              <span
+                data-testid="product-metric-icon-stock"
+                aria-hidden="true"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600"
+              >
+                <Boxes className="h-3.5 w-3.5" />
+              </span>
+            </div>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-maher-navy">
+              {summary ? `${formatNum(summary.units)} পিস` : "…"}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="product-metric-low"
+            onClick={() => {
+              setQuery("");
+              setCategoryId("all");
+              setStockStatus("low");
+            }}
+            aria-pressed={stockStatus === "low"}
+            title="কম স্টক থাকা আইটেমগুলো দেখুন"
+            className={`rounded-xl border bg-white px-3 py-2 text-left shadow-card transition hover:border-maher-warning hover:bg-maher-warning/5 ${stockStatus === "low" ? "border-maher-warning bg-maher-warning/5" : "border-maher-warning/40"}`}
+          >
+            <div className="flex items-start justify-between gap-1">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                ⚠️ কম স্টক সতর্কতা
+              </p>
+              <span
+                data-testid="product-metric-icon-low"
+                aria-hidden="true"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-600"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </span>
+            </div>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-maher-money">
+              {summary ? `${formatNum(summary.lowStock)}টি আইটেম` : "…"}
+            </p>
+          </button>
+          <div
+            data-testid="product-metric-value"
+            className="rounded-xl border border-maher-border bg-white px-3 py-2 shadow-card"
+          >
+            <div className="flex items-start justify-between gap-1">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                ইনভেন্টরি মোট মূল্য
+              </p>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <span
+                  data-testid="product-metric-icon-value"
+                  aria-hidden="true"
+                  className="grid h-6 w-6 place-items-center rounded-md bg-slate-100 text-slate-500"
+                >
+                  <Wallet className="h-3.5 w-3.5" />
+                </span>
+                <button
+                  type="button"
+                  data-testid="product-value-toggle"
+                  aria-label={
+                    valueVisible
+                      ? "ইনভেন্টরি মূল্য লুকান"
+                      : "ইনভেন্টরি মূল্য দেখুন"
+                  }
+                  title="দোকানের ক্রয়মূল্য ও ইনভেন্টরি মূল্য দেখুন (১০ সেকেন্ড)"
+                  onClick={() => setValueVisible((visible) => !visible)}
+                  className="rounded-md p-0.5 text-muted-foreground transition hover:bg-maher-blue-soft hover:text-maher-navy"
+                >
+                  {valueVisible ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+            {valueVisible ? (
+              <p
+                data-testid="product-value-revealed"
+                className="mt-0.5 text-lg font-semibold tabular-nums text-maher-navy"
+              >
+                {formatTaka(summary?.inventoryValue ?? 0)}
+              </p>
+            ) : (
+              <p
+                data-testid="product-value-hidden"
+                className="mt-0.5 text-lg font-semibold tracking-widest text-maher-navy"
+              >
+                ৳••••
+              </p>
+            )}
           </div>
         </section>
 
@@ -396,13 +442,126 @@ export default function ProductsPage() {
         )}
 
         <section aria-label="প্রোডাক্ট তালিকা" data-testid="products-list">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
             <h2 className="text-sm font-semibold text-maher-navy">
               প্রোডাক্ট তালিকা
             </h2>
             <p className="text-xs text-muted-foreground">
               {data ? `${formatNum(products.length)}টি দেখানো হচ্ছে` : "…"}
             </p>
+          </div>
+
+          <div
+            role="group"
+            aria-label="ফিল্টার"
+            data-testid="product-filter-bar"
+            className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+          >
+            <div className="relative w-full sm:w-64 lg:w-80">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="product-search"
+                data-testid="product-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="নাম, ব্র্যান্ড, SKU, বারকোড বা ক্যাটাগরি খুঁজুন"
+                className="bg-white pl-8"
+                aria-label="প্রোডাক্ট খুঁজুন (নাম, ব্র্যান্ড, SKU, বারকোড বা ক্যাটাগরি)"
+                title="এই খোঁজা শুধু প্রোডাক্ট তালিকার মধ্যে কাজ করে"
+              />
+            </div>
+            <Select value={categoryId} onValueChange={setCategoryId}>
+              <SelectTrigger
+                className="w-full sm:w-[170px]"
+                aria-label="ক্যাটাগরি ফিল্টার"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">সব ক্যাটাগরি</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {filtersActive ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={clearFilters}
+                className="h-9 text-muted-foreground hover:text-maher-navy"
+              >
+                ফিল্টার সরান
+              </Button>
+            ) : null}
+          </div>
+
+          <div
+            role="group"
+            aria-label="স্টক স্ট্যাটাস ফিল্টার"
+            className="mb-2 flex flex-wrap items-center gap-1.5"
+          >
+            {(
+              [
+                {
+                  key: "all" as const,
+                  id: "product-status-all",
+                  label: "সব প্রোডাক্ট",
+                  count: summary?.totalProducts ?? 0,
+                },
+                {
+                  key: "in" as const,
+                  id: "product-status-in",
+                  label: "পর্যাপ্ত স্টক",
+                  count: Math.max(
+                    0,
+                    (summary?.totalProducts ?? 0) -
+                      (summary?.lowStock ?? 0) -
+                      (summary?.outOfStock ?? 0)
+                  ),
+                },
+                {
+                  key: "low" as const,
+                  id: "product-status-low",
+                  label: "⚠️ কম স্টক",
+                  count: summary?.lowStock ?? 0,
+                },
+                {
+                  key: "out" as const,
+                  id: "product-status-out",
+                  label: "❌ স্টক শেষ",
+                  count: summary?.outOfStock ?? 0,
+                },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                data-testid={tab.id}
+                aria-pressed={stockStatus === tab.key}
+                onClick={() => setStockStatus(tab.key)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition ${
+                  stockStatus === tab.key
+                    ? "border-maher-navy bg-maher-navy font-semibold text-white"
+                    : "border-maher-border bg-white font-medium text-muted-foreground hover:border-maher-navy/35 hover:text-maher-navy"
+                }`}
+              >
+                {tab.label}
+                <span
+                  className={`rounded-full px-1 text-[10px] tabular-nums ${
+                    stockStatus === tab.key
+                      ? "bg-white/20 text-white"
+                      : "bg-maher-surface text-muted-foreground"
+                  }`}
+                >
+                  {formatNum(tab.count)}
+                </span>
+              </button>
+            ))}
           </div>
 
           {loading && !data ? (
@@ -412,36 +571,63 @@ export default function ProductsPage() {
               ))}
             </div>
           ) : products.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-maher-border bg-white px-4 py-12 text-center shadow-card">
-              <span className="grid h-12 w-12 place-items-center rounded-full bg-maher-blue-soft text-maher-navy">
-                <ShoppingBag className="h-6 w-6" />
-              </span>
-              <p className="text-sm font-semibold">
-                {data && data.summary.totalProducts === 0
-                  ? "এখনো কোনো প্রোডাক্ট নেই"
-                  : "এই ফিল্টারে কোনো প্রোডাক্ট নেই"}
-              </p>
-              <p className="max-w-sm text-xs text-muted-foreground">
-                {data && data.summary.totalProducts === 0
-                  ? "ক্যাটাগরি তৈরি করে প্রথম প্রোডাক্ট যোগ করুন।"
-                  : "খোঁজা বা ফিল্টার বদলে আবার দেখুন।"}
-              </p>
-              {data && data.summary.totalProducts === 0 ? (
-                <Button size="sm" className="mt-1" onClick={openCreate}>
-                  <PackagePlus className="mr-1 h-4 w-4" />
-                  প্রথম প্রোডাক্ট যোগ করুন
-                </Button>
-              ) : filtersActive ? (
+            data && data.summary.totalProducts === 0 ? (
+              <div
+                data-testid="product-empty-onboarding"
+                className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-maher-border bg-white px-4 py-12 text-center shadow-card"
+              >
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-maher-blue-soft text-maher-navy">
+                  <ShoppingBag className="h-6 w-6" />
+                </span>
+                <p className="text-sm font-semibold">
+                  আপনার স্টকে এখনো কোনো প্রোডাক্ট যুক্ত করা হয়নি
+                </p>
+                <p className="max-w-sm text-xs leading-snug text-muted-foreground">
+                  প্রথমে একটি ক্যাটাগরি তৈরি করে আপনার মালামাল যুক্ত করা শুরু
+                  করুন
+                </p>
+                {categories.length === 0 ? (
+                  <Button
+                    size="sm"
+                    className="mt-1"
+                    data-testid="product-empty-category"
+                    onClick={() => setCategoriesOpen(true)}
+                  >
+                    <Settings2 className="mr-1 h-4 w-4" />
+                    প্রথম ক্যাটাগরি যোগ করুন
+                  </Button>
+                ) : (
+                  <Button size="sm" className="mt-1" onClick={openCreate}>
+                    <PackagePlus className="mr-1 h-4 w-4" />
+                    প্রথম প্রোডাক্ট যোগ করুন
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div
+                data-testid="product-empty-filtered"
+                className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-maher-border bg-white px-4 py-12 text-center shadow-card"
+              >
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-maher-blue-soft text-maher-navy">
+                  <Search className="h-6 w-6" />
+                </span>
+                <p className="text-sm font-semibold">
+                  কোনো প্রোডাক্ট খুঁজে পাওয়া যায়নি
+                </p>
+                <p className="max-w-sm text-xs leading-snug text-muted-foreground">
+                  খোঁজা বা ফিল্টার বদলে আবার দেখুন।
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="mt-1"
+                  data-testid="product-empty-reset"
                   onClick={clearFilters}
                 >
-                  ফিল্টার সরান
+                  ফিল্টার রিসেট করুন
                 </Button>
-              ) : null}
-            </div>
+              </div>
+            )
           ) : (
             <>
               {/* Tablet/desktop table */}
@@ -453,8 +639,7 @@ export default function ProductsPage() {
                         <TableHead>প্রোডাক্ট</TableHead>
                         <TableHead>ক্যাটাগরি</TableHead>
                         <TableHead>স্টক</TableHead>
-                        <TableHead className="text-right">বিক্রয়</TableHead>
-                        <TableHead className="text-right">ক্রয়</TableHead>
+                        <TableHead className="text-right">বিক্রয় মূল্য</TableHead>
                         <TableHead className="w-[92px] text-right">
                           অ্যাকশন
                         </TableHead>
@@ -464,37 +649,56 @@ export default function ProductsPage() {
                       {products.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="max-w-[260px]">
-                            <p className="truncate font-medium">
+                            <p className="truncate font-medium" title={product.name}>
                               {product.name}
                             </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {[product.brand, product.sku, product.barcode]
-                                .filter(Boolean)
-                                .join(" • ") || "—"}
-                            </p>
+                            {product.brand ? (
+                              <p className="truncate text-xs text-muted-foreground">
+                                ব্র্যান্ড: {product.brand}
+                              </p>
+                            ) : null}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-sm">
-                            {product.categoryName}
+                            <span
+                              data-testid={`product-category-${product.id}`}
+                              className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+                            >
+                              {product.categoryName}
+                            </span>
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
-                            <span className="font-semibold">
-                              {formatNum(product.stock)}
-                            </span>
-                            <span className="ml-1 text-xs text-muted-foreground">
-                              পিস
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={`ml-1.5 ${STATUS_STYLE[product.status]}`}
-                            >
-                              {STATUS_TEXT[product.status]}
-                            </Badge>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 font-semibold tabular-nums">
+                                <span
+                                  aria-hidden="true"
+                                  className={`h-1.5 w-1.5 rounded-full ${DOT_STYLE[product.status]}`}
+                                />
+                                {formatNum(product.stock)}
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  পিস
+                                </span>
+                              </span>
+                              {product.status !== "in" ? (
+                                <Badge
+                                  variant="outline"
+                                  className={STATUS_STYLE[product.status]}
+                                >
+                                  {STATUS_TEXT[product.status]}
+                                </Badge>
+                              ) : null}
+                              <button
+                                type="button"
+                                data-testid={`product-stock-add-${product.id}`}
+                                onClick={() => openRestock(product)}
+                                title={`${product.name} — স্টক যোগ করুন`}
+                                className="rounded-md border border-maher-border bg-white px-1.5 py-0.5 text-[11px] font-medium text-maher-navy transition hover:border-maher-navy/40 hover:bg-maher-blue-soft"
+                              >
+                                + যোগ
+                              </button>
+                            </div>
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-right font-semibold">
                             {formatTaka(product.sellingPrice)}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-right text-sm text-muted-foreground">
-                            {formatTaka(product.purchasePrice)}
                           </TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-1">
@@ -536,7 +740,7 @@ export default function ProductsPage() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">
+                        <p className="truncate text-sm font-semibold" title={product.name}>
                           {product.name}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
@@ -555,28 +759,34 @@ export default function ProductsPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                       <span>
                         স্টক{" "}
-                        <strong className="text-sm">
+                        <strong className="text-sm tabular-nums">
                           {formatNum(product.stock)}
                         </strong>{" "}
                         পিস
                       </span>
+                      {product.status !== "in" ? (
+                        <Badge
+                          variant="outline"
+                          className={STATUS_STYLE[product.status]}
+                        >
+                          {STATUS_TEXT[product.status]}
+                        </Badge>
+                      ) : null}
+                      <button
+                        type="button"
+                        data-testid={`product-stock-add-mobile-${product.id}`}
+                        onClick={() => openRestock(product)}
+                        className="rounded-md border border-maher-border bg-white px-2 py-0.5 text-[11px] font-medium text-maher-navy"
+                      >
+                        + যোগ
+                      </button>
                       <span className="text-muted-foreground">
-                        বিক্রয়{" "}
+                        বিক্রয় মূল্য{" "}
                         <span className="font-semibold text-foreground">
                           {formatTaka(product.sellingPrice)}
                         </span>
                       </span>
-                      <span className="text-muted-foreground">
-                        ক্রয় {formatTaka(product.purchasePrice)}
-                      </span>
                     </div>
-                    {(product.sku || product.barcode) && (
-                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                        {[product.sku, product.barcode]
-                          .filter(Boolean)
-                          .join(" • ")}
-                      </p>
-                    )}
 
                     <div className="mt-2 flex justify-end gap-1 border-t pt-2">
                       <Button
@@ -655,6 +865,62 @@ export default function ProductsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!restockTarget}
+        onOpenChange={(open) => {
+          if (!open && !restocking) setRestockTarget(null);
+        }}
+      >
+        <DialogContent data-testid="quick-stock-dialog" className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>+ স্টক যোগ করুন</DialogTitle>
+            <DialogDescription>
+              {restockTarget?.name} — কত পিস যোগ করবেন?
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRestock();
+            }}
+          >
+            <Label htmlFor="quick-stock-qty">পরিমাণ (পিস)</Label>
+            <Input
+              id="quick-stock-qty"
+              data-testid="quick-stock-qty"
+              value={restockQty}
+              onChange={(event) => {
+                setRestockQty(event.target.value);
+                setRestockError(null);
+              }}
+              inputMode="numeric"
+              placeholder="যেমন: 5"
+              autoFocus
+            />
+            {restockError ? (
+              <p className="text-xs text-maher-due">{restockError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={restocking}
+                onClick={() => setRestockTarget(null)}
+              >
+                বাতিল
+              </Button>
+              <Button type="submit" data-testid="quick-stock-confirm" disabled={restocking}>
+                {restocking ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : null}
+                স্টক যোগ করুন
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

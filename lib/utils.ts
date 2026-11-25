@@ -92,13 +92,7 @@ export function formatNum(n: number | null | undefined): string {
 
 const BN_OUT_DIGITS = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
 
-/** Bengali digits for the live code badge, e.g. 1500 -> "১৫০০". */
+/** Bengali digits for the few print-oriented spots that still need them. */
 export function toBnDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => BN_OUT_DIGITS[Number(d)]);
-}
-
-/** Badge-only formatter. The rest of the app keeps its Western digits. */
-export function formatTakaBn(n: number | null | undefined): string {
-  const v = Math.round(Number(n) || 0);
-  return `৳${toBnDigits(v)}`;
 }

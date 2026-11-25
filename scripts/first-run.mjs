@@ -28,22 +28,111 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
-// Copied from lib/db-path.ts so the portable package (which does not run the
-// TypeScript source) resolves the database file exactly like the app does.
+// Lockstep copy of lib/db-path.ts so the portable package (which does not run
+// the TypeScript source) resolves the database file exactly like the app does.
+// Keep both resolvers in sync: a divergence would migrate one DB while the app
+// reads another. This includes the verified custom-location pointer, otherwise
+// first-run would apply migrations to the old C: database after a D: move.
+const DB_LOCATION_FILENAME = "maher-db-location.json";
+const SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "ascii");
+
 function rawDatabaseLocation() {
   const direct = process.env.MAHER_DB_PATH?.trim();
   if (direct) return direct;
+  const userDataRoot = process.env.MAHER_USER_DATA_DIR?.trim();
+  if (userDataRoot) {
+    return path.join(path.resolve(userDataRoot), "data", "shop.db");
+  }
   const configured = process.env.DATABASE_URL?.trim();
   if (configured) return configured;
   return "file:./prisma/dev.db";
 }
 
+function normalizeLocation(location, cwd) {
+  let value = location.replace(/^["']+|["']+$/g, "");
+  if (/^file:/i.test(value)) value = value.slice(5);
+  value = value.trim();
+  if (path.isAbsolute(value)) return path.normalize(value);
+  return path.resolve(cwd, value);
+}
+
+function hasSqliteHeader(file) {
+  try {
+    const fd = fs.openSync(file, "r");
+    const header = Buffer.alloc(SQLITE_MAGIC.length);
+    try {
+      fs.readSync(fd, header, 0, header.length, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return header.equals(SQLITE_MAGIC);
+  } catch {
+    return false;
+  }
+}
+
+function verifiedCustomFile(configured, defaultFile) {
+  let value = configured.replace(/^["']+|["']+$/g, "");
+  if (/^file:/i.test(value)) value = value.slice(5);
+  value = value.trim();
+  if (!path.isAbsolute(value)) return null;
+  const looksLikeFile = /\.db$/i.test(value);
+  const dir = path.normalize(looksLikeFile ? path.dirname(value) : value);
+  const file = path.normalize(
+    looksLikeFile ? value : path.join(dir, path.basename(defaultFile))
+  );
+  try {
+    if (!fs.statSync(dir).isDirectory()) return null;
+    fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
+    if (!fs.statSync(file).isFile() || !hasSqliteHeader(file)) return null;
+  } catch {
+    return null;
+  }
+  return file;
+}
+
 export function resolveDatabaseFile(cwd = process.cwd()) {
-  let location = rawDatabaseLocation().replace(/^["']+|["']+$/g, "");
-  if (/^file:/i.test(location)) location = location.slice(5);
-  location = location.trim();
-  if (path.isAbsolute(location)) return path.normalize(location);
-  return path.resolve(cwd, location);
+  const defaultFile = normalizeLocation(rawDatabaseLocation(), cwd);
+  const configFile = path.join(path.dirname(defaultFile), DB_LOCATION_FILENAME);
+  try {
+    if (fs.existsSync(configFile)) {
+      const parsed = JSON.parse(fs.readFileSync(configFile, "utf8"));
+      const raw = parsed?.customDbPath;
+      if (typeof raw === "string" && raw.trim()) {
+        const verified = verifiedCustomFile(normalizeLocation(raw, cwd), defaultFile);
+        if (verified) return verified;
+      }
+    }
+  } catch {
+    // A damaged pointer must never stop first-run; the default DB is the fallback.
+  }
+  return defaultFile;
+}
+
+/** Mirrors lib/db-path.ts so the portable launcher finds the same folder. */
+export function resolveBackupDir(cwd = process.cwd()) {
+  const configured = process.env.MAHER_BACKUP_DIR?.trim();
+  if (configured) {
+    if (path.isAbsolute(configured)) return path.normalize(configured);
+    return path.resolve(cwd, configured);
+  }
+  const userDataRoot = process.env.MAHER_USER_DATA_DIR?.trim();
+  if (userDataRoot) {
+    return path.join(path.resolve(userDataRoot), "data", "backups");
+  }
+  return path.join(cwd, "backups");
+}
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/** `safety-YYYYMMDD-HHMMSS-mmm.db`, compatible with the restore name check. */
+function fileStamp() {
+  const d = new Date();
+  return (
+    `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-` +
+    `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-` +
+    `${String(d.getMilliseconds()).padStart(3, "0")}`
+  );
 }
 
 /** Prisma's own migration ledger, copied verbatim so the CLI stays compatible. */
@@ -126,8 +215,22 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
       // also the one where a table can be missing without it looking wrong.
       verifySchema(db, path.basename(dbFile));
       normalizeExpenseRows(db, log);
+      reconcileStockLedger(db, log);
       log(`database already up to date (${applied.size} migration(s) applied)`);
       return [];
+    }
+
+    // A shipped migration can add columns/backfill money-adjacent data. Take a
+    // safety snapshot FIRST (never pruned) so the shop can always go back.
+    const hasService = db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Service'")
+      .get();
+    if (hasService) {
+      const backupDir = resolveBackupDir(cwd);
+      fs.mkdirSync(backupDir, { recursive: true });
+      const safety = path.join(backupDir, `safety-${fileStamp()}.db`);
+      db.exec(`VACUUM INTO '${safety.replace(/\\/g, "/").replace(/'/g, "''")}'`);
+      log(`safety backup: ${safety}`);
     }
 
     const record = db.prepare(
@@ -164,6 +267,7 @@ export function applyMigrations({ cwd = process.cwd(), dbFile, log = () => {} } 
 
     verifySchema(db, path.basename(dbFile));
     normalizeExpenseRows(db, log);
+    reconcileStockLedger(db, log);
 
     return done;
   } finally {
@@ -316,6 +420,45 @@ export function normalizeExpenseRows(db, log = () => {}) {
 }
 
 /**
+ * Reconciles the append-only stock ledger with each product's on-hand count.
+ * A product whose movements do not sum to `stock` (legacy row, manual edit)
+ * gets one ADJUSTMENT row so every later sale still explains itself. The
+ * operation is idempotent: a reconciled product produces no row.
+ */
+export function reconcileStockLedger(db, log = () => {}) {
+  const tables = new Set(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all()
+      .map((row) => row.name)
+  );
+  if (!tables.has("Product") || !tables.has("StockMovement")) {
+    return { changed: 0 };
+  }
+  const result = db
+    .prepare(
+      `INSERT INTO "StockMovement"
+         ("productId", "movementType", "quantity", "previousStock", "newStock", "reason")
+       SELECT
+         p."id",
+         'ADJUSTMENT',
+         p."stock" - COALESCE(SUM(m."quantity"), 0),
+         COALESCE(SUM(m."quantity"), 0),
+         p."stock",
+         'স্টক লেজার মিলন'
+       FROM "Product" p
+       LEFT JOIN "StockMovement" m ON m."productId" = p."id"
+       GROUP BY p."id", p."stock"
+       HAVING p."stock" <> COALESCE(SUM(m."quantity"), 0)`
+    )
+    .run();
+  if (result.changes > 0) {
+    log(`reconciled ${result.changes} product stock row(s) with the ledger`);
+  }
+  return { changed: result.changes };
+}
+
+/**
  * Confirms the tables the app needs actually exist.
  *
  * The migration ledger is a record of what was run, not proof of what is there.
@@ -331,7 +474,14 @@ export function normalizeExpenseRows(db, log = () => {}) {
  * shop's records is exactly the wrong thing to do without asking.
  */
 function verifySchema(db, label) {
-  const required = ["Service", "Technician"];
+  const required = [
+    "Service",
+    "Technician",
+    "ProductCategory",
+    "Product",
+    "SaleItem",
+    "StockMovement",
+  ];
   const present = new Set(
     db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")

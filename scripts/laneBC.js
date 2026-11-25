@@ -26,7 +26,6 @@ const TODAY = dhakaToday();
 const YESTERDAY = shiftDay(TODAY, -1);
 const THIS_MONTH = monthContaining(TODAY);
 const LAST_MONTH = monthContaining(shiftDay(THIS_MONTH.from, -1));
-const PROBE_DATE = `${LAST_MONTH.from.slice(0, 8)}15`;
 const REPORT_BASE = uniqueName("BCBase");
 const MARKER = uniqueName("RestoreMark");
 let failed = false;
@@ -47,36 +46,68 @@ let browser = null;
   const errors = trackErrors(page);
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
-    { polling: 500, timeout: 30000 }
-  );
+  await page.waitForSelector('[data-testid="daily-services"]', { timeout: 30000 });
   await new Promise((r) => setTimeout(r, 1500));
   const body = () => page.evaluate(() => document.body.textContent);
-  const visibleBody = () => page.evaluate(() => document.body.innerText);
   const openReport = async () => {
     if (await page.$('[data-testid="report-dialog"]')) return;
     await page.click('[data-testid="open-report"]');
-    await page.waitForFunction(
-      () => {
-        const d = document.querySelector('[data-testid="report-dialog"]');
-        return !!d && d.textContent.includes("ওভারঅল রিপোর্ট");
-      },
-      { polling: 100, timeout: 8000 }
-    );
+    try {
+      await page.waitForFunction(
+        () => {
+          const d = document.querySelector('[data-testid="report-dialog"]');
+          return !!d && d.textContent.includes("ওভারঅল রিপোর্ট");
+        },
+        { polling: 100, timeout: 8000 }
+      );
+    } catch (err) {
+      console.log(
+        "openReport diag:",
+        JSON.stringify(
+          await page.evaluate(() => ({
+            dlg: !!document.querySelector('[data-testid="report-dialog"]'),
+            text: document
+              .querySelector('[data-testid="report-dialog"]')
+              ?.textContent?.slice(0, 160),
+            trigger: !!document.querySelector('[data-testid="open-report"]'),
+          }))
+        )
+      );
+      throw err;
+    }
   };
   const closeReport = async () => {
-    const open = await page.$('[data-testid="report-dialog"]');
-    if (!open) return;
-    await page.evaluate(() => {
-      const d = document.querySelector('[data-testid="report-dialog"]');
-      const x = d
-        ? [...d.querySelectorAll("button")].find(
-            (b) => b.textContent.trim() === "Close"
-          )
-        : null;
-      if (x) x.click();
-    });
+    if (!(await page.$('[data-testid="report-dialog"]'))) return;
+    // Radix's Close button ignores a synthetic `.click()` from page.evaluate
+    // (its composed handler never fires), so dismiss with a real Escape key.
+    // The React handler is kept as a fallback for a lost keyboard focus.
+    await page.keyboard.press("Escape");
+    const gone = await page
+      .waitForFunction(
+        () => !document.querySelector('[data-testid="report-dialog"]'),
+        { polling: 100, timeout: 2500 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (!gone) {
+      await page.evaluate(() => {
+        const d = document.querySelector('[data-testid="report-dialog"]');
+        const x = d
+          ? [...d.querySelectorAll("button")].find(
+              (b) => b.textContent.trim() === "Close"
+            )
+          : null;
+        const key = x && Object.keys(x).find((k) => k.startsWith("__reactProps"));
+        const handler = key ? x[key]?.onClick : null;
+        if (typeof handler === "function") {
+          handler({
+            preventDefault() {},
+            stopPropagation() {},
+            defaultPrevented: false,
+          });
+        }
+      });
+    }
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="report-dialog"]'),
       { polling: 100, timeout: 8000 }
@@ -102,6 +133,20 @@ let browser = null;
         ?.click();
     }, label);
   const get = async (path) => (await api(page, path)).body;
+  const ensureTechnician = async (name) => {
+    const current = await get("/api/technicians");
+    if (current.technicians?.some((t) => t.name === name)) return;
+    await api(page, "/api/technicians", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  };
+  // Fresh databases no longer ship demo staff; create the roster this lane
+  // asserts on before any service/report baseline is written.
+  for (const name of ["NURUL", "RONI", "ASRAFUL", "NAYEM"]) {
+    await ensureTechnician(name);
+  }
 
   // Order-independent baseline: suites share this throwaway DB, and earlier
   // ones may leave active rows behind (laneA keeps a LaneARef row for today).
@@ -116,6 +161,7 @@ let browser = null;
       `/api/stats/monthly?from=${LAST_MONTH.from}&to=${LAST_MONTH.to}`
     ),
     custom: await get(`/api/stats/monthly?from=${YESTERDAY}&to=${TODAY}`),
+    dayWindow: await get(`/api/stats/monthly?from=${TODAY}&to=${TODAY}`),
   };
   const nurulBefore =
     before.day.techStats.find((x) => x.technician === "NURUL") ?? {
@@ -144,19 +190,16 @@ let browser = null;
   if (!baseline.ok) {
     throw new Error("report baseline not created: " + JSON.stringify(baseline.body));
   }
-  // The baseline was created via API — reload so the dashboard cards render it.
+  // The baseline was created via API — reload so the service list renders it.
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
-    { polling: 500, timeout: 30000 }
-  );
+  await page.waitForSelector('[data-testid="daily-services"]', { timeout: 30000 });
   await page.waitForFunction(
     (name) => document.body.textContent.includes(name),
     { polling: 500, timeout: 15000 },
     REPORT_BASE
   );
 
-  // ---------- B1: today cards == snapshot + hand calc (1/1700/500/1200/1500) ----------
+  // ---------- B1: dashboard card + report == snapshot + hand calc (1/1700/500/1200/1500) ----------
   const t = await get(`/api/stats?date=${TODAY}`);
   const expected = {
     count: before.day.today.count + 1,
@@ -165,28 +208,36 @@ let browser = null;
     due: before.day.today.due + 1200,
     expense: before.day.today.expense + 1500,
   };
-  // Cost/profit are public on the dashboard again; only the service table's
-  // cost column keeps codes private. No peek is needed.
+  // The today card lives on the dashboard now (জমা + count only); bill/due/
+  // expense are read in the report's একদিন window. Cost/profit stay public —
+  // only the service table's cost column keeps codes private. No peek needed.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="dashboard-today"]', { timeout: 15000 });
+  await page.waitForFunction(
+    () => {
+      const sec = document.querySelector('[data-testid="dashboard-overview"]');
+      return !!sec && !sec.textContent.includes("লোড হচ্ছে");
+    },
+    { polling: 200, timeout: 15000 }
+  );
+  await page.waitForFunction(
+    (advance, count) => {
+      const text =
+        document.querySelector('[data-testid="dashboard-today"]')?.innerText ?? "";
+      return text.includes(advance) && text.includes(count);
+    },
+    { polling: 100, timeout: 8000 },
+    tk(expected.advance),
+    `নতুন সার্ভিস ${expected.count}`
+  );
+  const todayCard = await page.$eval(
+    '[data-testid="dashboard-today"]',
+    (el) => el.innerText
+  );
   const roll = await get(
     `/api/stats/monthly?from=${shiftDay(TODAY, -29)}&to=${TODAY}`
   );
-  await page.waitForFunction(
-    (bill, due, expense) => {
-      const text = document.body.innerText;
-      return text.includes(bill) && text.includes(due) && text.includes(expense);
-    },
-    { polling: 100, timeout: 5000 },
-    tk(expected.bill),
-    tk(expected.due),
-    tk(expected.expense)
-  );
-  // The report lives in a dialog now. Capture the dashboard text first (the
-  // dialog overlay would otherwise be the only thing readable), then open it.
-  const visible = await visibleBody();
-  const todayCards = await page.$eval(
-    '[data-testid="today-stats"]',
-    (el) => el.innerText
-  );
+  const rollExpense = tk(roll.summary.expense + roll.summary.damageLoss);
   await openReport();
   await page.waitForFunction(
     (expense, profit) => {
@@ -196,55 +247,88 @@ let browser = null;
       return text.includes(expense) && text.includes(profit);
     },
     { polling: 100, timeout: 5000 },
-    tk(roll.summary.expense),
+    rollExpense,
     tk(roll.summary.profit)
   );
   const report = await reportText();
+  // একদিন window for TODAY: the day report must carry bill/due/expense too.
+  await chip("একদিন");
+  await page.evaluate((day) => {
+    const i = document.querySelector("#report-day");
+    Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    ).set.call(i, day);
+    i.dispatchEvent(new Event("input", { bubbles: true }));
+  }, TODAY);
+  await page.waitForFunction(
+    (label) => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      return (dlg?.querySelector("section p")?.textContent || "").includes(label);
+    },
+    { polling: 100, timeout: 8000 },
+    `একদিন — ${dayLabel(TODAY)}`
+  );
+  const dayStats = await get(`/api/stats/monthly?from=${TODAY}&to=${TODAY}`);
+  const dayExpense = tk(dayStats.summary.expense + dayStats.summary.damageLoss);
+  await page.waitForFunction(
+    (bill, due, expense) => {
+      const dlg = document.querySelector('[data-testid="report-dialog"]');
+      const text = dlg?.querySelector("section")?.innerText || "";
+      return text.includes(bill) && text.includes(due) && text.includes(expense);
+    },
+    { polling: 100, timeout: 8000 },
+    tk(dayStats.summary.bill),
+    tk(dayStats.summary.due),
+    dayExpense
+  );
+  const dayReport = await reportText();
+  // Back to the rolling range for the preset checks below.
+  await chip("তারিখ রেঞ্জ");
+  await new Promise((r) => setTimeout(r, 900));
   console.log("reached B1");
   check(
     "B1",
-    "today cards = snapshot + hand calc; খরচ ও লাভ visible without a peek",
+    "dashboard card + day report = snapshot + hand calc; খরচ ও লাভ visible without a peek",
     t.today.count === expected.count &&
       t.today.bill === expected.bill &&
       t.today.advance === expected.advance &&
       t.today.due === expected.due &&
       t.today.expense === expected.expense &&
-      todayCards.includes("জমা") &&
-      todayCards.includes(tk(expected.advance)) &&
-      visible.includes(tk(expected.bill)) &&
-      visible.includes(tk(expected.due)) &&
-      visible.includes(tk(expected.expense)) &&
-      !visible.includes("৳••••") &&
-      report.includes(tk(roll.summary.expense)) &&
+      todayCard.includes(tk(expected.advance)) &&
+      todayCard.includes(`নতুন সার্ভিস ${expected.count}`) &&
+      dayStats.summary.count === before.dayWindow.summary.count + 1 &&
+      dayStats.summary.bill === before.dayWindow.summary.bill + 1700 &&
+      dayStats.summary.due === before.dayWindow.summary.due + 1200 &&
+      dayStats.summary.expense === before.dayWindow.summary.expense + 1500 &&
+      dayReport.includes(tk(dayStats.summary.bill)) &&
+      dayReport.includes(tk(dayStats.summary.due)) &&
+      dayReport.includes(dayExpense) &&
+      report.includes(rollExpense) &&
       report.includes(tk(roll.summary.profit)) &&
-      !report.includes("৳••••"),
+      !report.includes("৳••••") &&
+      !dayReport.includes("৳••••"),
     JSON.stringify({
       today: t.today,
       roll: roll.summary,
-      reportHasExpense: report.includes(tk(roll.summary.expense)),
-      reportHasProfit: report.includes(tk(roll.summary.profit)),
+      day: dayStats.summary,
     })
   );
 
-  // ---------- B2: tech cards ----------
-  const techOk = await page.evaluate(() => {
-    const x = document.body.textContent;
-    return (
-      x.includes("NURUL") &&
-      x.includes("RONI") &&
-      x.includes("ASRAFUL") &&
-      x.includes("NAYEM")
-    );
-  });
+  // ---------- B2: technician roster + NURUL delta ----------
+  // The dashboard technician card opens the manager; the roster itself is
+  // read from the API (names are no longer printed on the desk).
+  const roster = await get("/api/technicians");
+  const names = (roster.technicians ?? []).map((x) => x.name);
   const nurul = t.techStats.find((x) => x.technician === "NURUL");
   console.log("reached B2");
   check(
     "B2",
-    "tech cards (NURUL snapshot+1 / snapshot+1700)",
-    techOk &&
+    "roster NURUL/RONI/ASRAFUL/NAYEM + NURUL snapshot+1 / snapshot+1700",
+    ["NURUL", "RONI", "ASRAFUL", "NAYEM"].every((n) => names.includes(n)) &&
       nurul.count === nurulBefore.count + 1 &&
       nurul.bill === nurulBefore.bill + 1700,
-    JSON.stringify(nurul)
+    JSON.stringify({ names, nurul })
   );
 
   // ---------- B3: presets ----------
@@ -307,41 +391,25 @@ let browser = null;
     customLabel
   );
 
-  // ---------- B5: navbar connection ----------
-  // The report now blocks the navbar, so close it, move the day, reopen.
+  // ---------- B5: report window survives close/reopen ----------
+  // The dock keeps its own window state; closing and reopening the dialog
+  // must not reset the custom range, and presets anchor to today.
   await closeReport();
-  await page.evaluate((probe) => {
-    const i = document.querySelector('[data-testid="service-date-nav"] input[type="date"]');
-    Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value"
-    ).set.call(i, probe);
-    i.dispatchEvent(new Event("input", { bubbles: true }));
-  }, PROBE_DATE);
-  await new Promise((r) => setTimeout(r, 1200));
   await openReport();
   console.log("reached B5");
   check(
     "B5a",
-    "custom persists across navbar move",
+    "custom range persists across close/reopen",
     (await rangeText()).includes(customExpected)
   );
   await chip("এই মাস");
   await new Promise((r) => setTimeout(r, 900));
   check(
     "B5b",
-    `preset follows navbar (${monthLabel(PROBE_DATE)})`,
-    (await rangeText()).includes(`1 ${monthLabel(PROBE_DATE)}`)
+    `this-month preset anchors to today (${monthLabel(TODAY)})`,
+    (await rangeText()).includes(`1 ${monthLabel(TODAY)}`)
   );
-  // back to today + rolling
-  await closeReport();
-  await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
-      .find((x) => x.textContent.includes("আজ"))
-      .click()
-  );
-  await new Promise((r) => setTimeout(r, 1200));
-  await openReport();
+  // back to the rolling range for the invalid-range check
   await chip("বিগত ৩০ দিন");
   await new Promise((r) => setTimeout(r, 900));
 
@@ -364,9 +432,9 @@ let browser = null;
   check("B6", "from>to rejected, range kept", stillRolling === rollingBefore);
   await closeReport();
 
-  // ---------- C1: backup button (Service owns the utilities now) ----------
-  await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForSelector('[data-testid="service-backup"]', {
+  // ---------- C1: backup export (Dashboard owns the utilities now) ----------
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="dashboard-backup"]', {
     polling: 200,
     timeout: 30000,
   });
@@ -391,7 +459,9 @@ let browser = null;
       return original.call(this);
     };
   });
-  await page.click('[data-testid="service-backup"]');
+  await page.click('[data-testid="dashboard-backup"]');
+  await page.waitForSelector('[data-testid="export-excel"]', { timeout: 10000 });
+  await page.click('[data-testid="export-excel"]');
   await page.waitForFunction(
     () => typeof window.__backupDownload === "string",
     {
@@ -400,27 +470,27 @@ let browser = null;
     }
   );
   await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="service-utilities"]')
-        ?.textContent?.includes("সর্বশেষ ব্যাকআপ"),
-    { polling: 500, timeout: 20000 }
+    () => {
+      const el = document.querySelector('[data-testid="dashboard-last-backup"]');
+      const text = el?.textContent?.trim() ?? "";
+      return !!el && text !== "" && text !== "এখনো নেই";
+    },
+    { polling: 300, timeout: 20000 }
   );
-  const lbl = await page.evaluate(
-    () =>
-      [...document.querySelectorAll('[data-testid="service-utilities"] p')].find(
-        (p) => p.textContent.includes("সর্বশেষ ব্যাকআপ")
-      )?.textContent
+  const lbl = await page.$eval(
+    '[data-testid="dashboard-last-backup"]',
+    (el) => el.textContent.trim()
   );
   const download = await page.evaluate(() => window.__backupDownload);
   const fetched = await page.evaluate(() => window.__backupFetch);
   console.log("reached C1");
   check(
     "C1",
-    "backup toast + Excel workbook download",
+    "last-backup stamp + Excel workbook download",
     !!lbl &&
+      lbl !== "এখনো নেই" &&
       typeof download === "string" &&
-      download.startsWith("maher-backup-") &&
+      download.startsWith("mss-backup-") &&
       download.endsWith(".xlsx") &&
       typeof fetched === "string",
     `${lbl} | ${download} | ${fetched}`
@@ -512,9 +582,11 @@ let browser = null;
   );
   check(
     "C3a",
-    "receipt address has no Chandra Rd.",
+    "receipt never hardcodes the legacy shop name or address",
     !receiptInfo.text.includes("Chandra Rd.") &&
-      receiptInfo.text.includes("Nabinagar, Ashulia 1344"),
+      !receiptInfo.text.includes("Nabinagar, Ashulia 1344") &&
+      !receiptInfo.text.includes("MAHER MOBILE CARE") &&
+      receiptInfo.text.includes("আপনার দোকানের নাম"),
     JSON.stringify(receiptInfo.text.slice(0, 160))
   );
   check(
@@ -645,20 +717,24 @@ let browser = null;
     "PDF share produces a non-empty application/pdf",
     pdfInfo?.type === "application/pdf" &&
       pdfInfo.size > 1000 &&
-      /^MAHER-Bill-/.test(pdfInfo.name),
+      /^MSS-Bill-/.test(pdfInfo.name),
     JSON.stringify(pdfInfo)
   );
 
-  const restored = await api(page, `/api/services/${baseline.body.id}`, {
+  // Phase 2: once due hits 0 the slip's bill/advance are locked — a mistaken
+  // payment cannot silently rewrite the ledger, only descriptive fields stay
+  // editable. (The paid state is fine for the paper/keyboard/cleanup checks.)
+  const lockedMoney = await api(page, `/api/services/${baseline.body.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ advance: 500 }),
   });
   check(
     "C3h",
-    "baseline advance restored after paid checks",
-    restored.ok && restored.body.due === 1200,
-    JSON.stringify(restored.body)
+    "paid slip refuses a bill/advance change (descriptive edits stay open)",
+    lockedMoney.status === 400 &&
+      String(lockedMoney.body.error || "").includes("পরিশোধিত"),
+    JSON.stringify(lockedMoney.body)
   );
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
@@ -728,7 +804,9 @@ let browser = null;
     )
   );
 
-  check("Z", "zero JS errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  // C3h deliberately expects a 400, which Chrome logs as a console error.
+  const realErrors = errors.filter((text) => !text.includes("status of 400"));
+  check("Z", "zero JS errors", realErrors.length === 0, realErrors.slice(0, 3).join(" | "));
   console.log(results.join("\n"));
   await closeBrowser(browser);
 })()

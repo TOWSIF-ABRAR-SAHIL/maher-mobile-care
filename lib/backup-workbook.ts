@@ -10,12 +10,15 @@
  */
 import ExcelJS from "exceljs";
 import { dhakaDateKey } from "@/lib/dhaka";
+import { effectiveRepairCost } from "@/lib/parts";
+import { PLATFORM_BRAND } from "@/lib/shop";
 import { STATUS_BN } from "@/lib/utils";
 
 const FONT = "Nirmala UI";
 export const BACKUP_SHEETS = {
   summary: "সারসংক্ষেপ",
   services: "সার্ভিস খাতা",
+  parts: "সার্ভিস পার্টস",
   audit: "সম্পূর্ণ ডেটা (অডিট)",
 } as const;
 
@@ -52,6 +55,8 @@ export interface BackupService {
   model: string;
   technician: string;
   problem: string;
+  solution: string | null;
+  condition: string | null;
   totalBill: number;
   advance: number;
   due: number;
@@ -59,17 +64,26 @@ export interface BackupService {
   shopExpense: string | null;
   expenseAmount: number;
   partsShop: string | null;
+  /** Derived parts cost of this device, or null when it has none. */
+  partsCost: number | null;
   returnedAt: Date | null;
   refundAmount: number;
   refundNote: string | null;
+  inspectionFee: number;
+  returnReason: string | null;
   damageLoss: number;
   damageNote: string | null;
   expenseWrittenOff: boolean;
   imei: string | null;
+  /** Visit-level customer address and per-device warranty (audit only). */
+  customerAddress: string | null;
+  warranty: string | null;
   saleRef: string | null;
   groupId: string | null;
   deliveryDate: Date | null;
   deliveredAt: Date | null;
+  verified: boolean;
+  verifiedAt: Date | null;
   serviceDate: Date;
   archived: boolean;
   createdAt: Date;
@@ -94,7 +108,33 @@ export interface BackupProduct {
 export interface BackupWorkbookInput {
   services: BackupService[];
   products: BackupProduct[];
+  /** Internal parts purchase ledger (never part of the customer copy). */
+  parts?: BackupPart[];
+  /** Row totals for every model covered by the backup contract. */
+  modelCounts?: Record<string, number>;
+  /** Live tenant name; blank/unconfigured falls back to the MSS platform brand. */
+  shopName?: string;
   generatedAt: Date;
+}
+
+/** One itemized part line, including its internal purchase/paid facts. */
+export interface BackupPart {
+  id: number;
+  serviceId: number;
+  nameSnapshot: string;
+  skuSnapshot: string | null;
+  quantity: number;
+  unitCost: number;
+  lineCost: number;
+  supplier: string | null;
+  supplierKey: string | null;
+  /** Keypad price code exactly as typed, or null for a plain number. */
+  priceCode: string | null;
+  purchaseDate: Date | null;
+  paidAt: Date | null;
+  paidNote: string | null;
+  note: string | null;
+  createdAt: Date;
 }
 
 interface Summary {
@@ -116,13 +156,19 @@ function summarize(services: BackupService[]): Summary {
   const live = services.filter((s) => !s.archived);
   const active = live.filter((s) => s.status !== "Returned");
   const returned = live.filter((s) => s.status === "Returned");
-  const bill = active.reduce((sum, s) => sum + s.totalBill, 0);
+  // Match the daily/monthly stats: a retained inspection fee is real income
+  // even though its row is Returned. Without it the shipped workbook reports
+  // zero revenue/profit for a fee-only return while the app reports +fee.
+  const feeIncome = returned.reduce((sum, s) => sum + (s.inspectionFee ?? 0), 0);
+  const bill = active.reduce((sum, s) => sum + s.totalBill, 0) + feeIncome;
   const advance = active.reduce((sum, s) => sum + s.advance, 0);
   const due = active.reduce((sum, s) => sum + s.due, 0);
   // A returned job may have written off its parts cost; that row stays in the
-  // backup but never changes the shop's totals (business rule 4).
+  // backup but never changes the shop's totals (business rule 4). A device
+  // with itemized parts reports their sum instead of the lump code.
   const expense = live.reduce(
-    (sum, s) => sum + (s.expenseWrittenOff ? 0 : s.expenseAmount),
+    (sum, s) =>
+      sum + effectiveRepairCost(s, s.partsCost ?? null),
     0
   );
   const damageLoss = live.reduce((sum, s) => sum + s.damageLoss, 0);
@@ -289,7 +335,8 @@ function tableSheet(
   subtitle: string,
   columns: Column[],
   rows: (string | number | Date | null)[][],
-  tabColor: string
+  tabColor: string,
+  brand: string
 ): ExcelJS.Worksheet {
   const ws = wb.addWorksheet(name, {
     views: [{ state: "frozen", ySplit: HEADER_ROW }],
@@ -305,7 +352,7 @@ function tableSheet(
   ws.properties.tabColor = { argb: tabColor };
   ws.columns = columns.map((c) => ({ width: c.width }));
   ws.headerFooter = {
-    oddFooter: "&LMAHER MOBILE CARE&Cপৃষ্ঠা &P / &N&R&D",
+    oddFooter: `&L${brand}&Cপৃষ্ঠা &P / &N&R&D`,
   };
 
   addTitle(ws, columns, title, subtitle);
@@ -339,6 +386,7 @@ function summarySheet(
   input: BackupWorkbookInput,
   s: Summary
 ): void {
+  const brand = input.shopName?.trim() || PLATFORM_BRAND.name;
   const columns: Column[] = [
     { header: "বিবরণ", width: 30 },
     { header: "মান", width: 18, align: "right" },
@@ -354,7 +402,7 @@ function summarySheet(
   addTitle(
     ws,
     columns,
-    "MAHER MOBILE CARE — ডেটা ব্যাকআপ",
+    `${brand} — ডেটা ব্যাকআপ`,
     `তৈরি: ${dhakaStamp(input.generatedAt)} (Asia/Dhaka) · এই ফাইলটি ব্যাকআপের পড়ার উপযোগী কপি`
   );
 
@@ -410,7 +458,7 @@ function summarySheet(
   line("মোট রেকর্ড", input.services.length, "সব সার্ভিস (আর্কাইভসহ)");
 
   section("টাকা");
-  line("মোট বিল", s.bill, "সক্রিয় সার্ভিস", true, true);
+  line("মোট বিল", s.bill, "সক্রিয় সার্ভিস + ফেরতের চেকিং ফি", true, true);
   line("মোট জমা", s.advance, "সক্রিয় সার্ভিস", true);
   line("মোট বাকি", s.due, "সক্রিয় সার্ভিস", true);
   line("মোট খরচ", s.expense, "লেখা-বাতিল করা খরচ বাদে", true);
@@ -447,6 +495,13 @@ function summarySheet(
   line("স্টক কম", lowStock, "লো-স্টক সীমার নিচে");
   line("স্টক শেষ", outOfStock, "০ পিস");
 
+  if (input.modelCounts) {
+    section("ব্যাকআপে থাকা মডেল");
+    for (const [model, count] of Object.entries(input.modelCounts)) {
+      line(model, count, "ব্যাকআপ মডেল");
+    }
+  }
+
   r += 1;
   ws.mergeCells(r, 1, r + 2, 3);
   const note = ws.getCell(r, 1);
@@ -482,13 +537,15 @@ function serviceColumns(): Column[] {
     { header: "জমা (৳)", width: 10, align: "right", numFmt: moneyFmt },
     { header: "বাকি (৳)", width: 10, align: "right", numFmt: moneyFmt },
     { header: "ডেলিভারি", width: 11, align: "center", numFmt: dateFmt },
+    { header: "যাচাই", width: 8, align: "center" },
   ];
 }
 
 function serviceSheet(
   wb: ExcelJS.Workbook,
   services: BackupService[],
-  s: Summary
+  s: Summary,
+  brand: string
 ): void {
   const columns = serviceColumns();
   const ordered = [...services].sort((a, b) => {
@@ -510,6 +567,7 @@ function serviceSheet(
     service.advance,
     service.due,
     optionalDate(service.deliveryDate),
+    service.verified ? "হ্যাঁ" : "",
   ]);
 
   const ws = tableSheet(
@@ -519,7 +577,8 @@ function serviceSheet(
     "তারিখ অনুযায়ী পুরোনো থেকে নতুন · ফেরত সার্ভিস তালিকায় আছে, কিন্তু মোটে নেই · আর্কাইভ করা সার্ভিস অডিট শিটে",
     columns,
     rows,
-    C.steel
+    C.steel,
+    brand
   );
 
   // Colour the two columns the shopkeeper scans first.
@@ -543,6 +602,7 @@ function serviceSheet(
       s.bill,
       s.advance,
       s.due,
+      "",
       "",
     ];
     values.forEach((value, i) => {
@@ -568,7 +628,11 @@ function serviceSheet(
   }
 }
 
-function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
+function auditSheet(
+  wb: ExcelJS.Workbook,
+  services: BackupService[],
+  brand: string
+): void {
   const columns: Column[] = [
     { header: "id", width: 6, align: "right" },
     { header: "date", width: 11, align: "center" },
@@ -577,6 +641,8 @@ function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
     { header: "model", width: 16 },
     { header: "technician", width: 13 },
     { header: "problem", width: 26 },
+    { header: "solution", width: 30 },
+    { header: "condition", width: 26 },
     { header: "status", width: 11 },
     { header: "bill", width: 9, align: "right" },
     { header: "advance", width: 9, align: "right" },
@@ -589,12 +655,19 @@ function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
     { header: "returnedAt", width: 20 },
     { header: "refundAmount", width: 12, align: "right" },
     { header: "refundNote", width: 18 },
+    { header: "inspectionFee", width: 13, align: "right" },
+    { header: "returnReason", width: 22 },
     { header: "expenseWrittenOff", width: 15 },
     { header: "imei", width: 16 },
+    { header: "customerAddress", width: 22 },
+    { header: "warranty", width: 14 },
     { header: "saleRef", width: 18 },
     { header: "groupId", width: 20 },
     { header: "deliveryDate", width: 12 },
     { header: "deliveredAt", width: 20 },
+    { header: "verified", width: 9 },
+    { header: "verifiedAt", width: 20 },
+    { header: "partsCost", width: 12, align: "right" },
     { header: "archived", width: 9 },
     { header: "created", width: 20 },
     { header: "updated", width: 20 },
@@ -610,6 +683,8 @@ function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
       s.model,
       s.technician,
       s.problem,
+      s.solution ?? "",
+      s.condition ?? "",
       s.status,
       s.totalBill,
       s.advance,
@@ -622,12 +697,19 @@ function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
       iso(s.returnedAt),
       s.refundAmount,
       s.refundNote ?? "",
+      s.inspectionFee,
+      s.returnReason ?? "",
       s.expenseWrittenOff ? "YES" : "",
       s.imei ?? "",
+      s.customerAddress ?? "",
+      s.warranty ?? "",
       s.saleRef ?? "",
       s.groupId ?? "",
       s.deliveryDate ? dhakaDateKey(s.deliveryDate) : "",
       iso(s.deliveredAt),
+      s.verified ? "YES" : "",
+      iso(s.verifiedAt),
+      s.partsCost ?? 0,
       s.archived ? "YES" : "",
       iso(s.createdAt),
       iso(s.updatedAt),
@@ -640,23 +722,132 @@ function auditSheet(wb: ExcelJS.Workbook, services: BackupService[]): void {
     "সব সার্ভিসের কাঁচা ফিল্ড — CSV ব্যাকআপের সমান, কোনো তথ্য বাদ নেই",
     columns,
     rows,
-    C.muted
+    C.muted,
+    brand
   );
+}
+
+/**
+ * Internal parts purchase sheet. Deliberately kept OUT of the summary and the
+ * customer-facing service sheet: `priceCode` is visible here because this is
+ * the shopkeeper-only audit copy of the internal ledger.
+ */
+function partsSheet(
+  wb: ExcelJS.Workbook,
+  parts: BackupPart[],
+  brand: string
+): void {
+  const columns: Column[] = [
+    { header: "ক্রম", width: 6, align: "right" },
+    { header: "সার্ভিস আইডি", width: 10, align: "right" },
+    { header: "পার্টস", width: 26, wrap: true },
+    { header: "SKU", width: 14 },
+    { header: "পরিমাণ", width: 9, align: "right" },
+    { header: "একক দাম (৳)", width: 12, align: "right", numFmt: moneyFmt },
+    { header: "মোট (৳)", width: 12, align: "right", numFmt: moneyFmt },
+    { header: "দোকান / সাপ্লায়ার", width: 20, wrap: true },
+    { header: "মূল্য কোড", width: 13, align: "center" },
+    { header: "কেনার তারিখ", width: 12, align: "center", numFmt: dateFmt },
+    { header: "Paid?", width: 8, align: "center" },
+    { header: "Paid সময়", width: 17, align: "center" },
+    { header: "Paid নোট", width: 34, wrap: true },
+    { header: "নোট", width: 24, wrap: true },
+  ];
+
+  const ordered = [...parts].sort((a, b) => {
+    const aKey = a.purchaseDate
+      ? dhakaDateKey(a.purchaseDate)
+      : "9999-99-99";
+    const bKey = b.purchaseDate
+      ? dhakaDateKey(b.purchaseDate)
+      : "9999-99-99";
+    return aKey !== bKey ? aKey.localeCompare(bKey) : a.id - b.id;
+  });
+
+  const rows = ordered.map((part, index) => [
+    index + 1,
+    part.serviceId,
+    part.nameSnapshot,
+    part.skuSnapshot ?? "",
+    part.quantity,
+    part.unitCost,
+    part.lineCost,
+    part.supplier ?? "",
+    part.priceCode ?? "",
+    part.purchaseDate ? optionalDate(part.purchaseDate) : "",
+    part.paidAt ? "হ্যাঁ" : "",
+    part.paidAt ? dhakaStamp(part.paidAt) : "",
+    part.paidNote ?? "",
+    part.note ?? "",
+  ]);
+
+  const ws = tableSheet(
+    wb,
+    BACKUP_SHEETS.parts,
+    "সার্ভিস পার্টস",
+    "দোকানের অভ্যন্তরীণ পার্টসক্রয় খাতা · মূল্য কোড ও Paid ইতিহাসসহ · কাস্টমারকে দেবেন না",
+    columns,
+    rows,
+    C.warn,
+    brand
+  );
+
+  if (rows.length === 0) return;
+  // Only lines with a known purchase date count in the money totals; a legacy
+  // unknown-date row is listed for audit but never silently totalled.
+  const known = ordered.filter((part) => part.purchaseDate !== null);
+  const total = known.reduce((sum, part) => sum + part.lineCost, 0);
+  const paid = known
+    .filter((part) => part.paidAt !== null)
+    .reduce((sum, part) => sum + part.lineCost, 0);
+  const totalRow = ws.getRow(HEADER_ROW + rows.length + 2);
+  const values: (string | number)[] = [
+    "মোট (তারিখ আছে)",
+    "",
+    "",
+    "",
+    "",
+    "",
+    total,
+    "",
+    "",
+    "",
+    "",
+    "",
+    `Paid: ৳${paid} · Unpaid: ৳${total - paid}`,
+    "",
+  ];
+  values.forEach((value, i) => {
+    const cell = totalRow.getCell(i + 1);
+    cell.value = value;
+    cell.font = font(C.navy, true, 10);
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: C.wash },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: i === 12 ? "right" : "center",
+    };
+  });
 }
 
 export async function buildBackupWorkbook(
   input: BackupWorkbookInput
 ): Promise<Buffer> {
+  const brand = input.shopName?.trim() || PLATFORM_BRAND.name;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "MAHER MOBILE CARE";
-  wb.title = "MAHER MOBILE CARE — ডেটা ব্যাকআপ";
+  wb.creator = brand;
+  wb.title = `${brand} — ডেটা ব্যাকআপ`;
   wb.created = input.generatedAt;
   wb.modified = input.generatedAt;
 
   const stats = summarize(input.services);
   summarySheet(wb, input, stats);
-  serviceSheet(wb, stats.live, stats);
-  auditSheet(wb, input.services);
+  serviceSheet(wb, stats.live, stats, brand);
+  partsSheet(wb, input.parts ?? [], brand);
+  auditSheet(wb, input.services, brand);
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

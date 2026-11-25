@@ -14,6 +14,11 @@
  *    earlier would hand the leak check a database and fail the build for
  *    shipping shop data, which is exactly the check that must keep working.
  *
+ * Desktop builds pass `{ desktop: true }`: the Electron app owns its data at
+ * %AppData%\MAHER-MOBILE-CARE\data, so nothing from a local package may be
+ * preserved or restored. An old portable shop.db must never follow an EXE
+ * install and overwrite real AppData data.
+ *
  * No side effects at import time: the build calls these explicitly, and the
  * tests drive them against throwaway folders.
  */
@@ -24,6 +29,14 @@ import path from "node:path";
 /** The package folders that belong to the shop, never to the build. */
 export const KEEP_DIRS = ["data", "logs"];
 
+/** Electron keeps shop data in AppData — a desktop package keeps nothing. */
+export const DESKTOP_KEEP_DIRS = [];
+
+/** Which folders a rebuild may carry across, per package mode. */
+export function keepDirsFor({ desktop = false } = {}) {
+  return desktop ? DESKTOP_KEEP_DIRS : KEEP_DIRS;
+}
+
 /**
  * Copies the keep folders to a hold outside the package.
  *
@@ -31,8 +44,10 @@ export const KEEP_DIRS = ["data", "logs"];
  * `{ dir, dirs }` otherwise. A copy failure throws *before* anything is
  * deleted — the build must never reach the delete step with no backup.
  */
-export function preservePackageData(outDir, holdParent = os.tmpdir()) {
-  const dirs = KEEP_DIRS.filter((name) => fs.existsSync(path.join(outDir, name))).sort();
+export function preservePackageData(outDir, holdParent = os.tmpdir(), options = {}) {
+  const dirs = keepDirsFor(options)
+    .filter((name) => fs.existsSync(path.join(outDir, name)))
+    .sort();
   if (dirs.length === 0) return null;
 
   const dir = fs.mkdtempSync(path.join(holdParent, "maher-keep-"));
@@ -55,8 +70,8 @@ export function preservePackageData(outDir, holdParent = os.tmpdir()) {
  * that fails throws and leaves the hold in place, so the data is never one
  * error away from being lost.
  */
-export function restorePackageData(outDir, hold) {
-  if (!hold) return { restored: [], skipped: [] };
+export function restorePackageData(outDir, hold, options = {}) {
+  if (!hold || keepDirsFor(options).length === 0) return { restored: [], skipped: [] };
 
   const restored = [];
   const skipped = [];

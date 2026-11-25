@@ -35,6 +35,50 @@ const check = (id, name, ok, extra = "") => {
 
 let browser = null;
 
+/** Add one part to a device's PartsEditor through the real form controls.
+ *  The redesign replaced the old দোকান খরচ / পার্টসের দোকান fields with
+ *  itemized per-device parts; the first "পার্টস যোগ করুন" click opens the
+ *  collapsed editor and creates the first draft in one step. */
+async function fillFirstPart(page, editorTestId, { name, price, supplier }) {
+  await page.$eval(`[data-testid="${editorTestId}"]`, (el) =>
+    el.scrollIntoView({ block: "center" })
+  );
+  const added = await page.evaluate((testId) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+    const button = [...(root?.querySelectorAll("button") || [])].find((b) =>
+      b.textContent.includes("পার্টস যোগ করুন")
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  }, editorTestId);
+  if (!added) throw new Error(`Cannot add a part in ${editorTestId}`);
+  await page.waitForSelector(`[data-testid="${editorTestId}-row-0"]`, {
+    timeout: 5000,
+  });
+  const setField = async (suffix, value) => {
+    const id = await page.$eval(
+      `[data-testid="${editorTestId}-row-0"] input[data-field$=":${suffix}"]`,
+      (el) => el.id
+    );
+    await typeInto(page, id, value);
+  };
+  await setField("name", name);
+  await setField("price", price);
+  await setField("supplier", supplier);
+  // Typing a shop opens the picker; dismiss it before the save click.
+  await page.keyboard.press("Escape");
+}
+
+/** waitForFunction with a readable failure label (the raw timeout is opaque). */
+async function waitLabeled(page, fn, args, label, timeout = 3000) {
+  try {
+    await page.waitForFunction(fn, { polling: 100, timeout }, ...args);
+  } catch (error) {
+    throw new Error(`${label} timed out: ${error.message}`);
+  }
+}
+
 (async () => {
   browser = await launchBrowser();
   const page = await browser.newPage();
@@ -43,7 +87,7 @@ let browser = null;
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await new Promise((r) => setTimeout(r, 1200));
@@ -112,18 +156,30 @@ let browser = null;
   await new Promise((r) => setTimeout(r, 150));
   await typeInto(page,"svc-bill", "১০০০"); // Bengali digits
   await typeInto(page,"svc-adv", "300");
-  await typeInto(page,"svc-expense", "*B#");
-  await typeInto(page,"svc-parts-shop", "LaneA Parts Shop");
+  // Internal shop cost now lives in device 1's part line, not in a
+  // stand-alone দোকান খরচ / পার্টসের দোকান pair.
+  await fillFirstPart(page, "svc-parts", {
+    name: "LaneA Display",
+    price: "*B#",
+    supplier: "LaneA Parts Shop",
+  });
   const dueShown = await page.$eval("#svc-due", (el) => el.value);
   check("A1a", "due auto-calc live", dueShown === "700", dueShown);
-  const badge = await page.$eval("#svc-expense-help", (el) => el.textContent || "");
+  // The part price preview shows the very code that will be stored and its
+  // decoded amount — the old form-level expense preview is gone.
+  const badge = await page.$eval('[data-testid="svc-parts-row-0"]', (row) => {
+    const hint = [...row.querySelectorAll("span")].find((el) =>
+      (el.textContent || "").includes("গোপন কোড")
+    );
+    return hint?.textContent || "";
+  });
   const hasPeekButton = (await page.$('[data-testid="expense-reveal"]')) !== null;
   check(
     "A1b",
     "form preview shows the code and its real amount directly",
     badge.includes("গোপন কোড") &&
       badge.includes("*B#") &&
-      badge.includes("৳১২০০") &&
+      badge.includes("৳1,200") &&
       !badge.includes("৳••••") &&
       !hasPeekButton,
     JSON.stringify({ badge, hasPeekButton })
@@ -133,27 +189,33 @@ let browser = null;
   const created = (await apiDay(TODAY)).find(
     (s) => s.customerName === NAME
   );
+  // The list carries partsCost; the part's code/supplier live on the detail row.
+  const createdDetail = created
+    ? (await api(page, `/api/services/${created.id}`)).body
+    : null;
+  const savedPart = createdDetail?.parts?.[0];
   console.log("reached A1-submit");
   check(
     "A1c",
-    "entry saved (bill 1000/adv 300/due 700, RONI, code expense 1200 + parts shop)",
+    "entry saved (bill 1000/adv 300/due 700, RONI, part code 1200 + parts shop)",
     created &&
       created.totalBill === 1000 &&
       created.advance === 300 &&
       created.due === 700 &&
       created.technician === "RONI" &&
-      created.shopExpense === "*B#" &&
-      created.expenseAmount === 1200 &&
-      created.partsShop === "LaneA Parts Shop",
+      savedPart?.priceCode === "*B#" &&
+      savedPart?.unitCost === 1200 &&
+      savedPart?.lineCost === 1200 &&
+      savedPart?.supplier === "LaneA Parts Shop" &&
+      created.partsCost === 1200,
     JSON.stringify(
       created && {
         b: created.totalBill,
         a: created.advance,
         d: created.due,
         t: created.technician,
-        raw: created.shopExpense,
-        e: created.expenseAmount,
-        shop: created.partsShop,
+        partsCost: created.partsCost,
+        part: savedPart,
       }
     )
   );
@@ -175,7 +237,7 @@ let browser = null;
   check("A2", "validation blocks (empty + bad bill), no row", (await rowCount()) === c2);
   await page.reload({ waitUntil: "networkidle0" });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await new Promise((r) => setTimeout(r, 1000));
@@ -217,7 +279,7 @@ let browser = null;
   check("A3e", "overpay save rejected, no row added", (await rowCount()) === c3);
   await page.reload({ waitUntil: "networkidle0" });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await new Promise((r) => setTimeout(r, 1000));
@@ -330,13 +392,14 @@ let browser = null;
     createdId
   );
   await page.click(`[data-testid="expense-reveal-${createdId}"]`);
-  await page.waitForFunction(
+  await waitLabeled(
+    page,
     (id) =>
       document
         .querySelector(`[data-testid="expense-amount-${id}"]`)
         ?.textContent?.includes("1,200"),
-    { polling: 100, timeout: 3000 },
-    createdId
+    [createdId],
+    "A6 per-row reveal"
   );
   const revealed = await page.evaluate(
     (id, refId) => ({
@@ -352,47 +415,62 @@ let browser = null;
   );
 
   // Universal eye: one click shows every row, the next click hides every row.
-  await page.click('[data-testid="expense-toggle"]');
-  await page.waitForFunction(
+  // Click via the DOM: the reveal above expands this row and can push the
+  // button under a sticky surface, so a coordinate click may hit the wrong
+  // element. A direct click always reaches the button's React handler.
+  await page.$eval('[data-testid="expense-toggle"]', (el) => el.click());
+  // Park the pointer away from the button: the hover state used to mask a
+  // white-on-white pressed style, so the button only "vanished" afterwards.
+  await page.mouse.move(2, 2);
+  // Let the 150ms colour transition settle before sampling the computed style.
+  await new Promise((r) => setTimeout(r, 500));
+  await waitLabeled(
+    page,
     (a, b) =>
       !!document.querySelector(`[data-testid="expense-amount-${a}"]`) &&
       !!document.querySelector(`[data-testid="expense-amount-${b}"]`),
-    { polling: 100, timeout: 3000 },
-    createdId,
-    seedId
+    [createdId, seedId],
+    "A6 universal reveal-on"
   );
   const universalOn = await page.evaluate(
-    (id, refId) => ({
-      created:
-        document.querySelector(`[data-testid="expense-amount-${id}"]`)
-          ?.textContent || "",
-      reference:
-        document.querySelector(`[data-testid="expense-amount-${refId}"]`)
-          ?.textContent || "",
-      pressed:
-        document
-          .querySelector('[data-testid="expense-toggle"]')
-          ?.getAttribute("aria-pressed") || "",
-    }),
+    (id, refId) => {
+      const toggle = document.querySelector('[data-testid="expense-toggle"]');
+      const style = toggle ? getComputedStyle(toggle) : null;
+      return {
+        created:
+          document.querySelector(`[data-testid="expense-amount-${id}"]`)
+            ?.textContent || "",
+        reference:
+          document.querySelector(`[data-testid="expense-amount-${refId}"]`)
+            ?.textContent || "",
+        pressed: toggle?.getAttribute("aria-pressed") || "",
+        // The pressed toggle must still read as a button: navy fill, not a
+        // white background under white text.
+        colors: style
+          ? { text: style.color, background: style.backgroundColor }
+          : null,
+      };
+    },
     createdId,
     seedId
   );
-  await page.click('[data-testid="expense-toggle"]');
-  await page.waitForFunction(
+  await page.$eval('[data-testid="expense-toggle"]', (el) => el.click());
+  await waitLabeled(
+    page,
     (a, b) =>
       !document.querySelector(`[data-testid="expense-amount-${a}"]`) &&
       !document.querySelector(`[data-testid="expense-amount-${b}"]`),
-    { polling: 100, timeout: 3000 },
-    createdId,
-    seedId
+    [createdId, seedId],
+    "A6 universal reveal-off"
   );
 
   // Per-row eye auto-hides after 10 seconds (no universal timer involved).
   await page.click(`[data-testid="expense-reveal-${createdId}"]`);
-  await page.waitForFunction(
+  await waitLabeled(
+    page,
     (id) => !!document.querySelector(`[data-testid="expense-amount-${id}"]`),
-    { polling: 100, timeout: 3000 },
-    createdId
+    [createdId],
+    "A6 per-row reveal"
   );
   await page.waitForFunction(
     (id) => !document.querySelector(`[data-testid="expense-amount-${id}"]`),
@@ -401,13 +479,14 @@ let browser = null;
   );
   const autoHidden = true;
   await page.click(`[data-testid="expense-reveal-${seedId}"]`);
-  await page.waitForFunction(
+  await waitLabeled(
+    page,
     (id) =>
       document
         .querySelector(`[data-testid="expense-amount-${id}"]`)
         ?.textContent?.includes("1,500"),
-    { polling: 100, timeout: 3000 },
-    seedId
+    [seedId],
+    "A6 reference reveal"
   );
   const referenceAmount = await page.evaluate(
     (id) =>
@@ -417,11 +496,13 @@ let browser = null;
   );
   check(
     "A6",
-    "codes stay visible; universal eye toggles all rows; per-row eye auto-hides",
+    "codes stay visible; universal eye toggles all rows; per-row eye auto-hides; pressed toggle stays visible",
     !!globalToggle &&
       kh0.h &&
       createdCost.includes("*B#") &&
-      createdCost.includes("LaneA Parts Shop") &&
+      // A parts-only row masks its amount and shows the part code + label;
+      // the supplier name is an internal detail checked in A1c, not here.
+      createdCost.includes("পার্টস") &&
       !createdCost.includes("1,200") &&
       referenceCost.includes("*J#") &&
       !referenceCost.includes("1,500") &&
@@ -432,6 +513,10 @@ let browser = null;
       universalOn.created.includes("1,200") &&
       universalOn.reference.includes("1,500") &&
       universalOn.pressed === "true" &&
+      !!universalOn.colors &&
+      universalOn.colors.background !== "rgb(255, 255, 255)" &&
+      universalOn.colors.background !== "rgba(0, 0, 0, 0)" &&
+      universalOn.colors.text !== universalOn.colors.background &&
       autoHidden &&
       referenceAmount.includes("1,500"),
     JSON.stringify({
@@ -482,20 +567,19 @@ let browser = null;
   console.log("reached A7");
   check("A7", "badge 3-step to Delivered + warning", true);
 
-  // ---- A8: edit rename + date move ----
+  // ---- A8: edit rename, then move the day ----
+  // The edit form no longer carries a service-date override (it was removed
+  // with the compact counter form), so the rename goes through the UI and the
+  // day move uses the still-supported PUT field the archive steps rely on.
   await clickDailyRowButton(page, NAME, "এডিট");
-  await page.waitForSelector("#svc-date", { polling: 500, timeout: 8000 });
+  await page.waitForSelector("#svc-name", { polling: 500, timeout: 8000 });
   // Edit values are stable from the first render — set once and verify.
   for (let i = 0; i < 6; i++) {
     await typeInto(page,"svc-name", NAME + "2");
-    await typeInto(page,"svc-date", YESTERDAY);
     await new Promise((r) => setTimeout(r, 300));
     const settled = await page.evaluate(
-      (n, day) =>
-        document.getElementById("svc-name").value === n &&
-        document.getElementById("svc-date").value === day,
-      NAME + "2",
-      YESTERDAY
+      (n) => document.getElementById("svc-name").value === n,
+      NAME + "2"
     );
     if (settled) break;
     if (i === 5) throw new Error("edit fields never settled");
@@ -503,11 +587,25 @@ let browser = null;
   await submitButton(page,"আপডেট করুন");
   // NOTE: renamed row (NAME+"2") still contains NAME — must wait on the full name.
   await waitDailyRow(page, NAME + "2", false);
+  const renamed = (await apiDay(TODAY)).find(
+    (s) => s.customerName === NAME + "2"
+  );
+  const moved = renamed
+    ? await api(page, `/api/services/${renamed.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceDate: YESTERDAY }),
+      })
+    : null;
   const onYesterday = (
     await apiDay(YESTERDAY)
   ).some((s) => s.customerName === NAME + "2");
   console.log("reached A8");
-  check("A8", "edit rename + move to yesterday", onYesterday);
+  check(
+    "A8",
+    "edit rename + move to yesterday",
+    !!renamed && moved?.ok === true && onYesterday
+  );
 
   // ---- A9: archive → restore → archive (cleanup) ----
   await page.evaluate(() =>

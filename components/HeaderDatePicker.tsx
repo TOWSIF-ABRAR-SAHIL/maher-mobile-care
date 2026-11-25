@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { bengaliDateLabel, dhakaDateKey, isDateKey } from "@/lib/dhaka";
-import { toBnDigits } from "@/lib/utils";
+import { dhakaDateKey, isDateKey } from "@/lib/dhaka";
+import { latinDateLabel } from "@/lib/format";
 
 const MONTHS_BN = [
   "জানুয়ারি",
@@ -124,8 +124,10 @@ export function HeaderDatePicker({
           onDateChange(event.target.value);
           setOpen(false);
         }}
-        className={`w-full bg-white pr-9 text-foreground [&::-webkit-calendar-picker-indicator]:opacity-0 ${
-          tone === "light" ? "h-9" : "h-8"
+        className={`w-full rounded-lg border-slate-200/80 bg-white pr-9 text-foreground shadow-sm [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+          tone === "light"
+            ? "h-9 focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
+            : "h-8"
         }`}
       />
       <button
@@ -137,17 +139,10 @@ export function HeaderDatePicker({
         aria-expanded={open}
         aria-controls="header-calendar"
         onClick={toggle}
-        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md bg-white text-muted-foreground transition-colors hover:bg-maher-blue-soft hover:text-maher-blue focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-maher-blue"
+        className="absolute bottom-px right-px top-px flex w-9 items-center justify-center rounded-r-md bg-white text-muted-foreground transition-colors hover:bg-maher-blue-soft hover:text-maher-blue focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-maher-blue"
       >
         <CalendarDays className="h-4 w-4" />
       </button>
-      <p
-        className={`mt-0.5 hidden truncate text-center text-xs sm:block ${
-          tone === "light" ? "text-muted-foreground" : "text-white/80"
-        }`}
-      >
-        {bengaliDateLabel(date)}
-      </p>
 
       {open ? (
         <div
@@ -168,7 +163,7 @@ export function HeaderDatePicker({
               <ChevronLeft className="h-4 w-4" />
             </button>
             <p className="text-sm font-semibold">
-              {MONTHS_BN[view.m - 1]} {toBnDigits(view.y)}
+              {MONTHS_BN[view.m - 1]} {view.y}
             </p>
             <button
               type="button"
@@ -203,7 +198,7 @@ export function HeaderDatePicker({
                   key={key}
                   type="button"
                   data-date={key}
-                  aria-label={bengaliDateLabel(key)}
+                  aria-label={latinDateLabel(key)}
                   aria-current={isToday ? "date" : undefined}
                   onClick={() => pickDay(day)}
                   className={`h-8 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-maher-blue ${
@@ -214,7 +209,7 @@ export function HeaderDatePicker({
                         : "text-foreground hover:bg-maher-blue-soft/60"
                   }`}
                 >
-                  {toBnDigits(day)}
+                  {day}
                 </button>
               );
             })}

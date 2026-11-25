@@ -1,5 +1,6 @@
 import { whatsAppHref } from "@/lib/contact";
 import { dhakaDateKey } from "@/lib/dhaka";
+import { PLATFORM_BRAND } from "@/lib/shop";
 import type { ServiceDTO } from "@/lib/types";
 
 /** File name used both for the shared PDF and the download fallback. */
@@ -7,7 +8,7 @@ export function receiptPdfFileName(service: ServiceDTO): string {
   const date = service.serviceDate
     ? dhakaDateKey(service.serviceDate)
     : "unknown-date";
-  return `MAHER-Bill-${service.id}-${date}.pdf`;
+  return `${PLATFORM_BRAND.name}-Bill-${service.id}-${date}.pdf`;
 }
 
 /** Capture an already-rendered receipt node and turn it into a local PDF.
@@ -101,7 +102,8 @@ type ShareNavigator = Navigator & {
  */
 export async function shareReceiptPdf(
   service: ServiceDTO,
-  blob: Blob
+  blob: Blob,
+  shopName = ""
 ): Promise<PdfShareResult> {
   const fileName = receiptPdfFileName(service);
   const file = new File([blob], fileName, { type: "application/pdf" });
@@ -121,7 +123,7 @@ export async function shareReceiptPdf(
     try {
       await nav.share!({
         files: [file],
-        title: `MAHER MOBILE CARE — বিল #${service.id}`,
+        title: `${shopName.trim() || PLATFORM_BRAND.name} — বিল #${service.id}`,
         text: `বিল নং ${service.id} (${service.model}) — ${service.customerName}`,
       });
       return "shared";
@@ -138,7 +140,7 @@ export async function shareReceiptPdf(
 
   // Do not pass "noopener" here: window.open returns null for a noopener
   // window even when it succeeds, which would look like a popup block.
-  const chatWindow = window.open(whatsAppHref(service), "_blank");
+  const chatWindow = window.open(whatsAppHref(service, shopName), "_blank");
   if (chatWindow) {
     chatWindow.opener = null;
     return "downloaded";

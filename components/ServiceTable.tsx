@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   Archive,
+  BadgeCheck,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -19,21 +20,27 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
-  Plus,
   ReceiptText,
   RotateCcw,
   Scale,
   Search,
   Share2,
   Trash2,
+  Truck,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ServiceAdjustDialog } from "@/components/ServiceAdjustDialog";
+import { ServiceConditionDialog } from "@/components/ServiceConditionDialog";
 import { ServiceDateNav } from "@/components/ServiceDateNav";
+import {
+  ServiceSolutionDialog,
+  type SolutionDialogMode,
+} from "@/components/ServiceSolutionDialog";
 import { StatusBadge } from "@/components/StatusBadge";
-import { StatusChips } from "@/components/StatusChips";
+import { StatusChips, type StatusFilter } from "@/components/StatusChips";
 import { whatsAppHref } from "@/lib/contact";
 import {
   AlertDialog,
@@ -46,6 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useShopSettings } from "@/components/ShopSettingsProvider";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -62,13 +70,20 @@ import {
   isReturned,
   STATUS_BN,
   STATUSES,
-  toBnDigits,
   type ServiceStatus,
 } from "@/lib/utils";
-import { isShopExpenseCode } from "@/lib/expense-code";
-import { dhakaDateKey, bengaliDateLabel } from "@/lib/dhaka";
+import {
+  encodeShopExpenseAmount,
+  isShopExpenseCode,
+} from "@/lib/expense-code";
+import { dhakaDateKey } from "@/lib/dhaka";
+import { latinDateLabel } from "@/lib/format";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { ListMode, ServiceDTO } from "@/lib/types";
+
+/** Uniform, low-noise click targets for every row action. */
+const ROW_ACTION =
+  "h-8 w-8 rounded-md text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10";
 
 /**
  * One customer visit: either a plain single-device job or every device row that
@@ -132,6 +147,7 @@ export function ServiceTable({
   onRangeChange,
   onEdit,
   onReceipt,
+  onPayment,
   onSharePdf,
   onChanged,
   technicianFilter,
@@ -157,6 +173,8 @@ export function ServiceTable({
   onRangeChange?: (from: string, to: string) => void;
   onEdit: (service: ServiceDTO) => void;
   onReceipt: (service: ServiceDTO) => void;
+  /** Opens the "টাকা নিন" dialog for this customer. */
+  onPayment: (service: ServiceDTO) => void;
   onSharePdf: (service: ServiceDTO) => Promise<void>;
   onChanged: () => void;
   /** v1.1: show only this technician's rows, or null for everyone. */
@@ -167,14 +185,22 @@ export function ServiceTable({
   onNext?: () => void;
   onDateChange?: (date: string) => void;
   onToday?: () => void;
-  /** Deep-link from the Service stage line (`/service?status=Pending`). */
-  initialStatus?: "All" | ServiceStatus;
+  /** Deep-link from the Service stage line (`/service?status=Pending`); `Due`
+   *  also filters by outstanding money without changing a row's status. */
+  initialStatus?: StatusFilter;
   /** Empty state offers the one action that fills it: start a new entry. */
   onNewEntry?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ServiceDTO | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<ServiceDTO | null>(null);
+  // Work-done note, written from the list at handover or edited later.
+  const [solutionTarget, setSolutionTarget] = useState<{
+    service: ServiceDTO;
+    mode: SolutionDialogMode;
+  } | null>(null);
+  // Customer terms are read-only here — clicking the marker shows the text.
+  const [conditionTarget, setConditionTarget] = useState<ServiceDTO | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archived, setArchived] = useState<ServiceDTO[]>([]);
@@ -183,6 +209,7 @@ export function ServiceTable({
   // Privacy: the খরচ column always shows the saved code. The header's
   // universal eye reveals every row at once (no timer) while a per-row eye
   // reveals only that row's taka amount for 10 seconds.
+  const { cipher, settings: shopSettings } = useShopSettings();
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const [revealedExpenses, setRevealedExpenses] = useState<
     Record<number, boolean>
@@ -248,7 +275,7 @@ export function ServiceTable({
     },
     []
   );
-  const [statusFilter, setStatusFilter] = useState<"All" | ServiceStatus>(
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     initialStatus ?? "All"
   );
   useEffect(() => {
@@ -326,6 +353,11 @@ export function ServiceTable({
         v.devices.some((d) => d.status === st)
       ).length;
     }
+    // Same rule as /api/services/dues: unpaid, not returned. A visit counts
+    // once as soon as any of its devices still owes money.
+    c.Due = visitsAll.filter((v) =>
+      v.devices.some((d) => d.due > 0 && !isReturned(d.status))
+    ).length;
     return c;
   }, [visitsAll]);
 
@@ -353,11 +385,23 @@ export function ServiceTable({
     for (const visit of visitsAll) {
       let matched = visit.devices;
       if (statusActive) {
-        matched = matched.filter((d) => d.status === statusFilter);
+        matched = matched.filter((d) =>
+          statusFilter === "Due"
+            ? d.due > 0 && !isReturned(d.status)
+            : d.status === statusFilter
+        );
       }
       if (q) {
         matched = matched.filter((d) =>
-          [d.customerName, String(d.id), d.phone, d.model, d.problem]
+          [
+            d.customerName,
+            String(d.id),
+            d.phone,
+            d.model,
+            d.problem,
+            d.customerAddress ?? "",
+            d.warranty ?? "",
+          ]
             .join(" ")
             .toLowerCase()
             .includes(q)
@@ -416,34 +460,33 @@ export function ServiceTable({
     <div
       data-testid="svc-date-section"
       data-date={sec.dateKey}
-      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 py-1.5 text-xs"
+      className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 border-y border-slate-200/90 bg-slate-100/80 px-3 py-1.5 text-xs font-semibold text-slate-700"
     >
-      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-maher-navy" />
-      <span className="font-semibold text-maher-navy">
-        {bengaliDateLabel(sec.dateKey)}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+        <span className="font-semibold text-slate-800">
+          {latinDateLabel(sec.dateKey)}
+        </span>
+        <span aria-hidden className="text-slate-400">
+          •
+        </span>
+        <span className="text-slate-600">
+          <span className="font-semibold tabular-nums text-slate-800">
+            {sec.visits.length}
+          </span>{" "}
+          ভিজিট
+        </span>
+        <span aria-hidden className="text-slate-400">
+          •
+        </span>
+        <span className="text-slate-600">
+          <span className="font-semibold tabular-nums text-slate-800">
+            {sec.devices}
+          </span>{" "}
+          ডিভাইস
+        </span>
       </span>
-      <span aria-hidden className="text-muted-foreground">
-        •
-      </span>
-      <span className="text-muted-foreground">
-        <span className="font-semibold tabular-nums text-foreground">
-          {toBnDigits(sec.visits.length)}
-        </span>{" "}
-        ভিজিট
-      </span>
-      <span aria-hidden className="text-muted-foreground">
-        •
-      </span>
-      <span className="text-muted-foreground">
-        <span className="font-semibold tabular-nums text-foreground">
-          {toBnDigits(sec.devices)}
-        </span>{" "}
-        ডিভাইস
-      </span>
-      <span aria-hidden className="text-muted-foreground">
-        •
-      </span>
-      <span className="tabular-nums text-muted-foreground">
+      <span className="shrink-0 font-bold tabular-nums text-slate-700">
         {formatTaka(sec.bill)}
       </span>
     </div>
@@ -527,6 +570,19 @@ export function ServiceTable({
     }
   };
 
+  /** One-click handover: ask for the work-done note first, then deliver.
+   *  The dialog also offers "deliver only", so this never blocks the desk. */
+  const deliver = (s: ServiceDTO) => {
+    if (showArchived || isReturned(s.status) || s.status === "Delivered") return;
+    setSolutionTarget({ service: s, mode: "deliver" });
+  };
+
+  /** Standalone note editor — usable before or long after handover. */
+  const editSolution = (s: ServiceDTO) => {
+    if (showArchived) return;
+    setSolutionTarget({ service: s, mode: "note" });
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -580,31 +636,57 @@ export function ServiceTable({
 
   /** Status is a tappable badge plus the two warnings shown in both views. */
   const renderStatus = (s: ServiceDTO) => (
-    <div>
-      <button
-        onClick={() => void advanceStatus(s)}
-        aria-label={`অবস্থা বদলান: ${STATUS_BN[s.status as ServiceStatus] ?? s.status}`}
-        title={
-          s.status === "Delivered"
-            ? "ডেলিভারি সম্পন্ন"
-            : "ক্লিক করলে পরের অবস্থায় যাবে"
-        }
-        className="cursor-pointer whitespace-nowrap rounded-full transition hover:opacity-75 active:scale-95"
-      >
-        <StatusBadge status={s.status} />
-      </button>
-      {s.damageLoss > 0 ? (
-        <div
-          className="mt-1 whitespace-nowrap text-xs font-bold text-maher-money"
-          title={`ড্যামেজ ক্ষতি: ${formatTaka(s.damageLoss)}`}
+    <div className="min-w-0 max-w-full">
+      <div className="flex flex-col gap-1 items-start min-w-0 max-w-full">
+        <button
+          onClick={() => void advanceStatus(s)}
+          aria-label={`অবস্থা বদলান: ${STATUS_BN[s.status as ServiceStatus] ?? s.status}`}
+          title={
+            s.status === "Delivered"
+              ? "ডেলিভারি সম্পন্ন"
+              : "ক্লিক করলে পরের অবস্থায় যাবে"
+          }
+          className="cursor-pointer whitespace-nowrap rounded-full transition hover:opacity-75 active:scale-95"
         >
-          ⚠️ ড্যামেজ ক্ষতি
-        </div>
-      ) : null}
+          <StatusBadge status={s.status} />
+        </button>
+        {s.damageLoss > 0 ? (
+          <div
+            className="mt-1 max-w-full whitespace-normal break-words leading-tight text-xs font-bold text-amber-700"
+            title={`ড্যামেজ ক্ষতি: ${formatTaka(s.damageLoss)}`}
+          >
+            ⚠️ ড্যামেজ ক্ষতি
+          </div>
+        ) : null}
+      </div>
       {s.status === "Delivered" && s.due > 0 && !isReturned(s.status) ? (
-        <div className="mt-1 whitespace-nowrap text-xs font-bold text-maher-due-ink">
+        <div className="mt-1 max-w-full whitespace-normal break-words leading-tight text-xs font-bold text-maher-due-ink">
           ⚠️ টাকা বাকি
         </div>
+      ) : null}
+      {!isReturned(s.status) && s.due === 0 ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold">
+          <span
+            data-testid={`svc-paid-${s.id}`}
+            className="inline-flex max-w-full items-center gap-0.5 whitespace-normal break-words rounded-full bg-maher-done/10 px-1 py-0.5 text-maher-done"
+            title="বাকি নেই (জমা সম্পূর্ণ)"
+          >
+            <BadgeCheck className="h-3 w-3 shrink-0" />
+            পরিশোধিত
+          </span>
+        </div>
+      ) : null}
+      {!showArchived && !isReturned(s.status) && s.status !== "Delivered" ? (
+        <button
+          type="button"
+          onClick={() => void deliver(s)}
+          data-testid={`svc-deliver-${s.id}`}
+          title="সরাসরি ডেলিভারি দিন"
+          className="mt-1 inline-flex max-w-full items-center gap-1 whitespace-normal break-words rounded text-[11px] font-semibold text-maher-navy underline-offset-2 transition hover:text-maher-navy-light hover:underline"
+        >
+          <Truck className="h-3 w-3 shrink-0" />
+          ডেলিভারি দিন
+        </button>
       ) : null}
     </div>
   );
@@ -657,59 +739,162 @@ export function ServiceTable({
     return (
       <div
         data-testid={`svc-money-${s.id}`}
-        className="min-w-[7.5rem] tabular-nums"
+        className="min-w-[7.5rem] space-y-0.5 rounded-md bg-white/70 px-1.5 py-1 tabular-nums shadow-[0_1px_1px_rgba(15,23,42,0.04)]"
       >
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[10px] font-medium text-muted-foreground">
-            বিল
-          </span>
-          <span className="text-[13px] font-semibold text-foreground">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[10px] font-semibold text-slate-500">বিল:</span>
+          <span className="text-[13px] font-semibold text-slate-900">
             {formatTaka(s.totalBill)}
           </span>
         </div>
-        <div className="mt-1 flex items-baseline justify-between gap-2 border-t border-dashed border-maher-border/80 pt-1 text-[11px]">
-          <span className="text-maher-done">
-            জমা{" "}
-            <span className="font-semibold">{formatTaka(s.advance)}</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[10px] font-semibold text-slate-500">জমা:</span>
+          <span className="text-[13px] font-semibold text-maher-done">
+            {formatTaka(s.advance)}
           </span>
-          {returned ? (
-            <span className="font-semibold text-maher-money">
-              ফেরত {formatTaka(s.refundAmount)}
-            </span>
-          ) : (
-            <span
-              className={`font-semibold ${
-                s.due > 0 ? "text-maher-due-ink" : "text-muted-foreground"
-              }`}
-            >
-              বাকি {formatTaka(s.due)}
-            </span>
-          )}
         </div>
+        <div className="flex items-baseline gap-1.5 border-t border-dashed border-slate-200 pt-0.5">
+          <span className="text-[10px] font-semibold text-slate-500">বাকি:</span>
+          <span
+            className={`text-[13px] font-semibold ${
+              s.due > 0 ? "text-maher-due-ink" : "text-slate-600"
+            }`}
+          >
+            {formatTaka(s.due)}
+          </span>
+        </div>
+        {returned ? (
+          <div className="flex items-baseline gap-1.5 text-[10px] text-maher-money">
+            <span className="font-semibold">ফেরত:</span>
+            <span className="font-semibold">{formatTaka(s.refundAmount)}</span>
+          </div>
+        ) : null}
       </div>
     );
   };
 
   const renderCost = (s: ServiceDTO) => {
-    if (!s.shopExpense && !s.partsShop && s.damageLoss <= 0) {
+    // A device with itemized parts reports their sum as its repair cost; the
+    // shop-expense code stays on the row for audit but never counts. Both are
+    // internal money, so both hide behind the same reveal controls — a
+    // parts-only row has no shopExpense string but still needs its eye + codes.
+    const partsCost = s.partsCost ?? null;
+    const hasParts = partsCost !== null;
+    if (!s.shopExpense && !s.partsShop && !hasParts && s.damageLoss <= 0) {
       return <span className="text-muted-foreground">—</span>;
     }
     const amountVisible = showAllExpenses || !!revealedExpenses[s.id];
+    const shownAmount = hasParts ? partsCost : s.expenseAmount;
+    // Codes are safe to show; the decoded taka (parts total included) only
+    // appears behind the row eye or the header's reveal-all toggle. Legacy
+    // parts rows saved before price auto-encoding have no stored code — derive
+    // the same canonical code from unitCost (as the backfill script does) so
+    // the list always shows a code, never a raw legacy amount.
+    const parts = s.parts ?? [];
+    const partLines = parts.map((part) => {
+      let code: string | null = null;
+      if (part.priceCode && isShopExpenseCode(part.priceCode, cipher)) {
+        code = part.priceCode;
+      } else {
+        try {
+          code = encodeShopExpenseAmount(part.unitCost, cipher);
+        } catch {
+          code = null;
+        }
+      }
+      return { part, code };
+    });
+    const partCodes = partLines
+      .map((line) => line.code)
+      .filter((code): code is string => !!code);
+    const hasCostCode = !!s.shopExpense || hasParts;
 
     return (
       <div className="space-y-0.5">
-        {s.shopExpense ? (
-          <div className="flex flex-wrap items-center gap-1 font-medium">
-            {/* Codes are safe to show. A legacy plain number is the real
-                amount, so the list never prints it. */}
+        {hasParts ? (
+          <div data-testid={`parts-block-${s.id}`} className="space-y-1">
             <span
-              data-testid={`expense-code-${s.id}`}
-              className="font-mono"
+              data-testid={`parts-cost-${s.id}`}
+              className="inline-flex items-center gap-1 rounded bg-maher-navy/10 px-1.5 py-0.5 text-[10px] font-semibold text-maher-navy"
+              title="এই ডিভাইসের পার্টস খরচ — রিপোর্টে যোগ হয়, রিসিটে নয়"
             >
-              {isShopExpenseCode(s.shopExpense)
-                ? s.shopExpense
-                : "৳••••"}
+              পার্টস{parts.length > 1 ? ` (${parts.length})` : ""}
+              {amountVisible ? ` ${formatTaka(shownAmount)}` : " ••••"}
             </span>
+            {/* More than one part used to spill out as a bare run of codes with
+                no name or quantity, so the row was impossible to read. Give
+                every part its own aligned line: name × quantity on the left,
+                its safe price code on the right. Taka stays behind the eye. */}
+            {parts.length > 1 ? (
+              <ul
+                data-testid={`parts-lines-${s.id}`}
+                className="max-w-[12rem] space-y-0.5 rounded-md border border-maher-border/80 bg-maher-surface/50 px-1.5 py-1 text-left"
+              >
+                {partLines.map(({ part, code }, index) => (
+                  <li
+                    key={part.id ?? index}
+                    data-testid={`parts-line-${s.id}-${index}`}
+                    className="flex items-baseline justify-between gap-1.5 text-[10px] leading-tight"
+                    title={part.name}
+                  >
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {part.name}
+                      {part.quantity > 1 ? ` ×${part.quantity}` : ""}
+                    </span>
+                    <span
+                      data-testid={`parts-code-${s.id}-${index}`}
+                      className="shrink-0 font-mono font-medium text-maher-navy"
+                      title="পার্টসের দামের গোপন কোড"
+                    >
+                      {code ?? "৳••••"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        {hasCostCode ? (
+          <div className="flex flex-wrap items-center gap-1 font-medium">
+            {s.shopExpense ? (
+              /* A legacy plain number is the real amount, so never print it. */
+              <span
+                data-testid={`expense-code-${s.id}`}
+                className="font-mono"
+              >
+                {isShopExpenseCode(s.shopExpense, cipher)
+                  ? s.shopExpense
+                  : "৳••••"}
+              </span>
+            ) : null}
+            {parts.length <= 1
+              ? partCodes.map((code, index) => (
+                  <span
+                    key={index}
+                    data-testid={`parts-code-${s.id}-${index}`}
+                    className="font-mono text-maher-navy"
+                    title="পার্টসের দামের গোপন কোড"
+                  >
+                    {code}
+                  </span>
+                ))
+              : null}
+            {parts.length <= 1 && !s.shopExpense && partCodes.length === 0 ? (
+              <span
+                data-testid={`expense-code-${s.id}`}
+                className="font-mono text-muted-foreground"
+              >
+                ৳••••
+              </span>
+            ) : null}
+            {hasParts && s.shopExpense ? (
+              <span
+                className="rounded bg-maher-border px-1 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                title="খরচ হিসাবে পার্টস ধরা হবে; কোডটি শুধু অডিটে থাকবে"
+              >
+                বাদ
+              </span>
+            ) : null}
             {s.expenseWrittenOff ? (
               <span
                 data-testid={`expense-written-off-${s.id}`}
@@ -739,7 +924,7 @@ export function ServiceTable({
                     : "১০ সেকেন্ডের জন্য টাকা দেখুন"
               }
               onClick={() => toggleRowExpense(s.id)}
-              className="rounded p-0.5 text-muted-foreground transition hover:bg-maher-border/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded p-0.5 text-muted-foreground transition hover:bg-maher-border/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
             >
               {amountVisible ? (
                 <EyeOff className="h-3.5 w-3.5" />
@@ -752,7 +937,7 @@ export function ServiceTable({
                 data-testid={`expense-amount-${s.id}`}
                 className="text-xs font-semibold text-maher-money"
               >
-                {formatTaka(s.expenseAmount)}
+                {formatTaka(shownAmount)}
               </span>
             ) : null}
           </div>
@@ -778,13 +963,13 @@ export function ServiceTable({
   };
 
   const renderActions = (s: ServiceDTO) => (
-    <div className="flex flex-wrap justify-end gap-1 lg:grid lg:grid-cols-[repeat(3,1.5rem)] lg:gap-0.5 min-[1400px]:flex min-[1400px]:flex-nowrap min-[1400px]:gap-1 print:hidden">
+    <div className="flex flex-wrap justify-end gap-1 lg:grid lg:grid-cols-[repeat(4,2rem)] lg:gap-1 min-[1400px]:flex min-[1400px]:flex-nowrap min-[1400px]:gap-1 print:hidden">
       {showArchived ? (
         <Button
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className={ROW_ACTION}
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -793,11 +978,24 @@ export function ServiceTable({
         </Button>
       ) : (
         <>
+          {s.due > 0 && !isReturned(s.status) ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="টাকা নিন"
+              data-testid={`take-payment-${s.id}`}
+              className={ROW_ACTION}
+              title="টাকা নিন"
+              onClick={() => onPayment(s)}
+            >
+              <Wallet />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
             aria-label="বিল প্রিন্ট"
-            className="h-10 w-10 text-muted-foreground hover:text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title="বিল প্রিন্ট"
             onClick={() => onReceipt(s)}
           >
@@ -808,11 +1006,11 @@ export function ServiceTable({
               asChild
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+              className={ROW_ACTION}
               title="WhatsApp (chat/call)"
             >
               <a
-                href={whatsAppHref(s)}
+                href={whatsAppHref(s, shopSettings.shopName)}
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`WhatsApp: ${s.customerName}`}
@@ -825,7 +1023,7 @@ export function ServiceTable({
               variant="ghost"
               size="icon"
               aria-label="ফোন নম্বর নেই"
-              className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+              className={ROW_ACTION}
               title="ফোন নম্বর নেই"
               disabled
             >
@@ -836,7 +1034,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="PDF শেয়ার"
-            className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title="PDF শেয়ার"
             disabled={!s.phone.trim() || sharingId !== null}
             onClick={() => void sharePdf(s)}
@@ -855,7 +1053,7 @@ export function ServiceTable({
                 ? "ড্যামেজ ক্ষতি"
                 : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-muted-foreground hover:text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title={
               isReturned(s.status)
                 ? "ড্যামেজ ক্ষতি"
@@ -869,7 +1067,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 text-muted-foreground lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -883,7 +1081,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-muted-foreground hover:text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -901,8 +1099,13 @@ export function ServiceTable({
     let due = 0;
     let refund = 0;
     for (const device of devices) {
-      bill += device.totalBill;
-      advance += device.advance;
+      // Returned devices keep their original figures for audit only; a fee
+      // return's retained fee is the live bill and its advance is no longer
+      // held. Mirror the receipt totals so the daily list never overstates a
+      // group after a refund/transfer.
+      const returned = device.status === "Returned";
+      bill += returned ? device.inspectionFee ?? 0 : device.totalBill;
+      advance += returned ? 0 : device.advance;
       due += device.due;
       refund += device.refundAmount;
     }
@@ -916,7 +1119,7 @@ export function ServiceTable({
         data-testid="visit-filter-hint"
         className="mt-0.5 text-[11px] font-medium text-maher-money"
       >
-        এই ফিল্টারে {toBnDigits(visit.matched)}টি ডিভাইস মিলেছে
+        এই ফিল্টারে {visit.matched}টি ডিভাইস মিলেছে
       </p>
     ) : null;
 
@@ -1035,11 +1238,24 @@ export function ServiceTable({
   /** One set of customer-level actions per visit: one bill, one chat, one PDF. */
   const renderVisitActions = (s: ServiceDTO) => (
     <div className="flex flex-wrap justify-end gap-1 print:hidden">
+      {s.due > 0 && !isReturned(s.status) ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="টাকা নিন"
+          data-testid={`take-payment-visit-${s.id}`}
+          className={ROW_ACTION}
+          title="টাকা নিন"
+          onClick={() => onPayment(s)}
+        >
+          <Wallet />
+        </Button>
+      ) : null}
       <Button
         variant="ghost"
         size="icon"
         aria-label="বিল প্রিন্ট"
-        className="h-10 w-10 text-muted-foreground hover:text-maher-navy lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+        className={ROW_ACTION}
         title="বিল প্রিন্ট"
         onClick={() => onReceipt(s)}
       >
@@ -1050,11 +1266,11 @@ export function ServiceTable({
           asChild
           variant="ghost"
           size="icon"
-          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className={ROW_ACTION}
           title="WhatsApp (chat/call)"
         >
           <a
-            href={whatsAppHref(s)}
+            href={whatsAppHref(s, shopSettings.shopName)}
             target="_blank"
             rel="noreferrer"
             aria-label={`WhatsApp: ${s.customerName}`}
@@ -1067,7 +1283,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফোন নম্বর নেই"
-          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className={ROW_ACTION}
           title="ফোন নম্বর নেই"
           disabled
         >
@@ -1078,7 +1294,7 @@ export function ServiceTable({
         variant="ghost"
         size="icon"
         aria-label="PDF শেয়ার"
-        className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+        className={ROW_ACTION}
         title="PDF শেয়ার"
         disabled={!s.phone.trim() || sharingId !== null}
         onClick={() => void sharePdf(s)}
@@ -1100,7 +1316,7 @@ export function ServiceTable({
           variant="ghost"
           size="icon"
           aria-label="ফিরিয়ে আনুন"
-          className="h-10 w-10 text-muted-foreground hover:text-maher-done lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+          className={ROW_ACTION}
           title="ফিরিয়ে আনুন"
           disabled={restoring === s.id}
           onClick={() => void restore(s.id)}
@@ -1115,7 +1331,7 @@ export function ServiceTable({
             aria-label={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
-            className="h-10 w-10 text-muted-foreground hover:text-maher-money lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title={
               isReturned(s.status) ? "ড্যামেজ ক্ষতি" : "ফেরত / ড্যামেজ ক্ষতি"
             }
@@ -1127,7 +1343,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="এডিট"
-            className="h-10 w-10 text-muted-foreground lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title={
               isReturned(s.status)
                 ? "এডিট (বিল/জমা/অবস্থা লক থাকবে)"
@@ -1141,7 +1357,7 @@ export function ServiceTable({
             variant="ghost"
             size="icon"
             aria-label="ডিলিট"
-            className="h-10 w-10 text-muted-foreground hover:text-maher-due lg:h-6 lg:w-6 min-[1400px]:h-8 min-[1400px]:w-8"
+            className={ROW_ACTION}
             title="ডিলিট"
             onClick={() => setDeleteTarget(s)}
           >
@@ -1159,7 +1375,7 @@ export function ServiceTable({
       className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-maher-surface px-1 py-0.5 font-sans text-[10px] font-semibold text-maher-navy"
     >
       <Users aria-hidden className="h-3 w-3 shrink-0" />
-      {toBnDigits(visit.devices.length)}টি ডিভাইস
+      {visit.devices.length}টি ডিভাইস
     </span>
   );
 
@@ -1169,7 +1385,7 @@ export function ServiceTable({
       data-testid={`visit-dev-num-${id}`}
       className="text-[11px] font-medium text-muted-foreground"
     >
-      ডিভাইস {toBnDigits(index + 1)}
+      ডিভাইস {index + 1}
     </span>
   );
 
@@ -1215,6 +1431,67 @@ export function ServiceTable({
     </div>
   );
 
+  /** Tiny internal markers: the work-done note is now tappable (write it at
+   *  handover, or edit it later), while visit terms stay read-only. In a
+   *  grouped visit every device has its own button; `deviceNumber` puts the
+   *  1-based device index on the chip so they cannot be confused. */
+  const noteMarkers = (s: ServiceDTO, deviceNumber?: number) => {
+    const numbered = typeof deviceNumber === "number" && deviceNumber > 0;
+    const which = numbered ? `ডিভাইস ${deviceNumber} · ` : "";
+    const chip = s.solution
+      ? `সমাধান${numbered ? ` ${deviceNumber}` : ""}`
+      : `+ সমাধান${numbered ? ` ${deviceNumber}` : ""}`;
+    return s.solution || s.condition || !showArchived ? (
+      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] font-semibold">
+        {showArchived ? (
+          s.solution ? (
+            <span
+              data-testid={`svc-solution-marker-${s.id}`}
+              data-marker="solution"
+              title={s.solution}
+              className="rounded-full border border-maher-navy/25 bg-maher-blue-soft px-1.5 py-0.5 text-maher-navy"
+            >
+              {chip}
+            </span>
+          ) : null
+        ) : (
+          <button
+            type="button"
+            data-testid={`svc-solution-marker-${s.id}`}
+            data-marker="solution"
+            title={
+              s.solution
+                ? `${which}সমাধান: ${s.solution} — এডিট করতে ক্লিক করুন`
+                : `${which}কী করা হলো (সমাধান) লিখুন`
+            }
+            aria-label={
+              s.solution
+                ? `সমাধান এডিট করুন: ${which}${s.customerName} (${s.model})`
+                : `সমাধান লিখুন: ${which}${s.customerName} (${s.model})`
+            }
+            onClick={() => editSolution(s)}
+            className="rounded-full border border-maher-navy/25 bg-maher-blue-soft px-1.5 py-0.5 text-maher-navy transition-colors hover:border-maher-navy/50 hover:bg-maher-navy/10 print:hidden"
+          >
+            {chip}
+          </button>
+        )}
+        {s.condition ? (
+          <button
+            type="button"
+            data-testid={`svc-condition-marker-${s.id}`}
+            data-marker="condition"
+            title={`শর্ত: ${s.condition} — দেখতে ক্লিক করুন`}
+            aria-label={`কাস্টমারের শর্ত দেখুন: ${s.customerName} (${s.model})`}
+            onClick={() => setConditionTarget(s)}
+            className="rounded-full border border-maher-border bg-maher-surface px-1.5 py-0.5 text-muted-foreground transition-colors hover:border-maher-navy/35 hover:bg-maher-blue-soft hover:text-maher-navy print:hidden"
+          >
+            শর্ত আছে
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+  };
+
   const renderSingleRow = (s: ServiceDTO) => (
     <TableRow
       key={s.id}
@@ -1258,6 +1535,14 @@ export function ServiceTable({
         >
           {s.problem}
         </div>
+        {noteMarkers(s)}
+        {/* Searchable-only context: both fields can drive the list filter
+            without widening the measured single-row grid. */}
+        {s.customerAddress || s.warranty ? (
+          <span className="sr-only">
+            {s.customerAddress ?? ""} {s.warranty ?? ""}
+          </span>
+        ) : null}
         {renderDelivery(s)}
       </TableCell>
       <TableCell className="align-top">{renderStatus(s)}</TableCell>
@@ -1265,7 +1550,7 @@ export function ServiceTable({
         {renderMoney(s)}
       </TableCell>
       <TableCell className="align-top">{renderCost(s)}</TableCell>
-      <TableCell className="sticky right-0 z-10 align-top border-l border-maher-border bg-card px-1 group-hover:bg-maher-surface print:hidden">
+      <TableCell className="sticky right-0 z-10 align-top border-l border-maher-border bg-card px-0.5 group-hover:bg-maher-surface print:hidden">
         {renderActions(s)}
       </TableCell>
     </TableRow>
@@ -1364,9 +1649,20 @@ export function ServiceTable({
                     >
                       {d.problem}
                     </div>
+                    {noteMarkers(
+                      d,
+                      visit.devices.length > 1 ? index + 1 : undefined
+                    )}
+                    {/* Searchable-only visit context: keeps the 340px panel
+                        and the measured grid completely unchanged. */}
+                    {d.customerAddress || d.warranty ? (
+                      <span className="sr-only">
+                        {d.customerAddress ?? ""} {d.warranty ?? ""}
+                      </span>
+                    ) : null}
                     {renderDelivery(d)}
                   </div>
-                  <div className="px-2">{renderStatus(d)}</div>
+                  <div className="px-1">{renderStatus(d)}</div>
                   <div className="min-w-0 px-2">{deviceMoney(d)}</div>
                   <div className="px-2">{renderCost(d)}</div>
                   <div className="sticky right-0 z-10 bg-card px-2 group-hover:bg-maher-surface">
@@ -1416,6 +1712,7 @@ export function ServiceTable({
           {s.model}
         </p>
         <p className="break-words text-xs text-muted-foreground">{s.problem}</p>
+        {noteMarkers(s)}
         {renderDelivery(s)}
       </div>
 
@@ -1508,6 +1805,17 @@ export function ServiceTable({
                     <p className="mt-0.5 break-words text-xs text-muted-foreground">
                       {d.problem}
                     </p>
+                    {noteMarkers(
+                      d,
+                      visit.devices.length > 1 ? index + 1 : undefined
+                    )}
+                    {/* Searchable-only visit context: keeps the 340px panel
+                        and the measured grid completely unchanged. */}
+                    {d.customerAddress || d.warranty ? (
+                      <span className="sr-only">
+                        {d.customerAddress ?? ""} {d.warranty ?? ""}
+                      </span>
+                    ) : null}
                     {renderDelivery(d)}
                   </div>
                   <div className="shrink-0 text-right">{renderStatus(d)}</div>
@@ -1559,28 +1867,26 @@ export function ServiceTable({
               data-testid="service-list-facts"
               className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
             >
-              {showArchived ? (
-                <span>আর্কাইভ করা সব তারিখের এন্ট্রি — ফিরিয়ে আনা যাবে।</span>
-              ) : (
+              {!showArchived ? (
                 <>
                   <span className="font-medium text-foreground/80">
                     {listMode === "day"
-                      ? bengaliDateLabel(date)
+                      ? latinDateLabel(date)
                       : listMode === "all"
                         ? "সব তারিখ"
-                        : `${bengaliDateLabel(listRange?.from ?? date)} – ${bengaliDateLabel(listRange?.to ?? date)}`}
+                        : `${latinDateLabel(listRange?.from ?? date)} – ${latinDateLabel(listRange?.to ?? date)}`}
                   </span>
                   <span aria-hidden className="h-3 w-px bg-maher-border" />
                   <span>
                     <span className="font-semibold tabular-nums text-maher-ink">
-                      {toBnDigits(visitsAll.length)}
+                      {visitsAll.length}
                     </span>
                     টি ভিজিট
                   </span>
                   <span aria-hidden className="h-3 w-px bg-maher-border" />
                   <span>
                     <span className="font-semibold tabular-nums text-maher-ink">
-                      {toBnDigits(techFiltered.length)}
+                      {techFiltered.length}
                     </span>
                     টি ডিভাইস
                   </span>
@@ -1590,7 +1896,7 @@ export function ServiceTable({
                       <span>
                         মোট{" "}
                         <span className="font-semibold tabular-nums text-maher-ink">
-                          {toBnDigits(listTotal)}
+                          {listTotal}
                         </span>
                         টি
                       </span>
@@ -1605,20 +1911,14 @@ export function ServiceTable({
                       >
                         দেখানো{" "}
                         <span className="font-semibold tabular-nums">
-                          {toBnDigits(filtered.length)}/
-                          {toBnDigits(visitsAll.length)}
+                          {filtered.length}/{visitsAll.length}
                         </span>{" "}
                         ভিজিট,{" "}
                         <span className="font-semibold tabular-nums">
-                          {toBnDigits(
-                            filtered.reduce((sum, v) => sum + v.matched, 0)
-                          )}
-                          /
-                          {toBnDigits(
-                            visitsAll.reduce(
-                              (sum, v) => sum + v.devices.length,
-                              0
-                            )
+                          {filtered.reduce((sum, v) => sum + v.matched, 0)}/
+                          {visitsAll.reduce(
+                            (sum, v) => sum + v.devices.length,
+                            0
                           )}
                         </span>{" "}
                         ডিভাইস
@@ -1626,7 +1926,7 @@ export function ServiceTable({
                     </>
                   ) : null}
                 </>
-              )}
+              ) : null}
             </div>
           </div>
           {!showArchived && onPrev && onNext && onDateChange && onToday ? (
@@ -1635,7 +1935,7 @@ export function ServiceTable({
                 data-testid="svc-date-mode"
                 role="group"
                 aria-label="তারিখ দেখার মোড"
-                className="inline-flex h-9 max-w-full items-center overflow-x-auto rounded-lg border border-maher-border bg-white p-0.5"
+                className="inline-flex h-10 max-w-full flex-nowrap items-center rounded-lg border border-slate-200/80 bg-white p-0.5 shadow-sm"
               >
                 {(
                   [
@@ -1649,10 +1949,10 @@ export function ServiceTable({
                     type="button"
                     aria-pressed={listMode === mode}
                     onClick={() => onModeChange?.(mode)}
-                    className={`h-8 shrink-0 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition ${
+                    className={`h-9 shrink-0 whitespace-nowrap rounded-md px-3 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10 ${
                       listMode === mode
-                        ? "bg-maher-navy text-white"
-                        : "text-muted-foreground hover:bg-maher-surface hover:text-maher-navy"
+                        ? "bg-maher-navy text-white shadow-sm"
+                        : "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
                     {label}
@@ -1660,70 +1960,73 @@ export function ServiceTable({
                 ))}
               </div>
 
-              {listMode === "day" ? (
-                <ServiceDateNav
-                  date={date}
-                  onPrev={onPrev}
-                  onNext={onNext}
-                  onDateChange={onDateChange}
-                  onToday={onToday}
-                  isToday={date === dhakaDateKey(new Date())}
-                />
-              ) : listMode === "range" ? (
-                <div
-                  data-testid="svc-range-inputs"
-                  className="flex items-center gap-1.5"
-                >
-                  <label className="sr-only" htmlFor="svc-range-from">
-                    শুরুর তারিখ
-                  </label>
-                  <Input
-                    id="svc-range-from"
-                    data-testid="svc-range-from"
-                    type="date"
-                    aria-label="শুরুর তারিখ"
-                    value={listRange?.from ?? ""}
-                    max={listRange?.to}
-                    onChange={(e) =>
-                      e.target.value &&
-                      onRangeChange?.(e.target.value, listRange?.to ?? e.target.value)
-                    }
-                    className="h-9 w-[148px] bg-white text-xs"
+              <div className="flex h-10 w-full min-w-0 items-center justify-end gap-1.5 print:hidden">
+                {listMode === "day" ? (
+                  <ServiceDateNav
+                    date={date}
+                    onPrev={onPrev}
+                    onNext={onNext}
+                    onDateChange={onDateChange}
+                    onToday={onToday}
+                    isToday={date === dhakaDateKey(new Date())}
                   />
-                  <span aria-hidden className="text-muted-foreground">
-                    –
-                  </span>
-                  <label className="sr-only" htmlFor="svc-range-to">
-                    শেষের তারিখ
-                  </label>
-                  <Input
-                    id="svc-range-to"
-                    data-testid="svc-range-to"
-                    type="date"
-                    aria-label="শেষের তারিখ"
-                    value={listRange?.to ?? ""}
-                    min={listRange?.from}
-                    onChange={(e) =>
-                      e.target.value &&
-                      onRangeChange?.(listRange?.from ?? e.target.value, e.target.value)
-                    }
-                    className="h-9 w-[148px] bg-white text-xs"
-                  />
-                </div>
-              ) : (
-                <p
-                  data-testid="svc-all-dates-note"
-                  className="text-xs text-muted-foreground"
-                >
-                  সব তারিখের তালিকা — তারিখ অনুযায়ী ভাগ করা
-                </p>
-              )}
+                ) : listMode === "range" ? (
+                  <div
+                    data-testid="svc-range-inputs"
+                    className="flex h-10 items-center gap-1.5"
+                  >
+                    <label className="sr-only" htmlFor="svc-range-from">
+                      শুরুর তারিখ
+                    </label>
+                    <Input
+                      id="svc-range-from"
+                      data-testid="svc-range-from"
+                      type="date"
+                      aria-label="শুরুর তারিখ"
+                      value={listRange?.from ?? ""}
+                      max={listRange?.to}
+                      onChange={(e) =>
+                        e.target.value &&
+                        onRangeChange?.(e.target.value, listRange?.to ?? e.target.value)
+                      }
+                      className="h-9 w-[148px] rounded-lg border-slate-200/80 bg-white text-xs text-slate-700 shadow-sm focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                    />
+                    <span aria-hidden className="text-muted-foreground">
+                      –
+                    </span>
+                    <label className="sr-only" htmlFor="svc-range-to">
+                      শেষের তারিখ
+                    </label>
+                    <Input
+                      id="svc-range-to"
+                      data-testid="svc-range-to"
+                      type="date"
+                      aria-label="শেষের তারিখ"
+                      value={listRange?.to ?? ""}
+                      min={listRange?.from}
+                      onChange={(e) =>
+                        e.target.value &&
+                        onRangeChange?.(listRange?.from ?? e.target.value, e.target.value)
+                      }
+                      className="h-9 w-[148px] rounded-lg border-slate-200/80 bg-white text-xs text-slate-700 shadow-sm focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-10 items-center gap-1.5 text-xs font-medium text-slate-500">
+                    <CalendarDays className="h-4 w-4 shrink-0 text-slate-400" />
+                    সব তারিখের এন্ট্রি একসাথে দেখানো হচ্ছে
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </div>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
+            {/* Never hard-code `bg-white` on a toggle whose variant flips to
+                `default`: the white background wins over the navy fill, and
+                white text on white made the pressed button look vanished. */}
             <Button
               variant={showAllExpenses ? "default" : "outline"}
               size="sm"
@@ -1738,7 +2041,7 @@ export function ServiceTable({
                   : "এক ক্লিকে সব খরচের টাকা দেখান"
               }
               onClick={toggleAllExpenses}
-              className="h-8 bg-white print:hidden"
+              className="h-9 print:hidden focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
             >
               {showAllExpenses ? (
                 <EyeOff className="mr-1 h-4 w-4" />
@@ -1751,7 +2054,7 @@ export function ServiceTable({
               variant={showArchived ? "default" : "outline"}
               size="sm"
               onClick={() => setShowArchived((v) => !v)}
-              className="h-8 bg-white print:hidden"
+              className="h-9 print:hidden focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
             >
               <Archive className="mr-1 h-4 w-4" />
               {showArchived ? "তালিকায় ফিরুন" : "আর্কাইভ দেখুন"}
@@ -1767,7 +2070,7 @@ export function ServiceTable({
               placeholder="এই তালিকায় খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 bg-white pl-9 pr-9"
+              className="h-9 rounded-lg border-slate-200/80 bg-white pl-9 pr-9 text-slate-700 shadow-sm placeholder:text-slate-400 focus-visible:border-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900/10"
             />
             {search ? (
               <button
@@ -1826,16 +2129,9 @@ export function ServiceTable({
               className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-maher-border bg-maher-surface/40 px-3 py-2 text-xs text-muted-foreground print:hidden"
             >
               <span>
-                মোট{" "}
-                <b className="tabular-nums text-foreground">
-                  {toBnDigits(listTotal)}
-                </b>
-                টি এন্ট্রি — এখন দেখানো{" "}
-                <b className="tabular-nums text-foreground">
-                  {toBnDigits(services.length)}
-                </b>
-                টি
-                {listMode === "all" ? " (সব তারিখ)" : " (এই রেঞ্জে)"}।
+                মোট <b className="tabular-nums text-foreground">{listTotal}</b> · দেখানো{" "}
+                <b className="tabular-nums text-foreground">{services.length}</b>
+                {listMode === "all" ? " (সব তারিখ)" : " (এই রেঞ্জে)"}
               </span>
               {listHasMore && onLoadMore ? (
                 <Button
@@ -1851,27 +2147,34 @@ export function ServiceTable({
             </div>
           ) : null}
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-maher-border bg-maher-surface/30 py-12 text-center">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-maher-navy/10 text-maher-navy">
-                <ClipboardList className="h-5 w-5" />
-              </span>
-              <p className="font-semibold text-foreground">
-                {technicianFilter
-                  ? showArchived
-                    ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
-                    : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
-                  : showArchived
-                    ? filterActive
-                      ? "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
-                      : "আর্কাইভ খালি।"
-                    : filterActive
-                      ? searchActive && statusActive
+            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 py-12 text-center shadow-sm">
+              <ClipboardList className="h-6 w-6 text-slate-300" aria-hidden />
+              {technicianFilter || showArchived || filterActive ? (
+                <p className="font-semibold text-slate-700">
+                  {technicianFilter
+                    ? showArchived
+                      ? `${technicianFilter} এর কোনো আর্কাইভ করা কাজ নেই।`
+                      : `আজ ${technicianFilter} এর কোনো কাজ নেই।`
+                    : showArchived
+                      ? filterActive
+                        ? "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
+                        : "আর্কাইভ খালি।"
+                      : searchActive && statusActive
                         ? "খোঁজ ও অবস্থার সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
                         : statusActive
-                          ? "এই অবস্থায় কোন সার্ভিস এন্ট্রি নেই।"
-                          : "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"
-                      : "কোন সার্ভিস এন্ট্রি নেই। নতুন এন্ট্রি যোগ করুন।"}
-              </p>
+                          ? "এই ফিল্টারে কোন সার্ভিস এন্ট্রি নেই।"
+                          : "খোঁজের সাথে মিলে এমন কোন সার্ভিস এন্ট্রি নেই।"}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="empty-new-entry"
+                  onClick={onNewEntry}
+                  className="max-w-sm rounded px-2 py-1 text-sm font-medium leading-relaxed text-slate-600 underline-offset-4 transition-colors hover:text-slate-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                >
+                  কোন সার্ভিস এন্ট্রি পাওয়া যায়নি — বাম পাশের ফর্ম থেকে নতুন সার্ভিস এন্ট্রি করুন।
+                </button>
+              )}
               {filterActive ? (
                 <Button
                   size="sm"
@@ -1882,12 +2185,6 @@ export function ServiceTable({
                 >
                   <X className="mr-1 h-4 w-4" />
                   ফিল্টার সরান
-                </Button>
-              ) : null}
-              {!showArchived && onNewEntry ? (
-                <Button size="sm" className="mt-1" onClick={onNewEntry}>
-                  <Plus className="mr-1 h-4 w-4" />
-                  নতুন এন্ট্রি
                 </Button>
               ) : null}
             </div>
@@ -1902,7 +2199,7 @@ export function ServiceTable({
                   <TableHead>অবস্থা</TableHead>
                   <TableHead>হিসাব (বিল/জমা/বাকি/ফেরত)</TableHead>
                   <TableHead>খরচ / পার্টস দোকান</TableHead>
-                  <TableHead className="sticky right-0 z-10 border-l border-maher-border bg-maher-surface px-1 text-right print:hidden">
+                  <TableHead className="sticky right-0 z-10 border-l border-maher-border bg-maher-surface px-0.5 text-right print:hidden">
                     অ্যাকশন
                   </TableHead>
                 </TableRow>
@@ -1967,10 +2264,72 @@ export function ServiceTable({
       )}
       </div>
 
+      {solutionTarget ? (
+        <ServiceSolutionDialog
+          key={`${solutionTarget.service.id}-${solutionTarget.mode}`}
+          service={solutionTarget.service}
+          mode={solutionTarget.mode}
+          // A closing dialog can fire onOpenChange(false) a tick late. Only
+          // clear the state if it still belongs to *this* dialog, otherwise
+          // opening another row immediately afterwards would close it too.
+          onClose={() =>
+            setSolutionTarget((prev) =>
+              prev?.service.id === solutionTarget.service.id &&
+              prev.mode === solutionTarget.mode
+                ? null
+                : prev
+            )
+          }
+          onChanged={onChanged}
+        />
+      ) : null}
+
+      {conditionTarget ? (
+        <ServiceConditionDialog
+          key={conditionTarget.id}
+          service={conditionTarget}
+          onClose={() =>
+            setConditionTarget((prev) =>
+              prev?.id === conditionTarget.id ? null : prev
+            )
+          }
+        />
+      ) : null}
+
       {adjustTarget ? (
         <ServiceAdjustDialog
           key={adjustTarget.id}
           service={adjustTarget}
+          productLines={
+            (adjustTarget.entryKind === "PRODUCT"
+              ? (adjustTarget.saleItems ?? [])
+              : services.find(
+                  (s) =>
+                    s.groupId === adjustTarget.groupId &&
+                    s.entryKind === "PRODUCT" &&
+                    !s.archived
+                )?.saleItems ?? []
+            ).map((line) => ({ id: line.id, name: line.name }))
+          }
+          siblings={
+            !adjustTarget.groupId
+              ? []
+              : services
+                  .filter(
+                    (s) =>
+                      s.id !== adjustTarget.id &&
+                      s.groupId === adjustTarget.groupId &&
+                      !s.archived &&
+                      s.entryKind !== "PRODUCT" &&
+                      !isReturned(s.status)
+                  )
+                  .map((s) => ({
+                    id: s.id,
+                    model: s.model,
+                    advance: s.advance,
+                    due: s.due,
+                  }))
+          }
           onClose={() => setAdjustTarget(null)}
           onChanged={onChanged}
         />

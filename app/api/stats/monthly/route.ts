@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dhakaDateKey, dhakaRangeBounds, isDateKey } from "@/lib/dhaka";
+import { effectiveRepairCost, partsCostOf } from "@/lib/parts";
+import { partsCostByService } from "@/lib/parts-data";
 import type { MonthlyResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -82,39 +84,65 @@ export async function GET(req: NextRequest) {
         ...(bounds ? { serviceDate: { gte: bounds.start, lte: bounds.end } } : {}),
       },
       select: {
+        id: true,
         totalBill: true,
         advance: true,
+        entryKind: true,
         expenseAmount: true,
         expenseWrittenOff: true,
         due: true,
         status: true,
         damageLoss: true,
         refundAmount: true,
+        inspectionFee: true,
       },
     });
     const activeRows = rows.filter((r) => r.status !== "Returned");
     const returnedRows = rows.filter((r) => r.status === "Returned");
-    const bill = activeRows.reduce((s, r) => s + r.totalBill, 0);
+    // A fee kept on a returned diagnostic job is labor revenue, not a refund:
+    // count it in the window's bill so profit reflects it with no expense.
+    const bill =
+      activeRows.reduce((s, r) => s + r.totalBill, 0) +
+      returnedRows.reduce((s, r) => s + r.inspectionFee, 0);
     const advance = activeRows.reduce((s, r) => s + r.advance, 0);
     // Written-off return costs stay on the row for audit but never hit reports.
+    // A device with itemized parts reports their sum instead of the lump code.
+    const partsCosts = await partsCostByService(rows.map((r) => r.id));
     const expense = rows.reduce(
-      (s, r) => s + (r.expenseWrittenOff ? 0 : r.expenseAmount),
+      (s, r) => s + effectiveRepairCost(r, partsCostOf(partsCosts, r.id)),
       0
     );
     const due = activeRows.reduce((s, r) => s + r.due, 0);
     const damageLoss = rows.reduce((s, r) => s + r.damageLoss, 0);
     const refund = returnedRows.reduce((s, r) => s + r.refundAmount, 0);
 
+    // Product sales are part of the bill, so their purchase cost is part of
+    // the shop's cost. Returned lines are already out of the bill and are
+    // skipped here too.
+    const activeIds = activeRows.map((r) => r.id);
+    const saleLines =
+      activeIds.length > 0
+        ? await prisma.saleItem.findMany({
+            where: { serviceId: { in: activeIds }, returnedAt: null },
+            select: { unitCost: true, quantity: true },
+          })
+        : [];
+    const productCost = saleLines.reduce(
+      (sum, line) => sum + Math.max(0, line.unitCost) * Math.max(0, line.quantity),
+      0
+    );
+
     const payload: MonthlyResponse = {
       from,
       to,
       summary: {
-        count: activeRows.length,
+        count: activeRows.filter((r) => r.entryKind !== "PRODUCT").length,
         bill,
         advance,
         expense,
         due,
-        profit: bill - expense - damageLoss,
+        profit: bill - expense - damageLoss - productCost,
+        productCost,
         damageLoss,
         refund,
         returnedCount: returnedRows.length,

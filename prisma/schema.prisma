@@ -17,6 +17,11 @@ model Service {
   model         String
   technician    String   // NURUL, RONI, ASRAFUL, NAYEM
   problem       String
+  /// Internal work-done note for this device. Never printed on a receipt.
+  solution      String?
+  /// Customer terms/condition for this visit. Copied to every device row and
+  /// printed only as the শর্ত block on the customer copy.
+  condition     String?
   totalBill     Int      @default(0)
   advance       Int      @default(0) // জমা
   due           Int      @default(0) // বাকি (auto: totalBill - advance)
@@ -27,6 +32,11 @@ model Service {
   returnedAt    DateTime? // set when an unfinished job is handed back
   refundAmount  Int      @default(0) // cash returned to the customer
   refundNote    String?  // internal note about the return/refund
+  /// Diagnostic/inspection charge kept by the shop when a job is returned.
+  /// On a fee return it becomes the row's final bill (and zero-due advance).
+  inspectionFee Int      @default(0)
+  /// Internal reason note for the return (why the customer took it back).
+  returnReason  String?
   damageLoss    Int      @default(0) // internal: shop-borne damage repair/compensation
   damageNote    String?  // internal: what the technician damaged
   /// A return can cancel the parts cost too (parts unused/returned). Reports
@@ -35,16 +45,28 @@ model Service {
   /// Optional handset IMEI, stored exactly as typed. Never printed on a
   /// receipt and never shown in the service list.
   imei          String?
+  /// Optional customer address for the delivery slip. Customer-facing.
+  customerAddress String?
+  /// Optional warranty term for this device, e.g. "1 মাস". Printed on the slip.
+  warranty      String?
   /// Client-generated idempotency key for a product sale. A retried submit
   /// resolves to the existing row instead of deducting stock twice. Old
   /// service jobs keep NULL.
   saleRef       String?  @unique
   /// Multiple devices from one customer visit share this opaque group id.
   groupId       String?
+  /// "DEVICE" (a repair job) or "PRODUCT" (one product-sale bill holder for a
+  /// visit). Product anchors carry no technician and are excluded from device
+  /// counts/technician stats, but their bill/advance/due stay in the ledger.
+  entryKind     String   @default("DEVICE")
   /// Expected handover date shown on the form/list.
   deliveryDate  DateTime?
   /// Actual handover time, set automatically when status becomes Delivered.
   deliveredAt   DateTime?
+  /// Internal money check: the shopkeeper confirmed the slip's payments by
+  /// hand. Deliberately independent of "paid" (which is `due = 0`).
+  verified      Boolean  @default(false)
+  verifiedAt    DateTime?
   serviceDate   DateTime @default(now())
   archived      Boolean  @default(false) // soft-delete: hidden from lists/stats, restorable
   createdAt     DateTime @default(now())
@@ -55,6 +77,7 @@ model Service {
   @@index([status])
   @@index([archived])
   @@index([groupId])
+  @@index([entryKind])
 }
 
 /// Shop employees. `Service.technician` stays a plain String on purpose: a
@@ -106,6 +129,7 @@ model Product {
   /// Low-stock threshold: 0 < stock <= threshold is "low".
   lowStockThreshold Int      @default(3)
   archived          Boolean  @default(false)
+  archivedAt        DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -122,13 +146,30 @@ model SaleItem {
   id           Int      @id @default(autoincrement())
   serviceId    Int
   productId    Int?
+  /// PRODUCT = a real inventory line. Reserved for future service lines.
+  kind         String   @default("PRODUCT")
   nameSnapshot String
   skuSnapshot  String?
   quantity     Int
   unitPrice    Int
+  /// Flat line discount in taka. lineTotal = unitPrice × quantity − discount.
+  discount     Int      @default(0)
   lineTotal    Int
+  /// Part of the visit's জমা allocated to this line (waterfall order).
+  advanceAllocated Int  @default(0)
   /// Cost at sale time, internal only.
   unitCost     Int      @default(0)
+  /// Last restock/purchase price snapshot at sale time. NULL for untracked
+  /// lines. Internal only — never rendered on a receipt.
+  buyPrice     Int?
+  /// Set when the line is returned/cancelled and stock was put back.
+  returnedAt   DateTime?
+  restockedAt  DateTime?
+  /// CANCEL, RETURN or ARCHIVE (archived with the whole entry, then reopened).
+  returnKind   String?
+  /// Why the shopkeeper overrode the selling price on this line. Internal only;
+  /// never printed for customers.
+  priceNote    String?
   createdAt    DateTime @default(now())
 
   @@index([serviceId])
@@ -148,10 +189,224 @@ model StockMovement {
   reason           String?
   /// Sale/return row this movement belongs to (no FK, see SaleItem).
   relatedServiceId Int?
+  /// Snapshot of the line/product this movement moved, for audit.
+  saleItemId       Int?
+  refType          String? // SALE_ITEM, ENTRY, RESTOCK, ADJUSTMENT
+  refId            Int?
+  unitCost         Int?
+  unitPrice        Int?
+  note             String?
   createdAt        DateTime @default(now())
 
   // Dedupe guard: one SALE and one RETURN movement per product per sale.
   @@unique([relatedServiceId, productId, movementType])
   @@index([productId])
   @@index([createdAt])
+  @@index([saleItemId])
+  @@index([refType, refId])
+}
+
+/* ------------------------------------------------------------------ */
+/* Repair parts (internal cost, per device)                            */
+/* ------------------------------------------------------------------ */
+
+/// One part used on one device row. `lineCost` is the device's repair cost
+/// when it has parts, replacing `Service.expenseAmount` for that row; it is
+/// always derived (quantity × unitCost) and never trusted from a client.
+/// Internal only: no receipt/PDF may show a part name, unit cost or total.
+/// `serviceId` deliberately has NO foreign key — a restore may swap the
+/// Service table (same policy as SaleItem / PaymentAllocation).
+model ServicePart {
+  id           Int      @id @default(autoincrement())
+  serviceId    Int
+  /// Reserved for a later stock-deducting phase. Not written today.
+  productId    Int?
+  /// Name/SKU at entry time so history survives a later product rename.
+  nameSnapshot String
+  skuSnapshot  String?
+  quantity     Int      @default(1)
+  unitCost     Int      @default(0)
+  /// quantity × unitCost, computed by the server.
+  lineCost     Int      @default(0)
+  /// এই পার্টস কেনার দোকান, or NULL (falls back to Service.partsShop).
+  supplier     String?
+  /// Normalized supplier identity: trim + lowercase. NULL for older rows that
+  /// only stored a display name.
+  supplierKey  String?
+  /// The price exactly as typed when it was a keypad code (`*J#`); NULL when
+  /// the shopkeeper typed a plain number. Amount lives in `unitCost`.
+  priceCode    String?
+  /// When the part was bought. NULL only for legacy rows created before the
+  /// purchase ledger existed — new lines always carry a real date. A NULL row
+  /// is never part of the Paid/Unpaid totals.
+  purchaseDate DateTime?
+  /// Whole-line "supplier paid" marker. Deliberately not a payment transaction
+  /// and never mixed into `PurchasePayment` allocation or `Service.due`.
+  paidAt       DateTime?
+  /// Append-only history of paid/unpaid changes with a timestamped reason; a
+  /// paid row can only be edited after it is marked unpaid with a note.
+  paidNote     String?
+  note         String?
+  /// USED, MOVED_TO_STOCK, RETURNED, DAMAGED. Old rows default to USED.
+  /// Only USED lines count toward the device's parts cost; DAMAGED lines are
+  /// carried in Service.damageLoss instead (never charged to the customer).
+  partStatus String @default("USED")
+  /// Reason/note recorded when the line was resolved.
+  resolutionNote String?
+  /// Product created/updated when the part moved into general stock.
+  targetProductId Int?
+  /// When the current resolution was recorded.
+  resolvedAt DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([serviceId])
+  @@index([productId])
+  @@index([purchaseDate])
+  @@index([supplierKey])
+  @@index([paidAt])
+  @@index([partStatus])
+}
+
+/* ------------------------------------------------------------------ */
+/* Customer payments (Money in)                                        */
+/* ------------------------------------------------------------------ */
+
+/// One cash/bKash/other receipt from a customer. A payment may cover several
+/// unpaid slips of the same customer; each covered slip gets an allocation.
+/// No `Customer` table: the customer is identified by the normalized phone
+/// digits (falling back to the exact name when no digits exist).
+model Payment {
+  id           Int      @id @default(autoincrement())
+  /// Normalized phone digits, or `name:<exact trimmed name>` when no digits.
+  customerKey  String
+  customerName String
+  phone        String
+  amount       Int
+  /// CASH (নগদ), BKASH (বিকাশ), OTHER (অন্য).
+  method       String   @default("CASH")
+  note         String?
+  paidAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  allocations PaymentAllocation[]
+
+  @@index([customerKey])
+  @@index([paidAt])
+}
+
+/// The share of one payment applied to one service slip. No foreign key to
+/// `Service`: a restore may replace the Service table (same policy as
+/// SaleItem), and a dangling reference must never abort a restore.
+model PaymentAllocation {
+  id        Int      @id @default(autoincrement())
+  paymentId Int
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  serviceId Int
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([serviceId])
+}
+
+/* ------------------------------------------------------------------ */
+/* Shop purchases (Money out — never a service expense or profit line) */
+/* ------------------------------------------------------------------ */
+
+/// A supplier bill. `total` is the sum of its items; `paid` is the sum of its
+/// allocations. A purchase never enters service expense/profit reporting.
+model Purchase {
+  id           Int      @id @default(autoincrement())
+  /// STOCK updates Product.stock; SERVICE_PART is a repair-part bill and does
+  /// not enter inventory. Older rows default to STOCK.
+  purchaseType String   @default("STOCK")
+  /// Internal link to the device/service that consumed a SERVICE_PART bill.
+  /// No FK: restore may replace Service rows.
+  serviceId    Int?
+  supplier     String
+  /// Normalized supplier identity: trim + lowercase.
+  supplierKey  String
+  invoiceNo    String?
+  purchaseDate DateTime @default(now())
+  total        Int      @default(0)
+  paid         Int      @default(0)
+  note         String?
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items PurchaseItem[]
+
+  @@index([purchaseDate])
+  @@index([archived])
+  @@index([supplierKey])
+  @@index([purchaseType])
+  @@index([serviceId])
+}
+
+/// One line on a supplier bill. Name/SKU are snapshots so history survives a
+/// later product rename/archive. `productId` has no FK (same restore policy).
+model PurchaseItem {
+  id           Int      @id @default(autoincrement())
+  purchaseId   Int
+  purchase     Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId    Int?
+  nameSnapshot String
+  skuSnapshot  String?
+  quantity     Int
+  unitCost     Int
+  lineTotal    Int
+  createdAt    DateTime @default(now())
+
+  @@index([purchaseId])
+  @@index([productId])
+}
+
+/// One payment out to a supplier, oldest open bill first (waterfall).
+model PurchasePayment {
+  id          Int      @id @default(autoincrement())
+  /// Normalized supplier name: trim + lowercase.
+  supplierKey String
+  supplier    String
+  amount      Int
+  /// CASH (নগদ), BKASH (বিকাশ), OTHER (অন্য).
+  method      String   @default("CASH")
+  note        String?
+  paidAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  allocations PurchasePaymentAllocation[]
+
+  @@index([supplierKey])
+  @@index([paidAt])
+}
+
+model PurchasePaymentAllocation {
+  id         Int             @id @default(autoincrement())
+  paymentId  Int
+  payment    PurchasePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  purchaseId Int
+  amount     Int
+  createdAt  DateTime        @default(now())
+
+  @@index([paymentId])
+  @@index([purchaseId])
+}
+
+/// White-label shop identity and receipt preferences.
+/// A single row (id = 1) is enough; the app falls back to built-in defaults
+/// when the row is missing, so old databases and snapshots stay valid.
+/// This table is intentionally NOT part of backup/restore: branding changes
+/// must never rewrite ledger rows, and restoring an old DB must not reset it.
+model ShopSettings {
+  id           Int      @id
+  shopName     String
+  slogan       String?
+  address      String?
+  phone        String?
+  whatsapp     String?
+  terms        String?
+  secretCipher String?
+  logoPath     String?
+  updatedAt    DateTime @updatedAt
 }

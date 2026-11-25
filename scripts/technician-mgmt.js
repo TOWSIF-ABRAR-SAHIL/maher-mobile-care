@@ -54,13 +54,36 @@ let browser = null;
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
 
+  // Fresh installs carry no demo staff. This lane needs a baseline technician
+  // for the last-active guard, so create NURUL before any roster assertions.
+  const initialRoster = (await api(page, "/api/technicians")).body;
+  if (!initialRoster.technicians?.some((t) => t.name === "NURUL")) {
+    await api(page, "/api/technicians", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "NURUL" }),
+    });
+  }
+
+  // The roster manager moved to the Dashboard; the clickable technician cards
+  // and the daily table remain on the Service desk. Every open/close pair
+  // returns to Service so the filter checks below keep their original shape.
   const openManager = async () => {
+    await page.goto(`${BASE}/dashboard`, {
+      waitUntil: "networkidle0",
+      timeout: 60000,
+    });
+    await page.waitForSelector('[data-testid="dashboard-open-technician-manager"]', {
+      timeout: 15000,
+    });
     await page.evaluate(() =>
-      document.querySelector('[data-testid="open-technician-manager"]')?.click()
+      document
+        .querySelector('[data-testid="dashboard-open-technician-manager"]')
+        ?.click()
     );
     await page.waitForSelector('[data-testid="tech-manager"]', {
       polling: 200,
@@ -79,6 +102,11 @@ let browser = null;
       polling: 200,
       timeout: 8000,
     });
+    await page.goto(`${BASE}/service?date=${TODAY}`, {
+      waitUntil: "networkidle0",
+      timeout: 60000,
+    });
+    await page.waitForSelector('[data-testid="daily-services"]', { timeout: 15000 });
   };
   const managerRows = () =>
     page.evaluate(() =>
@@ -94,22 +122,6 @@ let browser = null;
         .click()
     );
   };
-  const cardNames = () =>
-    page.evaluate(() =>
-      [...document.querySelectorAll('[data-testid="tech-card"]')].map((c) => ({
-        name: c.dataset.technician,
-        active: c.dataset.active,
-        pressed: c.getAttribute("aria-pressed"),
-      }))
-    );
-  const clickCard = (name) =>
-    page.evaluate((n) => {
-      const c = document.querySelector(
-        `[data-testid="tech-card"][data-technician="${n}"]`
-      );
-      if (!c) throw new Error("tech card missing: " + n);
-      c.click();
-    }, name);
   const dailyRowNames = async () => {
     const rows = await dailyRows(page);
     return rows;
@@ -123,8 +135,36 @@ let browser = null;
   const dayRows = async () =>
     (await api(page, `/api/services?date=${TODAY}`)).body.services;
 
-  // ---------- T1: add a technician ----------
+  // ---------- T0: premium staff hub contracts ----------
   await openManager();
+  const activeCount = (await api(page, "/api/technicians")).body.count;
+  const bn = (n) => String(n).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[Number(d)]);
+  const hub = await page.evaluate(() => ({
+    card: document.querySelector('[data-testid="dashboard-technician-count"]')?.textContent.trim() ?? "",
+    manageBtn: !!document.querySelector('[data-testid="btn-manage-technicians"]'),
+    nameInput: document.querySelector('[data-testid="technician-name-input"]')?.getAttribute("placeholder"),
+    addBtn: !!document.querySelector('[data-testid="btn-add-technician"]') &&
+      document.querySelector('[data-testid="btn-add-technician"]')?.textContent.includes("কর্মী যোগ করুন"),
+    list: !!document.querySelector('[data-testid="technician-list"]'),
+    item: !!document.querySelector('[data-testid^="technician-item-"]'),
+    subtitle: document.querySelector('[data-testid="tech-manager"]')?.textContent ?? "",
+  }));
+  check(
+    "T0a",
+    "dashboard card shows the live active technician count",
+    hub.card.includes(`${bn(activeCount)} জন সক্রিয় টেকনিশিয়ান`),
+    JSON.stringify({ card: hub.card, activeCount })
+  );
+  check(
+    "T0b",
+    "staff hub renders the refined header, input bar and aliased testids",
+    hub.manageBtn && hub.nameInput === "যেমন: RAKIB" && hub.addBtn && hub.list &&
+      hub.item && hub.subtitle.includes(`মোট ${activeCount} জন কর্মী`) &&
+      hub.subtitle.includes("কাজের ইতিহাস সুরক্ষিত"),
+    JSON.stringify(hub)
+  );
+
+  // ---------- T1: add a technician ----------
   await addTechnician(NEW);
   await page.waitForFunction(
     (n) =>
@@ -156,12 +196,22 @@ let browser = null;
   check("T2", "new technician appears in the entry form dropdown", options.includes(NEW), options.join(","));
   await page.keyboard.press("Escape");
 
-  // ---------- T3: gets a dashboard card ----------
-  const cards = await cardNames();
-  check("T3", "new technician gets a stats card", cards.some((c) => c.name === NEW && c.active === "true"), cards.map((c) => c.name).join(","));
+  // ---------- T3: the roster (not a stats card) owns the new technician ----------
+  // The daily tally moved off the Service desk, so the old clickable tech cards
+  // no longer exist. What still matters is that the roster API keeps the new
+  // name active and bookable — T2 already proved the form offers it.
+  const rosterAfterAdd = (await api(page, "/api/technicians?all=true")).body.technicians;
+  check(
+    "T3",
+    "new technician is an active roster entry",
+    rosterAfterAdd.some((x) => x.name === NEW && x.isActive),
+    rosterAfterAdd.map((x) => `${x.name}:${x.isActive}`).join(",")
+  );
 
-  // ---------- T9: card click filters the table ----------
-  // Give NURUL one job today so the filter has something to isolate.
+  // ---------- T9: seeded jobs land on the selected day ----------
+  // Give NURUL and the new technician one job each today. The tally cards are
+  // gone, so the assertion is data-level: both rows must be on the selected
+  // day and attributed to the right technician.
   const nurulJob = await api(page, "/api/services", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -199,20 +249,21 @@ let browser = null;
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await waitDailyRow(page, OWNER, true);
 
-  await clickCard(NEW);
-  await new Promise((r) => setTimeout(r, 700));
   let rows = await dailyRowNames();
-  let apiRows = await dayRows();
-  let techs = rows.map((r) => techOf(r, apiRows));
+  const apiRows = await dayRows();
+  const techs = rows.map((r) => techOf(r, apiRows));
   console.log("reached T9");
   check(
     "T9",
-    "clicking a card filters the table to that technician",
-    rows.length === 1 && rows[0].includes(OWNER) && techs.every((t) => t === NEW),
+    "both seeded jobs appear on the selected day with the right technician",
+    apiRows.some((s) => s.id === nurulJob.body.id) &&
+      apiRows.some((s) => s.id === ownerJob.body.id) &&
+      techs.includes(NEW) &&
+      techs.includes("NURUL"),
     `rows=${rows.length} techs=${techs.join(",")}`
   );
 
-  // ---------- T12: status chips respect the filter ----------
+  // ---------- T12: status chips describe the whole selected day ----------
   const chips = await page.evaluate((selector) => {
     const sec = document.querySelector(selector);
     return [...sec.querySelectorAll("div.mb-3 button")]
@@ -221,68 +272,57 @@ let browser = null;
   }, DAILY);
   check(
     "T12",
-    "status chip counts describe the filtered technician only",
-    chips.some((c) => c.includes("সব (1)")) && chips.some((c) => c.includes("পেন্ডিং (1)")),
+    "status chip counts cover both seeded jobs",
+    chips.some((c) => c.includes("সব (2)")) && chips.some((c) => c.includes("পেন্ডিং (2)")),
     chips.join(" | ")
   );
 
-  // ---------- T11: a different card switches the filter ----------
-  await clickCard("NURUL");
-  await new Promise((r) => setTimeout(r, 700));
+  // ---------- T11: the retained local search switches the visible subset ----------
+  await typeInto(page, "svc-search", "NurulJob");
+  await new Promise((r) => setTimeout(r, 500));
   rows = await dailyRowNames();
-  apiRows = await dayRows();
-  techs = rows.map((r) => techOf(r, apiRows));
   check(
     "T11",
-    "clicking another card switches the filter",
-    rows.length === 1 && rows[0].includes("NurulJob") && techs.every((t) => t === "NURUL"),
-    `rows=${rows.length} techs=${techs.join(",")}`
+    "local list search narrows to the matching device",
+    rows.length === 1 && rows[0].includes("NurulJob"),
+    `rows=${rows.length}`
   );
 
-  // ---------- T10: same card again clears the filter ----------
-  await clickCard("NURUL");
-  await new Promise((r) => setTimeout(r, 700));
+  // ---------- T10: clearing the text restores the full day ----------
+  await typeInto(page, "svc-search", "");
+  await new Promise((r) => setTimeout(r, 500));
   rows = await dailyRowNames();
-  const noticeGone = await page.evaluate(
-    () => !document.querySelector('[data-testid="tech-filter-notice"]')
-  );
-  check(
-    "T10",
-    "clicking the same card again clears the filter",
-    rows.length === 2 && noticeGone,
-    `rows=${rows.length} noticeGone=${noticeGone}`
-  );
+  check("T10", "clearing the local search restores both rows", rows.length === 2, `rows=${rows.length}`);
 
-  // ---------- T10b: the notice's ✕ clears the filter ----------
-  await clickCard(NEW);
-  await new Promise((r) => setTimeout(r, 600));
-  await page.evaluate(() => {
-    const n = document.querySelector('[data-testid="tech-filter-notice"]');
-    [...n.querySelectorAll("button")].find((b) => b.textContent.includes("ফিল্টার সরান")).click();
-  });
-  await new Promise((r) => setTimeout(r, 600));
-  check(
-    "T10b",
-    "the notice's ✕ button clears the filter",
-    (await dailyRowNames()).length === 2 &&
-      (await page.evaluate(() => !document.querySelector('[data-testid="tech-filter-notice"]')))
-  );
+  // ---------- T10b: the search clear button restores the full day ----------
+  await typeInto(page, "svc-search", "OwnerJob");
+  await new Promise((r) => setTimeout(r, 500));
+  await page.click('[data-testid="svc-search-clear"]');
+  await new Promise((r) => setTimeout(r, 500));
+  check("T10b", "the search clear button restores both rows", (await dailyRowNames()).length === 2);
 
-  // ---------- T13: date change resets the filter ----------
-  await clickCard(NEW);
-  await new Promise((r) => setTimeout(r, 600));
+  // ---------- T13: date navigation swaps the day without a stale filter ----------
   await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("পরের দিন"))
       .click()
   );
-  await new Promise((r) => setTimeout(r, 1200));
-  const resetState = await page.evaluate(() => ({
-    notice: !!document.querySelector('[data-testid="tech-filter-notice"]'),
-    pressed: [...document.querySelectorAll('[data-testid="tech-card"]')].some(
-      (c) => c.getAttribute("aria-pressed") === "true"
-    ),
-  }));
+  // The heading flips immediately but the old rows stay visible until the new
+  // day's response lands (the no-flicker contract). Wait for the empty result
+  // before asserting, not just for the date label.
+  await page.waitForFunction(
+    (today) => {
+      const sec = document.querySelector('[data-testid="daily-services"]');
+      if (sec?.dataset.date === today) return false;
+      return (
+        sec?.querySelectorAll('tbody tr, [data-testid^="service-card-"]').length === 0
+      );
+    },
+    { polling: 200, timeout: 10000 },
+    TODAY
+  );
+  const nextDayRows = await dailyRowNames();
+  const searchValue = await page.$eval("#svc-search", (el) => el.value);
   await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="service-date-nav"] button')]
       .find((b) => b.textContent.includes("আগের দিন"))
@@ -292,29 +332,24 @@ let browser = null;
   console.log("reached T13");
   check(
     "T13",
-    "changing the date resets the technician filter",
-    !resetState.notice && !resetState.pressed,
-    JSON.stringify(resetState)
+    "date navigation swaps the day without leaving a stale filter",
+    nextDayRows.length === 0 && searchValue === "",
+    `nextDayRows=${nextDayRows.length} search="${searchValue}"`
   );
 
-  // ---------- T14: filtering a technician with no work today ----------
+  // ---------- T14: a technician with no work today has no rows ----------
   await addTechnicianViaApi(OTHER);
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await waitDailyRow(page, OWNER, true);
-  await clickCard(OTHER);
-  await page.waitForFunction(
-    () => document.body.textContent.includes("এর কোনো কাজ নেই"),
-    { polling: 300, timeout: 8000 }
-  );
+  const rosterHasOther = (await api(page, "/api/technicians?all=true")).body.technicians
+    .some((x) => x.name === OTHER && x.isActive);
+  const otherRows = (await dayRows()).filter((s) => s.technician === OTHER);
   check(
     "T14",
-    "a technician with no jobs today shows the empty state",
-    await page.evaluate(() =>
-      document.body.textContent.includes(`আজ ${""}`) ||
-      document.body.textContent.includes("এর কোনো কাজ নেই")
-    )
+    "a newly added technician with no jobs today has no rows",
+    rosterHasOther && otherRows.length === 0,
+    `roster=${rosterHasOther} rows=${otherRows.length}`
   );
-  await clickCard(OTHER); // clear
 
   // ---------- T5/T6: rename with cascade confirmation ----------
   await openManager();
@@ -328,7 +363,7 @@ let browser = null;
   check("T5-pre", "edit field holds the new name before saving", typed === RENAMED, typed);
   await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="tech-manager"] button')]
-      .find((b) => b.textContent.trim() === "সেভ")
+      .find((b) => ["সংরক্ষণ", "সেভ"].includes(b.textContent.trim()))
       .click()
   );
   // The API answers 409 because NEW owns one historical row — a confirm dialog
@@ -413,26 +448,24 @@ let browser = null;
   );
   await closeManager();
 
-  // ---------- T8b: deactivated technician keeps a greyed card + stays clickable ----------
+  // ---------- T8b/T8c: deactivated technician leaves history intact ----------
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await waitDailyRow(page, OWNER, true);
-  const greyCard = (await cardNames()).find((c) => c.name === RENAMED);
+  const rosterAfterDelete = (await api(page, "/api/technicians?all=true")).body.technicians;
+  const inactive = rosterAfterDelete.find((x) => x.name === RENAMED);
   check(
     "T8b",
-    "deactivated technician with today's work gets a greyed নিষ্ক্রিয় card",
-    !!greyCard && greyCard.active === "false",
-    JSON.stringify(greyCard || null)
+    "deactivated technician is inactive but still on the roster",
+    !!inactive && inactive.isActive === false,
+    JSON.stringify(inactive || null)
   );
-  await clickCard(RENAMED);
-  await new Promise((r) => setTimeout(r, 700));
-  rows = await dailyRowNames();
+  const historyTech = (await dayRows()).find((s) => s.id === ownerJob.body.id)?.technician;
   check(
     "T8c",
-    "the greyed card is still clickable and filters correctly",
-    rows.length === 1 && rows[0].includes(OWNER),
-    `rows=${rows.length}`
+    "the old job keeps the deactivated technician's name",
+    historyTech === RENAMED,
+    String(historyTech)
   );
-  await clickCard(RENAMED);
 
   // ---------- T8d: editing an inactive technician's old job ----------
   // The form still offers the inactive name; the API must accept that same
@@ -454,7 +487,9 @@ let browser = null;
     DAILY,
     ownerJob.body.id
   );
-  await page.waitForSelector("#svc-date", { polling: 300, timeout: 8000 });
+  // The edit form has no date override any more (#svc-date is gone since the
+  // compact counter form); the problem field proves the form has loaded.
+  await page.waitForSelector("#svc-problem", { polling: 300, timeout: 8000 });
   await typeInto(page, "svc-problem", "Inactive technician edit probe");
   await submitButton(page, "আপডেট করুন");
   await waitToast(page, "আপডেট হয়েছে").catch(() => null);

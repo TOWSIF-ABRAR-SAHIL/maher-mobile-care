@@ -1,5 +1,5 @@
-MAHER MOBILE CARE - Chalano Niyom
-==================================
+MSS - Chalano Niyom
+===================
 
 Eta apnar dokaner hisab rakhar app. Install kora lage na,
 internet lage na. Shudhu ei folder-ta PC-te rekhe chalan.
@@ -9,8 +9,25 @@ CHALANO
 1. "MAHER MOBILE CARE.bat" file-e double-click korun.
 2. 1-2 second-e dokaner window khulbe (browser-er moto dekhte,
    kintu address bar chara).
-3. Prothombar 4 jon technician dekhabe:
-   ASRAFUL, NAYEM, NURUL, RONI.
+3. Prothombar kono demo data thakbe na. Shop profile setup-er banner dekhabe;
+   technician, service, product ar dues sob khali thakbe.
+
+DESKTOP EXE (notun)
+-------------------
+1. "MSS-Setup-1.2.0.exe" chalye install korun. Wizard-e prothome app-er
+   install path, tar por data folder chon hoy. Data default: D:\MSS-Data.
+   C: drive kono bhabe-i chalbe na — onno drive chon korun.
+2. Age theke MSS thakle "Update / Cancel" dialog ashbe. Cancel korle kichu
+   hoy na; Update korle purono bill/technician/product sob thake.
+3. Purono one-click version-er %AppData%\MSS\data\shop.db ba
+   %AppData%\MAHER-MOBILE-CARE\data\shop.db thakle notun version oita
+   D:\MSS-Data-e niye jay. Kothao install folder-e database thake na.
+4. Install-er por shortcut-e double-click korlei window khulbe. Address bar
+   dekha jabe na; kintu kaj portable version-er motoi. Shortcut name "MSS".
+5. "MSS.exe" window ekbar-i khulbe — second shortcut chaple
+   age-r window-i samne chole asbe.
+5. Customer bill-e "প্রিন্ট" chaple chup-chap print hoy — kono print dialog
+   thame na. Default printer set kore rakhte hobe.
 
 NOTUN (v1.2.0-er por)
 ---------------------
@@ -27,9 +44,23 @@ NOTUN (v1.2.0-er por)
 - Puro app-e notun rokom design: royal blue header/button, sada card
   fakeska blue page-e. Bangla label sob age-r motoi — kichu badolini
   hoyni.
-- App khullei service desk-e ashbe; upor-e duitai link: "সার্ভিস" ar
-  "স্টক". "স্টক"-e notun product/inventory page: product list, search,
-  stock ar kom-stock-er hisab.
+- App khullei **ড্যাশবোর্ড** (Home) ashbe. Upor-e char ta link:
+  "ড্যাশবোর্ড", "সার্ভিস", "প্রোডাক্ট", "পার্টস". Purono bookmark-e
+  date/edit/receipt/status/mode thakle oita abar service desk-ei chole jay.
+- Dashboard-e panch ta bhag: ওভারভিউ (today/finance/low stock), কুইক অ্যাকশন
+  (নতুন সার্ভিস এন্ট্রি, প্রোডাক্ট বিক্রি, ব্যাকআপ, ওভারঅল রিপোর্ট ar বাকি
+  তালিকা), টেকনিশিয়ান ম্যানেজমেন্ট, দোকানের সেটিংস ar ডাটা নিরাপত্তা
+  (শেষ ব্যাকআপ + রিস্টোর). Report ar বাকি talaika r jonno age service-e
+  khujte hobe na — Dashboard-ei ache.
+- Service page ekhon shudhu front desk: form, talika, local search ar status
+  chip. Tech/report/বাকি/ব্যাকআপ button ar "আজকের হিসাব" bar khan theke
+  soriye nia gese; ahole por Dashboard-e jate hobe.
+- দোকানের সেটিংস-e shop name, slogan, ঠিকানা, mobile, WhatsApp, terms ar logo
+  badle nile header/footer/receipt-ei naye name chole jay — kothao code badlate
+  hobe na. Backup restore korleo ei settings thik thake.
+- Gopon khorch-er code-e ekhon kepad map (purono `*J#` = 1500 one-i thake) ba
+  nijer 10-axorer word use korte parben. Dashboard-e "কোড টেস্টার" ache.
+  Vul word likhle save hoy na — kichu chupchup bodol jay na.
 - Service talika ekhon kono screen-e side-e scroll kore na — puro table
   fit dekhay. ID column-e "👥 গ্রুপ" / "২টি ডিভাইস" badge ar chokhe dekha
   jay na (screen-reader jonno thake), kintu combined bill-e sob device
@@ -47,6 +78,24 @@ NOTUN (v1.2.0-er por)
   **সম্পূর্ণ ডেটা (অডিট)** sheet ar CSV-e thake.
   Age chilo "Device Lock" (PIN/Pattern/Password) — oita purotai fela
   diyeche: kono lock field ekhon na, API-te lock pathaleo ignore hoy.
+- Laptop-er choto window-eo (1280x585) form ar **মোট বিল / জমা / বাকি** save
+  button-er upore-i dekha jay; action button-gulo ek line-e thake. Service
+  talika ekhono kono screen-e side-e scroll kore na.
+- Screen-e taka, count ar date English digit-e: **৳1,200**, **8টি ভিজিট**,
+  **শুক্রবার, 6 নভেম্বর 2026** (mash-er nam Bangla-i). Input-e Bangla digit
+  likhleo (jemon ১২০০) thik moto save hoy; receipt, report ar monthly print
+  age-r motoi Bangla digit-e thake.
+- Notun entry-e shudhu **মোট বিল (৳)**, **জমা (৳)** ar **বাকি (স্বয়ংক্রিয়)**
+  dekha jay; per-device bill **আরও তথ্য**-r bhitor. Dues button-e scope lekha
+  **সব তারিখের বাকি (Nটি ডিভাইস • ৳X)**; delivery date-e chip **আজ · কাল ·
+  3 দিন · 7 দিন** ar × diye muchun.
+- **স্টক** page-e protyek product-er **ক্রয়** dam default-e lukiye thake
+  (`৳••••`) — **ক্রয় দেখান** eye button-e sob khule, **ক্রয় লুকান**-e abar
+  lukiye jay. Sob product-er mot dam (**ইনভেন্টরি মূল্য**) shob shomoy dekha
+  jay.
+- স্টক list-er upore ekta note bole product sell ekhono stock theke kome na;
+  note-ta × diye bondho korle reload-er por-o ar dekhay na (abar dekhte
+  `localStorage` theke `maher:stock-note-dismissed` muchun).
 
 NOTUN (v1.2.0)
 --------------
@@ -111,9 +160,10 @@ AGER NOTUN (v1.0.7)
 - Navbar-er dan dike search box. Ctrl+K chaple focus; 2+ okkhor
   likhle live result; result-e click korle bill/receipt khule.
   Mobile-e 🔍 icon chaple upor theke search sheet khule.
-- "📊 ওভারঅল রিপোর্ট" button chaple report dialog khule.
+- "📊 ওভারঅল রিপোর্ট" button chaple report dialog khule (ekhon
+  Dashboard-e thake; purono service link-e chole gese na).
 - "💰 বাকি তালিকা (১টি • ৳৭০০)" button-e live count; chaple
-  baki list dialog khule.
+  baki list dialog khule (ekhon Dashboard-e).
 - Form-er upore "🛠️ সার্ভিসিং" / "🛍️ প্রোডাক্ট সেল" toggle. Product
   sell-e "প্রোডাক্টের নাম" ar "বিবরণ" likhun; status auto
   "ডেলিভারি". SALES/দোকান technician ⚙️ theke add korun.
@@ -128,6 +178,9 @@ KOTHAY RAKHBEN
 - Eta backup NA! Disk nosto hole C: ba D: konoTai thake na — tai
   majhe majhe "data\backups" folder-er notun .db file ekta
   pen-drive-e kopi rakhen.
+- Desktop EXE-er hisab installer-e chon kora folder-e thake (default
+  `D:\MSS-Data\data`). "Run" (Win+R) khule `D:\MSS-Data\data` likhle
+  folder-ta khulbe. Installer abar challeo ei data bad jay na.
 
 BONDHO KORA
 -----------
@@ -139,7 +192,9 @@ SOTORKOTA (data haraben na)
 - "data" folder KKHONO delete korben na. Oita-i apnar
   dokaner shob record (shop.db) ar backup.
 - Update ashle shudhu "app" ar "runtime" folder bodlabe,
-  "data" folder-e haat diben na.
+  "data" folder-e haat diben na. Desktop EXE-te update/history shudhu
+  chon kora data root-e (default `D:\MSS-Data\data`) hoy; install folder-er
+  kono old data installer-e oita overwrite kore na.
 - "data\backups" folder-er notun .db file majhe majhe ekta
   pen-drive-e kopi rakhen — eta-i asol backup.
 

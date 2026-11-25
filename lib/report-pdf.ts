@@ -1,7 +1,8 @@
 /**
- * Report PDF capture — unlike `createReceiptPdf` (one receipt page) this
- * slices the captured canvas across A4 pages, so a long range report stays
- * at readable size instead of shrinking onto a single sheet.
+ * Report PDF capture — the report sheet is laid out as fixed A4 pages already
+ * (see ReportDocument), so each `[data-report-page]` becomes exactly one PDF
+ * page. No canvas slicing through a table row, and every page keeps its own
+ * heading and footer.
  *
  * Bengali is safe: html2canvas rasterises the already-rendered DOM, and the
  * document awaits `document.fonts.ready` before capturing.
@@ -16,15 +17,8 @@ export async function createReportPdf(element: HTMLElement): Promise<Blob> {
     await document.fonts.ready;
   }
 
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    backgroundColor: "#ffffff",
-    useCORS: true,
-    logging: false,
-    scrollX: 0,
-    scrollY: 0,
-    windowWidth: Math.max(element.scrollWidth, 720),
-  });
+  const pages = Array.from(element.querySelectorAll<HTMLElement>("[data-report-page]"));
+  if (!pages.length) throw new Error("রিপোর্ট তৈরি করা যায়নি");
 
   const pdf = new jsPDF({
     orientation: "portrait",
@@ -37,34 +31,30 @@ export async function createReportPdf(element: HTMLElement): Promise<Blob> {
   const pageHeight = pdf.internal.pageSize.getHeight();
   const usableW = pageWidth - margin * 2;
   const usableH = pageHeight - margin * 2;
-  const pxPerMm = canvas.width / usableW;
-  const pagePx = Math.floor(usableH * pxPerMm);
 
-  let offset = 0;
-  let page = 0;
-  while (offset < canvas.height) {
-    const sliceH = Math.min(pagePx, canvas.height - offset);
-    const slice = document.createElement("canvas");
-    slice.width = canvas.width;
-    slice.height = sliceH;
-    const ctx = slice.getContext("2d");
-    if (!ctx) throw new Error("রিপোর্ট ক্যানভাস তৈরি করা যায়নি");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, slice.width, slice.height);
-    ctx.drawImage(canvas, 0, offset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-    if (page > 0) pdf.addPage();
+  for (let i = 0; i < pages.length; i++) {
+    const canvas = await html2canvas(pages[i], {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: Math.max(pages[i].scrollWidth, 720),
+      windowHeight: Math.max(pages[i].scrollHeight, 1050),
+    });
+    if (i > 0) pdf.addPage();
+    const imgH = (canvas.height / canvas.width) * usableW;
     pdf.addImage(
-      slice.toDataURL("image/png"),
+      canvas.toDataURL("image/png"),
       "PNG",
       margin,
-      margin,
+      margin + Math.max(0, (usableH - imgH) / 2),
       usableW,
-      sliceH / pxPerMm,
+      imgH,
       undefined,
       "FAST"
     );
-    offset += sliceH;
-    page += 1;
   }
 
   return pdf.output("blob");

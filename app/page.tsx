@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 /**
- * The service desk is the shop's landing page. The old Home dashboard is gone,
- * but `/` stays a valid entry point: forward the deep-link parameters the
- * Service page understands instead of dropping a bookmarked date or edit row.
+ * `/` is the shop owner's Home: it lands on the Dashboard. Bookmarked service
+ * deep links still work — when any Service-only parameter is present we forward
+ * it to `/service` so a saved date/edit/receipt link keeps its destination.
  */
 const FORWARDED_PARAMS = ["date", "edit", "receipt", "status", "mode"] as const;
 
@@ -22,5 +22,5 @@ export default function RootPage({
   }
 
   const query = params.toString();
-  redirect(query ? `/service?${query}` : "/service");
+  redirect(query ? `/service?${query}` : "/dashboard");
 }

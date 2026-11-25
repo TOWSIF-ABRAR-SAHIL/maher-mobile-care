@@ -22,14 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { parseBnNumber } from "@/lib/utils";
+import { formatTaka, parseBnNumber } from "@/lib/utils";
 import type { ProductCategoryDTO, ProductDTO } from "@/lib/types";
 
 interface FormState {
   name: string;
   categoryId: string;
-  sku: string;
-  barcode: string;
   brand: string;
   supplier: string;
   sellingPrice: string;
@@ -42,8 +40,6 @@ interface FormState {
 type FieldKey =
   | "name"
   | "categoryId"
-  | "sku"
-  | "barcode"
   | "sellingPrice"
   | "purchasePrice"
   | "lowStockThreshold"
@@ -53,8 +49,6 @@ function emptyForm(): FormState {
   return {
     name: "",
     categoryId: "",
-    sku: "",
-    barcode: "",
     brand: "",
     supplier: "",
     sellingPrice: "",
@@ -69,8 +63,6 @@ function formFromProduct(product: ProductDTO): FormState {
   return {
     name: product.name,
     categoryId: String(product.categoryId),
-    sku: product.sku ?? "",
-    barcode: product.barcode ?? "",
     brand: product.brand ?? "",
     supplier: product.supplier ?? "",
     sellingPrice: String(product.sellingPrice),
@@ -85,8 +77,6 @@ function formFromProduct(product: ProductDTO): FormState {
 function fieldForMessage(message: string): FieldKey | null {
   if (message.includes("প্রোডাক্টের নাম")) return "name";
   if (message.includes("ক্যাটাগরি")) return "categoryId";
-  if (message.includes("SKU")) return "sku";
-  if (message.includes("বারকোড")) return "barcode";
   if (message.includes("বিক্রয় মূল্য")) return "sellingPrice";
   if (message.includes("ক্রয় মূল্য")) return "purchasePrice";
   if (message.includes("কম স্টক")) return "lowStockThreshold";
@@ -121,6 +111,23 @@ export function ProductDialog({
     setFormError(null);
     setSaving(false);
   }, [open, product]);
+
+  // Live, internal-only profit hint while the two prices are being typed.
+  const previewSelling = parseBnNumber(form.sellingPrice);
+  const previewPurchase =
+    form.purchasePrice.trim() === "" ? 0 : parseBnNumber(form.purchasePrice);
+  const profitPreview =
+    form.purchasePrice.trim() !== "" &&
+    previewSelling !== null &&
+    previewPurchase !== null &&
+    previewSelling > 0
+      ? {
+          profit: previewSelling - previewPurchase,
+          margin: Math.round(
+            ((previewSelling - previewPurchase) / previewSelling) * 100
+          ),
+        }
+      : null;
 
   const set = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -171,8 +178,6 @@ export function ProductDialog({
       const payload = {
         name: form.name.trim(),
         categoryId: Number(form.categoryId),
-        sku: form.sku.trim(),
-        barcode: form.barcode.trim(),
         brand: form.brand.trim(),
         supplier: form.supplier.trim(),
         sellingPrice: selling,
@@ -238,6 +243,7 @@ export function ProductDialog({
             <Label htmlFor="product-name">প্রোডাক্টের নাম *</Label>
             <Input
               id="product-name"
+              data-testid="product-name"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
               placeholder="যেমন: Samsung 25W Charger"
@@ -292,36 +298,10 @@ export function ProductDialog({
           </div>
 
           <div>
-            <Label htmlFor="product-sku">SKU</Label>
-            <Input
-              id="product-sku"
-              value={form.sku}
-              onChange={(e) => set("sku", e.target.value.toUpperCase())}
-              placeholder="SKU-001"
-              className="uppercase"
-            />
-            {errors.sku && (
-              <p className="mt-1 text-xs text-maher-due">{errors.sku}</p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="product-barcode">বারকোড</Label>
-            <Input
-              id="product-barcode"
-              value={form.barcode}
-              onChange={(e) => set("barcode", e.target.value)}
-              placeholder="ইচ্ছা হলে"
-            />
-            {errors.barcode && (
-              <p className="mt-1 text-xs text-maher-due">{errors.barcode}</p>
-            )}
-          </div>
-
-          <div>
             <Label htmlFor="product-selling">বিক্রয় মূল্য (৳) *</Label>
             <Input
               id="product-selling"
+              data-testid="product-selling"
               value={form.sellingPrice}
               onChange={(e) => set("sellingPrice", e.target.value)}
               inputMode="numeric"
@@ -338,6 +318,7 @@ export function ProductDialog({
             <Label htmlFor="product-purchase">ক্রয় মূল্য (৳)</Label>
             <Input
               id="product-purchase"
+              data-testid="product-purchase"
               value={form.purchasePrice}
               onChange={(e) => set("purchasePrice", e.target.value)}
               inputMode="numeric"
@@ -349,6 +330,16 @@ export function ProductDialog({
               </p>
             )}
           </div>
+
+          {profitPreview ? (
+            <p
+              data-testid="product-profit-preview"
+              className="sm:col-span-2 rounded-md border border-maher-done/30 bg-maher-done/10 px-3 py-2 text-xs text-maher-done"
+            >
+              💡 আনুমানিক লাভ: {formatTaka(profitPreview.profit)} (
+              {profitPreview.margin}%)
+            </p>
+          ) : null}
 
           <div>
             <Label htmlFor="product-threshold">কম স্টক সীমা</Label>

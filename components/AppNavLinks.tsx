@@ -2,18 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, Wrench } from "lucide-react";
+import {
+  ClipboardList,
+  LayoutDashboard,
+  Package,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
+import { NAV_LINKS, type NavKey } from "@/lib/nav-links";
 import { cn } from "@/lib/utils";
 
-/**
- * The two primary destinations. The counter workflow is Service → Product;
- * reports, dues, backup and restore live inside the Service page rather than
- * taking another tab.
- */
-const LINKS = [
-  { key: "service", href: "/service", label: "সার্ভিস", icon: Wrench },
-  { key: "products", href: "/products", label: "প্রোডাক্ট", icon: Package },
-] as const;
+/** Icons are presentation, so they stay here; destinations live in lib/nav-links. */
+const ICONS: Record<NavKey, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  service: Wrench,
+  products: Package,
+  parts: ClipboardList,
+};
 
 export function AppNavLinks({ className }: { className?: string }) {
   const pathname = usePathname() || "/service";
@@ -23,12 +28,13 @@ export function AppNavLinks({ className }: { className?: string }) {
       aria-label="প্রধান মেনু"
       data-testid="header-nav"
       className={cn(
-        "grid w-full grid-cols-2 gap-1 rounded-xl border border-white/15 bg-white/[0.07] p-1",
+        "grid w-full grid-cols-4 gap-1 rounded-xl border border-white/15 bg-white/[0.07] p-1",
         "md:inline-flex md:w-auto md:justify-self-center",
         className
       )}
     >
-      {LINKS.map(({ key, href, label, icon: Icon }) => {
+      {NAV_LINKS.map(({ key, href, label }) => {
+        const Icon = ICONS[key];
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link

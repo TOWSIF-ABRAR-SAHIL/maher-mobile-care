@@ -31,7 +31,7 @@ function check(name, ok, extra = "") {
 
     await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
     await page.waitForFunction(
-      () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+      () => !!document.querySelector('[data-testid="daily-services"]'),
       { timeout: 15000 }
     );
     await page.waitForSelector('[data-testid="calendar-toggle"]', {

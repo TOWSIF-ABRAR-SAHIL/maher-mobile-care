@@ -20,8 +20,6 @@ const {
 
 const BASE = resolveTestBase();
 const TODAY = dhakaToday();
-const BN = "০১২৩৪৫৬৭৮৯";
-const bn = (value) => String(value).replace(/\d/g, (d) => BN[Number(d)]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const BN_MONTHS = [
@@ -249,6 +247,9 @@ let browser = null;
   const visitList = [...visits.values()];
   const statusCount = (status) =>
     visitList.filter((v) => v.devices.some((d) => d.status === status)).length;
+  const dueCount = visitList.filter((v) =>
+    v.devices.some((d) => d.due > 0 && d.status !== "Returned")
+  ).length;
   const expectedTabs = [
     `সব (${visitList.length})`,
     `পেন্ডিং (${statusCount("Pending")})`,
@@ -256,6 +257,7 @@ let browser = null;
     `সম্পন্ন (${statusCount("Completed")})`,
     `ডেলিভারি (${statusCount("Delivered")})`,
     `ফেরত (${statusCount("Returned")})`,
+    `বাকি (${dueCount})`,
   ];
 
   await page.goto(`${BASE}/service?date=${TODAY}`, {
@@ -337,9 +339,9 @@ let browser = null;
   // ---------- D2: the masthead states the day and its real size ----------
   const [year, month, day] = TODAY.split("-").map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  const dateLabel = `${BN_WEEKDAYS[weekday]}, ${bn(day)} ${
+  const dateLabel = `${BN_WEEKDAYS[weekday]}, ${day} ${
     BN_MONTHS[month - 1]
-  } ${bn(year)}`;
+  } ${year}`;
   const facts = await page
     .$eval('[data-testid="service-list-facts"]', (el) =>
       el.textContent.replace(/\s+/g, " ").trim()
@@ -350,8 +352,8 @@ let browser = null;
     "masthead reads the Bengali date plus visit and device counts",
     !!facts &&
       facts.includes(dateLabel) &&
-      facts.includes(`${bn(visitList.length)}টি ভিজিট`) &&
-      facts.includes(`${bn(services.length)}টি ডিভাইস`) &&
+      facts.includes(`${visitList.length}টি ভিজিট`) &&
+      facts.includes(`${services.length}টি ডিভাইস`) &&
       !facts.includes(TODAY),
     JSON.stringify({ facts, dateLabel })
   );
@@ -374,7 +376,7 @@ let browser = null;
     "status tabs keep the exact chip text and the div.mb-3 hook",
     !!tabs &&
       tabs.inMb3 &&
-      tabs.items.length === 6 &&
+      tabs.items.length === 7 &&
       tabs.items.every((item, i) => item.text === expectedTabs[i]) &&
       tabs.items[0].pressed === "true" &&
       tabs.items[0].bg === "rgb(34, 61, 87)" &&
@@ -536,7 +538,7 @@ let browser = null;
     "390px: cards keep the tone, the receipt strip, actions and no page overflow",
     mobile.view === "cards" &&
       !mobile.overflow &&
-      mobile.tabs === 6 &&
+      mobile.tabs === 7 &&
       mobile.scrollable &&
       mobile.fade &&
       mobile.dueCardTone === "due" &&
@@ -650,14 +652,15 @@ let browser = null;
   const laptop = await measureActions(DUE_NAME);
   check(
     "D8",
-    "1280px tiles the six row actions in two neat rows, no table overflow and the badge unbroken",
-    laptop.actions === 6 &&
+    "1280px tiles the seven row actions in two neat rows (4 + 3), no table overflow and the badge unbroken",
+    laptop.actions === 7 &&
       laptop.rows.length === 2 &&
-      laptop.rows.every((count) => count === 3) &&
+      laptop.rows[0] === 4 &&
+      laptop.rows[1] === 3 &&
       laptop.overflow <= 1 &&
       !!laptop.badge &&
       laptop.badge.h <= 24 &&
-      laptop.badge.text.includes("২টি ডিভাইস"),
+      laptop.badge.text.includes("2টি ডিভাইস"),
     JSON.stringify(laptop)
   );
 
@@ -666,10 +669,10 @@ let browser = null;
   const wide = await measureActions(DUE_NAME);
   check(
     "D8b",
-    "1440px puts the six row actions back on one line without table overflow",
-    wide.actions === 6 &&
+    "1440px puts the seven row actions back on one line without table overflow",
+    wide.actions === 7 &&
       wide.rows.length === 1 &&
-      wide.rows[0] === 6 &&
+      wide.rows[0] === 7 &&
       wide.overflow <= 1,
     JSON.stringify(wide)
   );
@@ -815,8 +818,8 @@ let browser = null;
       refStats.bill === 37500 &&
       refStats.advance === 14000 &&
       refStats.due === 23500 &&
-      reference.facts.includes(`${bn(3)}টি ভিজিট`) &&
-      reference.facts.includes(`${bn(4)}টি ডিভাইস`) &&
+      reference.facts.includes("3টি ভিজিট") &&
+      reference.facts.includes("4টি ডিভাইস") &&
       reference.nameCount === 1 &&
       !!reference.total &&
       reference.total.includes("৳26,000") &&

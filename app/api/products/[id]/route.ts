@@ -63,7 +63,10 @@ export async function PUT(
     const body = await req.json();
     // No `stock` here on purpose: editing a product must never rewrite the
     // stock ledger. Only stock operations/sales touch it.
-    const data = validateProductUpdate(body);
+    const data = validateProductUpdate(body, {
+      sku: existing.sku,
+      barcode: existing.barcode,
+    });
 
     const category = await prisma.productCategory.findUnique({
       where: { id: data.categoryId },
@@ -154,7 +157,7 @@ export async function DELETE(
 
     await prisma.product.update({
       where: { id },
-      data: { archived: true },
+      data: { archived: true, archivedAt: new Date() },
     });
     return NextResponse.json({ ok: true, archived: true });
   } catch (err) {

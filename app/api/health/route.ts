@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, sqliteResilienceStatus } from "@/lib/prisma";
 import { resolveDatabaseFile } from "@/lib/db-path";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +43,7 @@ export async function GET() {
     dbFile: basename(dbPath),
     dbPath,
     tables,
+    sqlite: sqliteResilienceStatus(),
     ...(tableError ? { tableError } : {}),
     node: process.version,
     platform: process.platform,

@@ -12,6 +12,11 @@
 # misc
 .DS_Store
 *.pem
+# The admin keygen keypair is intentionally versioned in this PRIVATE repo so
+# the isolated licensing suite can mint test keys. It must never be copied into
+# out/MAHER/ or any shop-facing package.
+!tools/keygen-crm/keys/private.pem
+!tools/keygen-crm/keys/public.pem
 
 # debug
 npm-debug.log*
@@ -31,6 +36,9 @@ next-env.d.ts
 *.db-journal
 *.db-shm
 *.db-wal
+
+# machine-specific trial/activation state written beside the dev database
+/prisma/maher-license-state.json
 
 /lib/generated/prisma
 

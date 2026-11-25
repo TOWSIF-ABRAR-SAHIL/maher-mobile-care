@@ -18,6 +18,7 @@ const {
   closeBrowser,
   dhakaToday,
   launchBrowser,
+  openSection,
   resolveTestBase,
   trackErrors,
   typeInto,
@@ -128,7 +129,7 @@ async function submitForm(page, expectedToast) {
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await addRoster(page);
@@ -337,9 +338,9 @@ async function submitForm(page, expectedToast) {
   }));
   check(
     "G8",
-    "form shows the optional IMEI and no device lock field",
-    uiFields.imeiPlaceholder === "Enter IMEI number (optional)" &&
-      uiFields.imeiLabel === "IMEI Number" &&
+    "form shows the optional IMEI with a clean empty placeholder and no device lock field",
+    uiFields.imeiPlaceholder === "" &&
+      uiFields.imeiLabel === "IMEI নম্বর" &&
       uiFields.imeiNotRequired &&
       uiFields.lockTestIds.length === 0 &&
       !uiFields.lockLabelText,
@@ -370,6 +371,7 @@ async function submitForm(page, expectedToast) {
   await typeInto(page, "svc-model", "UI Imei Model");
   await typeInto(page, "svc-problem", "শুধু IMEI");
   await typeInto(page, "svc-bill", "700");
+  await openSection(page, "form-more");
   await typeInto(page, "svc-imei", IMEI_A);
 
   await submitForm(page, "সেভ হয়েছে");
@@ -436,6 +438,7 @@ async function submitForm(page, expectedToast) {
   await typeInto(page, "svc-model", "Ui Multi A");
   await typeInto(page, "svc-problem", "প্রথম");
   await typeInto(page, "svc-bill", "200");
+  await openSection(page, "form-more");
   await typeInto(page, "svc-imei", IMEI_A);
   await page.$eval('[data-testid="add-device"]', (el) =>
     el.scrollIntoView({ block: "center" })

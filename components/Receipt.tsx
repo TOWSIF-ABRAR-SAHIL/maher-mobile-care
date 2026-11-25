@@ -10,7 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SHOP } from "@/lib/shop";
+import {
+  useShopSettings,
+  type ClientShopSettings,
+} from "@/components/ShopSettingsProvider";
 import { dhakaDateKey } from "@/lib/dhaka";
 import { STATUS_BN, formatTaka, type ServiceStatus } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
@@ -20,7 +23,19 @@ import type { ServiceDTO } from "@/lib/types";
 /* NEVER shows shopExpense: this copy is for the customer.              */
 /* ------------------------------------------------------------------ */
 
-export function Receipt({ service }: { service: ServiceDTO }) {
+export const RECEIPT_SHOP_NAME_FALLBACK = "আপনার দোকানের নাম";
+
+export function Receipt({
+  service,
+  profile,
+}: {
+  service: ServiceDTO;
+  /** Explicit profile for detached PDF renders outside the settings provider. */
+  profile?: ClientShopSettings;
+}) {
+  const { settings: contextSettings } = useShopSettings();
+  const settings = profile ?? contextSettings;
+  const shopName = settings.shopName || RECEIPT_SHOP_NAME_FALLBACK;
   const statusBn =
     STATUS_BN[(service.status as ServiceStatus) ?? "Pending"] ??
     service.status;
@@ -34,14 +49,16 @@ export function Receipt({ service }: { service: ServiceDTO }) {
     >
       {/* Shop header */}
       <div className="text-center">
-        <h1 className="text-2xl font-extrabold tracking-wide">{SHOP.name}</h1>
-        <p className="mt-0.5 text-xs text-gray-600">{SHOP.tagline}</p>
-        {SHOP.address ? (
-          <p className="mt-0.5 text-xs text-gray-700">ঠিকানা: {SHOP.address}</p>
+        <h1 className="text-2xl font-extrabold tracking-wide">{shopName}</h1>
+        {settings.slogan ? (
+          <p className="mt-0.5 text-xs text-gray-600">{settings.slogan}</p>
         ) : null}
-        {SHOP.phone ? (
+        {settings.address ? (
+          <p className="mt-0.5 text-xs text-gray-700">ঠিকানা: {settings.address}</p>
+        ) : null}
+        {settings.phone ? (
           <p className="mt-0.5 text-xs font-semibold text-gray-800">
-            মোবাইল: {SHOP.phone}
+            মোবাইল: {settings.phone}
           </p>
         ) : null}
       </div>
@@ -77,6 +94,12 @@ export function Receipt({ service }: { service: ServiceDTO }) {
             <td className="py-0.5 align-top text-gray-600">মোবাইল</td>
             <td className="py-0.5">{service.phone}</td>
           </tr>
+          {service.customerAddress ? (
+            <tr data-testid="receipt-customer-address">
+              <td className="py-0.5 align-top text-gray-600">ঠিকানা:</td>
+              <td className="py-0.5 break-words">{service.customerAddress}</td>
+            </tr>
+          ) : null}
           <tr>
             <td className="py-0.5 align-top text-gray-600">মডেল</td>
             <td className="py-0.5 font-medium">{service.model}</td>
@@ -89,6 +112,17 @@ export function Receipt({ service }: { service: ServiceDTO }) {
             <td className="py-0.5 align-top text-gray-600">টেকনিশিয়ান</td>
             <td className="py-0.5 font-semibold">{service.technician}</td>
           </tr>
+          {service.warranty ? (
+            <tr>
+              <td className="py-0.5 align-top text-gray-600">ওয়ারেন্টি:</td>
+              <td
+                data-testid="receipt-warranty"
+                className="py-0.5 font-medium"
+              >
+                {service.warranty}
+              </td>
+            </tr>
+          ) : null}
           {service.deliveredAt ? (
             <tr>
               <td className="py-0.5 align-top text-gray-600">ডেলিভারি</td>
@@ -107,6 +141,26 @@ export function Receipt({ service }: { service: ServiceDTO }) {
         </tbody>
       </table>
 
+      {service.condition ? (
+        <div
+          data-testid="receipt-condition"
+          className="my-2 rounded border border-gray-400 px-3 py-2 text-xs"
+        >
+          <p className="font-semibold">শর্ত</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{service.condition}</p>
+        </div>
+      ) : null}
+
+      {settings.terms ? (
+        <div
+          data-testid="receipt-terms"
+          className="my-2 rounded border border-gray-400 px-3 py-2 text-xs"
+        >
+          <p className="font-semibold">সাধারণ শর্তাবলী</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{settings.terms}</p>
+        </div>
+      ) : null}
+
       <hr className="my-3 border-t border-gray-400" />
 
       {isReturned ? (
@@ -116,6 +170,39 @@ export function Receipt({ service }: { service: ServiceDTO }) {
             ? ` এবং ${formatTaka(service.refundAmount)} ফেরত দেওয়া হয়েছে`
             : ""}
           ।
+        </div>
+      ) : null}
+
+      {/* Product lines on a sale-only receipt (or any visit with products). */}
+      {Array.isArray(service.saleItems) && service.saleItems.length > 0 ? (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-gray-700">
+            প্রোডাক্ট:
+          </p>
+          <table className="w-full table-fixed text-xs">
+            <thead>
+              <tr className="border-b border-gray-400">
+                <th className="py-1 text-left font-semibold">নাম</th>
+                <th className="w-10 py-1 text-center font-semibold">পরিমাণ</th>
+                <th className="w-20 py-1 text-right font-semibold">একক</th>
+                <th className="w-20 py-1 text-right font-semibold">মোট</th>
+              </tr>
+            </thead>
+            <tbody>
+              {service.saleItems.map((line) => (
+                <tr key={line.id} className="border-b border-gray-200">
+                  <td className="py-1 pr-2">{line.name}</td>
+                  <td className="py-1 text-center">{line.quantity}</td>
+                  <td className="py-1 text-right">
+                    {formatTaka(line.unitPrice)}
+                  </td>
+                  <td className="py-1 text-right font-semibold">
+                    {formatTaka(line.lineTotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : null}
 
@@ -193,12 +280,32 @@ export function Receipt({ service }: { service: ServiceDTO }) {
 /* Also customer-safe: no shop cost, parts shop or damage values.      */
 /* ------------------------------------------------------------------ */
 
-export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
+export function ReceiptBundle({
+  services,
+  profile,
+}: {
+  services: ServiceDTO[];
+  profile?: ClientShopSettings;
+}) {
+  const { settings: contextSettings } = useShopSettings();
+  const settings = profile ?? contextSettings;
+  const shopName = settings.shopName || RECEIPT_SHOP_NAME_FALLBACK;
   if (services.length === 0) return null;
-  if (services.length === 1) return <Receipt service={services[0]} />;
+  if (services.length === 1) {
+    return <Receipt service={services[0]} profile={profile} />;
+  }
+
   const first = services[0];
-  const totalBill = services.reduce((s, r) => s + r.totalBill, 0);
-  const totalAdvance = services.reduce((s, r) => s + r.advance, 0);
+  // A Returned row keeps its original bill/advance for the ledger audit line,
+  // but only its retained inspection fee is still live money. Counting the raw
+  // figures here (and in the footer) would inflate a group after a refund,
+  // especially when the advance was transferred to a sibling device.
+  const liveBill = (r: ServiceDTO) =>
+    r.status === "Returned" ? r.inspectionFee ?? 0 : r.totalBill;
+  const liveAdvance = (r: ServiceDTO) =>
+    r.status === "Returned" ? 0 : r.advance;
+  const totalBill = services.reduce((s, r) => s + liveBill(r), 0);
+  const totalAdvance = services.reduce((s, r) => s + liveAdvance(r), 0);
   const totalDue = services.reduce(
     (s, r) => s + (r.status === "Returned" ? 0 : r.due),
     0
@@ -229,14 +336,16 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
       className="mx-auto w-full max-w-xl bg-white p-4 text-sm text-black sm:p-6"
     >
       <div className="text-center">
-        <h1 className="text-2xl font-extrabold tracking-wide">{SHOP.name}</h1>
-        <p className="mt-0.5 text-xs text-gray-600">{SHOP.tagline}</p>
-        {SHOP.address ? (
-          <p className="mt-0.5 text-xs text-gray-700">ঠিকানা: {SHOP.address}</p>
+        <h1 className="text-2xl font-extrabold tracking-wide">{shopName}</h1>
+        {settings.slogan ? (
+          <p className="mt-0.5 text-xs text-gray-600">{settings.slogan}</p>
         ) : null}
-        {SHOP.phone ? (
+        {settings.address ? (
+          <p className="mt-0.5 text-xs text-gray-700">ঠিকানা: {settings.address}</p>
+        ) : null}
+        {settings.phone ? (
           <p className="mt-0.5 text-xs font-semibold text-gray-800">
-            মোবাইল: {SHOP.phone}
+            মোবাইল: {settings.phone}
           </p>
         ) : null}
       </div>
@@ -270,6 +379,12 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
             <td className="py-0.5 align-top text-gray-600">মোবাইল</td>
             <td className="py-0.5">{first.phone}</td>
           </tr>
+          {first.customerAddress ? (
+            <tr data-testid="receipt-customer-address">
+              <td className="py-0.5 align-top text-gray-600">ঠিকানা:</td>
+              <td className="py-0.5 break-words">{first.customerAddress}</td>
+            </tr>
+          ) : null}
           <tr>
             <td className="py-0.5 align-top text-gray-600">টেকনিশিয়ান</td>
             <td className="py-0.5 font-semibold">{first.technician}</td>
@@ -306,6 +421,14 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
                 <span className="block text-[10px] text-gray-600">
                   {s.problem}
                 </span>
+                {s.warranty ? (
+                  <span
+                    data-testid={`receipt-warranty-${s.id}`}
+                    className="mt-0.5 block text-[10px] font-medium text-gray-700"
+                  >
+                    ওয়ারেন্টি: {s.warranty}
+                  </span>
+                ) : null}
                 {s.status === "Returned" ? (
                   <span className="mt-0.5 block font-semibold text-amber-800">
                     ↩️ ফেরত
@@ -361,6 +484,26 @@ export function ReceiptBundle({ services }: { services: ServiceDTO[] }) {
           </tr>
         </tfoot>
       </table>
+
+      {first.condition ? (
+        <div
+          data-testid="receipt-condition"
+          className="my-2 rounded border border-gray-400 px-3 py-2 text-xs"
+        >
+          <p className="font-semibold">শর্ত</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{first.condition}</p>
+        </div>
+      ) : null}
+
+      {settings.terms ? (
+        <div
+          data-testid="receipt-terms"
+          className="my-2 rounded border border-gray-400 px-3 py-2 text-xs"
+        >
+          <p className="font-semibold">সাধারণ শর্তাবলী</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{settings.terms}</p>
+        </div>
+      ) : null}
 
       {totalRefund > 0 ? (
         <p className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-center text-xs font-semibold text-amber-900">

@@ -28,31 +28,37 @@ export function PageLead({
         className
       )}
     >
-      <div className="min-w-0">
-        {eyebrow ? <p className="ledger-eyebrow">{eyebrow}</p> : null}
-        {title ? (
-          <div
-            className={cn(
-              "flex flex-wrap items-baseline gap-x-3 gap-y-1",
-              eyebrow && "mt-1"
-            )}
-          >
-            <h1 className="text-xl font-bold tracking-tight text-maher-ink sm:text-2xl">
-              {title}
-            </h1>
-            {meta ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {meta}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {description ? (
-          <p className="mt-1 max-w-2xl text-sm leading-snug text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
-      </div>
+      {eyebrow || title || description ? (
+        <div className="min-w-0">
+          {eyebrow ? <p className="ledger-eyebrow">{eyebrow}</p> : null}
+          {title ? (
+            <div
+              className={cn(
+                "flex flex-wrap items-baseline gap-x-3 gap-y-1",
+                eyebrow && "mt-1"
+              )}
+            >
+              <h1 className="text-xl font-bold tracking-tight text-maher-ink sm:text-2xl">
+                {title}
+              </h1>
+              {meta ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  {meta}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {description ? (
+            <p className="mt-1 max-w-2xl text-sm leading-snug text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
+        </div>
+      ) : meta ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {meta}
+        </div>
+      ) : null}
       {actions ? (
         <div
           data-testid="page-actions"

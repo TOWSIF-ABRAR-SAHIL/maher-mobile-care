@@ -3,7 +3,7 @@ import { isDateKey } from "@/lib/dhaka";
 import { ServiceWorkspace } from "./ServiceWorkspace";
 
 export const metadata: Metadata = {
-  title: "সার্ভিস — MAHER MOBILE CARE",
+  title: "সার্ভিস — MSS",
   description: "দৈনিক সার্ভিস এন্ট্রি, ওয়ার্কফ্লো ও বাকি তালিকা",
 };
 

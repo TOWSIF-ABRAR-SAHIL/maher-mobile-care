@@ -1,9 +1,42 @@
-# Windows-e MAHER MOBILE CARE Chalanor Bidhway
+# Windows-e MSS Chalanor Bidhway
 
 Ei guide shudhu tumi Windows-e ekbar test korar jonne.
 Kono kichu install korte hobe na. Internet o lagbe na.
 
 ---
+
+## Desktop EXE banana (notun)
+
+Portable zip-er sathe sathe ekta chobi-less Windows installer-o banano jay:
+
+```
+npm install
+npm run build:desktop
+```
+
+Output `out\MAHER-Electron\`:
+- `staging\` — verified standalone server + Node 22 runtime + Electron entry;
+- `dist\MSS-Setup-1.2.0.exe` — assisted NSIS wizard (x64);
+- `dist\win-unpacked\MSS.exe` — direct EXE for smoke tests;
+- `desktop-build-info.json` — installer hash ar EXE path.
+
+Build-er por `npm run test:desktop` chaliye EXE-ta alada throwaway user-data
+root-e chalan — migration, loopback URL, renderer bridge/IPC ar single-instance
+lock check hoy, kono real database-e haat jay na.
+
+Dev-er jonno `npm run electron:dev` chalale alada loopback dev server +
+Electron shell khulbe; data `out\MAHER-Electron\dev-user-data`-e thake.
+
+Data wizard-e chon kora non-C folder-e likha hoy (default `D:\MSS-Data\data\shop.db`).
+Prothom run-e database khali thake — kono demo service, product, technician ba
+dues thake na; shop profile setup banner-i prothom kaj.
+Staging folder-e kono `data\` banano hoy na, ar portable package-er purono
+`data\shop.db` installer-e chole jay na — tai reinstall-e real shop data
+overwrite hoy na. Purono one-click install-er `%AppData%\MSS` ba
+`%AppData%\MAHER-MOBILE-CARE` ledger-i shudhu notun root-e niye jay (purono DB
+pointer-ta niye jay na). EXE ekbar-i chalay (single-instance lock), prothom
+bar-e auto-migration chole, wa.me/tel link default browser-e jay, ar receipt
+print silent mode-e hoy.
 
 ## Tumi Ja Pabe
 
@@ -23,9 +56,25 @@ Cash/change calculator, receipt address, PAID stamp, WhatsApp + **PDF শেয�
 age-r motoi ache.
 
 Notun (v1.2.0-er por):
-- **landing = service desk**: `/` ekhon `/service`-e redirect kore (purono
-  bookmark-er date/edit/receipt/status param-o thik jaygay jay); header-e
-  duitai destination: **সার্ভিস** ar **স্টক**;
+- **landing = Dashboard (Home)**: `/` ekhon `/dashboard`-e redirect kore. Purono
+  bookmark-e date/edit/receipt/status/mode thakle oigulo `/service`-e forward hoy
+  — purono link bhenge jay na. Header-e char ta destination: **ড্যাশবোর্ড,
+  সার্ভিস, প্রোডাক্ট, পার্টস**;
+- **Dashboard-e sob kichu ek jaygay**: ওভারভিউ (today's activity/financial
+  health/low stock), কুইক অ্যাকশন (new entry, product sale, backup + report/বাকি),
+  টেকনিশিয়ান ম্যানেজমেন্ট, দোকানের সেটিংস ar ডাটা নিরাপত্তা (শেষ ব্যাকআপ,
+  রিস্টোর). Report, বাকি তালিকা ar receipt seri page-e chole gese — Service
+  desk-e shudhu form, talika, search ar status filter thake, sathe ekta boro
+  **ড্যাশবোর্ড** button;
+- **White-label branding**: দোকানের সেটিংস-e shop name, slogan, ঠিকানা, phone,
+  whatsapp, terms ar logo badlan — header, footer ar receipt-e ta calculations
+  chole jay (save-er sathe-i, reload lagbe na). Ekta backup restore korleo
+  branding thik thake (settings backup-e jay na);
+- **Secret code now configurable**: default keypad map purono code gulo one-i
+  rakhe (`*J#` = 1500, `T#` = 800, `1000` = `*+#`). Chaile **কাস্টম ১০-অক্ষর**
+  word diye nije-r code banan (prothom axor = 1, dashom = 0). Dashboard-e
+  live tester ache. Bhal word na hole save-i athke jay (400), chupchup kore
+  purono map-e fire jay na;
 - **Counter Ledger design**: graphite-navy header/button, sada card neutral
   paper page-e — kono label/testid badolini hoyni; design contract alada suite-e
   (19 check);
@@ -46,6 +95,21 @@ Notun (v1.2.0-er por):
 - **স্টক page (`/products`)**: product ar category list, search, low-stock
   alert; inventory-er `SaleItem`/`saleRef` ekhon foundation — app code ekhono
   seta use kore nai;
+- **laptop-er jonno compact counter layout**: 1280×585 window-eo form ar
+  বিল/জমা/বাকি row save bar-er upore-i thake; action/utility ek band-e,
+  summary/footer slim, form column 340px (1536px+ 380px); 1920×1080-e
+  scrollbar nei;
+- **screen-e Latin digits, print-e Bangla**: taka/count/date screen-e
+  `৳1,200`, `8টি ভিজিট`, `শুক্রবার, 6 নভেম্বর 2026` — receipt, report ar monthly
+  print Bengali digits-ei thake; input-e Bangla digit likhleo save hoy;
+- **notun entry-e ekta-i bill**: shudhu মোট বিল/জমা/বাকি (স্বয়ংক্রিয়) dekha
+  jay, per-device bill **আরও তথ্য**-র bhitor; dues button-e scope lekha
+  **সব তারিখের বাকি (Nটি ডিভাইস • ৳X)**; delivery date chips **আজ · কাল · 3 দিন ·
+  7 দিন** + ×;
+- **স্টক page-e product-er ক্রয় দাম lukiye thake**: `৳••••` default,
+  **ক্রয় দেখান / ক্রয় লুকান** eye toggle-e sob khule; aggregate ইনভেন্টরি মূল্য
+  dekha jay; list-er upore dismissible note bole product sell ekhono stock
+  komay na (reload-e-o lukiye thake);
 - **portable rebuild-e database thake**: `npm run build:portable` chalale-o
   `data\shop.db` thake (portable-keep suite diye locked); delete na hole
   build bolbe `MAHER STOP.bat` chalao.
@@ -117,7 +181,7 @@ Eta ekta puro shop app. Ekhon theke client-keo eita-i pathaobe.
 
 Prothom package ta Linux-e banano hoyechilo. Ekhon package-ta **Windows-ei
 build** hoyeche (`buildHost: win32-x64`) ar Windows-e chaliye puro automated
-suite pass koreche — **17 suites, 374 checks**, live data er hash-o same ache.
+suite pass koreche — **18 suites, 383 checks**, live data er hash-o same ache.
 
 Prothom asol shop-test e duita bug pawa gelo. Default status bug ta 1.0.1-e
 fix hoyeche; cash/change calculator ta client-er request e 1.0.2-e **bad**:
@@ -168,7 +232,7 @@ port o jani amader.
 Windows-e `.bat` chalanor por prothombar data load hoyni (baked-path bug),
 kintu fix-er por **data thik load hocche** — 4 technician, stats, services
 sob. Tumi nije Windows-e chaliye dekhecho. Erpor puro automated suite-o
-Windows-e chaliye **374/374 pass** kora hoyeche (`npm test`).
+Windows-e chaliye **383/383 pass** kora hoyeche (`npm test`).
 
 Jodi Windows-e kichu na kaj kore: `logs\maher.log` file-ta amake pathao. Ekhon
 server chalan shathe shathe seta likhe, tai problem houar shomoy-i log paowa
@@ -236,8 +300,9 @@ Ki hobe:
    thakbe na, software er moto lagbe
 
 Bajkhon ekta backup database banay (prothom bar), tarpor app chalu hoy.
-Notun PC te apnake kichu type korte hobe na - database, technician list
-shob nij theke banabe.
+Notun PC te database nij theke banbe, kintu shop profile ar technician list
+khali thakbe. Dashboard-e "শপ প্রোফাইল সেটআপ করুন" banner dekha jabe —
+setar pore **টেকনিশিয়ান ম্যানেজমেন্ট** থেকে prothom technician add korte hobe.
 
 Eta MAHER-i na kono onno program age-i port 3000 niye rakhe, tahole app
 bolbe "Another program is already using port 3000" - oi onno program band
@@ -323,6 +388,36 @@ Erokom kichu na koren:
 
 ---
 
+## Update by installer (MSS setup)
+
+Client-er PC-te age theke MSS install thakle notun `MSS-Setup-<version>.exe`
+chalano-i update. Alada kore uninstall korben na, kono `data` folder delete
+korben na.
+
+- Installer ekhon one-click na. Prothom page-e app install korar path
+  badlano jay; tar por ar ekta page-e **data folder** chon hoy. Default
+  `D:\MSS-Data` — user chaole D:/E:/onno drive-e badlaten pare, kintu **C:
+  drive kono bhabe-i allow hoy na**. C: likhle installer stop korbe.
+- Age theke MSS install thakle notun exe chalalei **Update / Cancel** dialog
+  ashbe. Cancel chaple install hoy na, kichu badol jay na. Update chaple
+  purono install path ar data root-i thake. `appId` (`com.maher.mobilecare.desktop`,
+  shudhu internal identity) ar shortcut name (`MSS`) same.
+- electron-builder 26-e `deleteAppDataOnUpdate` nei; update-i data root chhua
+  hoy na. `nsis.deleteAppDataOnUninstall = false` pin kora ache, tai uninstall
+  korleo `shop.db` ar `backups` folder muche jay na.
+- Purono one-click install-er data `%AppData%\MSS\data\shop.db` ba
+  `%AppData%\MAHER-MOBILE-CARE\data\shop.db` thakle notun version prothom bar
+  ijthe oita `D:\MSS-Data`-e copy kore niye jay; purono copy safety jonno thake.
+  Purono custom-DB pointer copy hoy na. Tar por `first-run.mjs` shudhu notun
+  migration gulo
+  apply kore; agei thaka bill, due, technician, product same thake. Migration-er
+  age ekta `safety-*.db` snapshot banao hoy.
+- Version badhiye notun installer pataben (`MSS-Setup-1.2.1.exe` etc.); purono
+  ar notun installer ek-i PC-te chalaben na.
+
+Eti `scripts/mss-update-contract.js` ar `scripts/mss-installer-contract.js`
+diye test kora hoy (throwaway DB/folder-e).
+
 ## Upgrade niyom (bhitre ar kichu)
 
 Future-e update dile:
@@ -387,8 +482,11 @@ Client zip-ta test zip theke alada: `out/MAHER-Windows-Client.zip`.
    `MAHER-Windows-Test.zip`, client-er jonno **shudhu**
    `MAHER-Windows-Client.zip` pathabe.
 
-4. Client-er PC-te prothom run-e 4 default technician ashbe
-   (ASRAFUL, NAYEM, NURUL, RONI) — test-er kono record thakbe na.
+4. Client-er PC-te prothom run-e kono default technician thakbe na, ar
+   test-er kono record thakbe na. Dashboard-e giye **টেকনিশিয়ান
+   ম্যানেজমেন্ট** theke NURUL add koro (purono checklist-e RONI, ASRAFUL,
+   NAYEM lagle tader-o add koro). Shop profile-o khali thakbe — age
+   "শপ প্রোফাইল সেটআপ করুন" banner-ta follow koro.
 
 5. Notun entry-e shop cost `*J#` likhe dekho: form-e `গোপন কোড: *J# ➔ ৳১৫০০`
    dekha jabe. Service talika-r **খরচ** column **shob shomoy** dekha jabe,

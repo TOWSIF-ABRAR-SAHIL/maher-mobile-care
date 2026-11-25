@@ -8,6 +8,7 @@ const {
   dailyRows,
   dhakaToday,
   launchBrowser,
+  openSection,
   resolveTestBase,
   submitButton,
   trackErrors,
@@ -22,11 +23,9 @@ const TODAY = dhakaToday();
 const SEARCH_NAME = uniqueName("SearchCust");
 const SEARCH_PHONE = "01700000777";
 const PRODUCT_NAME = uniqueName("ProdSale");
-const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
-const bn = (value) => String(value).replace(/\d/g, (d) => BN_DIGITS[Number(d)]);
 const duesLabel = (d) =>
-  `💰 বাকি তালিকা (${bn(d.count)}টি • ৳${bn(
-    d.totalDue.toLocaleString("en-IN")
+  `💰 সব তারিখের বাকি (${d.count}টি ডিভাইস • ৳${d.totalDue.toLocaleString(
+    "en-IN"
   )})`;
 
 let failed = false;
@@ -48,7 +47,7 @@ let browser = null;
 
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
 
@@ -104,6 +103,42 @@ let browser = null;
   const closeDialog = async (testid) => {
     const open = await page.$(`[data-testid="${testid}"]`);
     if (!open) return;
+    // Radix's Close button ignores a synthetic `.click()` from page.evaluate.
+    // Use a real mouse click on the X so "X closes" still tests that affordance,
+    // then fall back to Escape if keyboard focus kept the click from landing.
+    const marked = await page.evaluate((id) => {
+      const dlg = document.querySelector(`[data-testid="${id}"]`);
+      const x = dlg
+        ? [...dlg.querySelectorAll("button")].find(
+            (b) => b.textContent.trim() === "Close"
+          )
+        : null;
+      if (!x) return false;
+      x.setAttribute("data-testid", "dialog-close-probe");
+      return true;
+    }, testid);
+    if (marked) {
+      await page.click('[data-testid="dialog-close-probe"]').catch(() => {});
+      const gone = await page
+        .waitForFunction(
+          (id) => !document.querySelector(`[data-testid="${id}"]`),
+          { polling: 100, timeout: 2500 },
+          testid
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (gone) return;
+    }
+    await page.keyboard.press("Escape");
+    const escaped = await page
+      .waitForFunction(
+        (id) => !document.querySelector(`[data-testid="${id}"]`),
+        { polling: 100, timeout: 2500 },
+        testid
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (escaped) return;
     await page.evaluate((id) => {
       const dlg = document.querySelector(`[data-testid="${id}"]`);
       const x = dlg
@@ -111,7 +146,15 @@ let browser = null;
             (b) => b.textContent.trim() === "Close"
           )
         : null;
-      if (x) x.click();
+      const key = x && Object.keys(x).find((k) => k.startsWith("__reactProps"));
+      const handler = key ? x[key]?.onClick : null;
+      if (typeof handler === "function") {
+        handler({
+          preventDefault() {},
+          stopPropagation() {},
+          defaultPrevented: false,
+        });
+      }
     }, testid);
     await waitGone(`[data-testid="${testid}"]`);
   };
@@ -127,7 +170,9 @@ let browser = null;
     );
   };
 
-  // ---------- D1: layout order + removed sections ----------
+  // ---------- D1: front-desk layout order + removed sections ----------
+  // The daily tally, technician cards and report/dues pills moved to the
+  // Dashboard; Service keeps only intake, list and filters — no masthead band.
   const layout = await page.evaluate(() => {
     const top = (sel) => {
       const el = document.querySelector(sel);
@@ -137,14 +182,11 @@ let browser = null;
     const printCopy = document.querySelector('[data-testid="monthly-print"]');
     return {
       header: top("header"),
-      action: top('[data-testid="page-actions"]'),
-      summary: top('[data-testid="toggle-daily-summary"]'),
-      tech: top('[data-testid="technician-stats"]'),
-      today: top('[data-testid="today-stats"]'),
       form: top("form"),
       table: top('[data-testid="daily-services"]'),
       footer: top("footer"),
       oldSearch: !!document.querySelector('[data-testid="global-service-search"]'),
+      dailySummaryGone: !document.querySelector('[data-testid="daily-summary"]'),
       duesOutsideDialog: !!document.querySelector('[data-testid="outstanding-dues"]'),
       reportOutsideDialog: !!document.querySelector('[data-testid="report-dialog"]'),
       printCopyHidden:
@@ -154,60 +196,35 @@ let browser = null;
   console.log("reached D1", JSON.stringify(layout));
   check(
     "D1",
-    "order: header → actions → daily-summary bar → form/table → footer; old blocks gone",
-    layout.header < layout.action &&
-      layout.action < layout.summary &&
-      layout.summary < layout.form &&
-      layout.summary < layout.table &&
+    "order: header → form/table → footer; masthead actions and tallies gone",
+    layout.header < layout.form &&
       Math.abs(layout.form - layout.table) < 120 &&
       layout.footer > layout.table &&
       layout.oldSearch === false &&
+      layout.dailySummaryGone === true &&
       layout.duesOutsideDialog === false &&
       layout.reportOutsideDialog === false &&
       layout.printCopyHidden === true,
     JSON.stringify(layout)
   );
 
-  // ---------- D1b: the summary bar expands the technician + day panels ----------
-  await page.click('[data-testid="toggle-daily-summary"]');
-  await page.waitForFunction(
-    () => {
-      const el = document.getElementById("daily-summary-body");
-      return !!el && el.getBoundingClientRect().height > 100;
-    },
-    { polling: 100, timeout: 5000 }
-  );
-  const expanded = await page.evaluate(() => {
-    const top = (sel) => {
-      const el = document.querySelector(sel);
-      return el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null;
-    };
-    return {
-      tech: top('[data-testid="technician-stats"]'),
-      today: top('[data-testid="today-stats"]'),
-      form: top("form"),
-    };
-  });
+  // ---------- D1b: the front desk has no duplicate masthead buttons ----------
+  const masthead = await page.evaluate(() => ({
+    actions: !!document.querySelector('[data-testid="page-actions"]'),
+    newEntry: !!document.querySelector('[data-testid="new-service-entry"]'),
+    dashboardLink: !!document.querySelector('[data-testid="service-dashboard-link"]'),
+  }));
   check(
     "D1b",
-    "daily summary expands: tech → today, both above the form",
-    expanded.tech !== null &&
-      expanded.today !== null &&
-      expanded.tech < expanded.today &&
-      expanded.today < expanded.form,
-    JSON.stringify(expanded)
-  );
-  // Collapse again so the viewport checks below see the default layout.
-  await page.click('[data-testid="toggle-daily-summary"]');
-  await page.waitForFunction(
-    () => {
-      const el = document.getElementById("daily-summary-body");
-      return !!el && el.getBoundingClientRect().height < 5;
-    },
-    { polling: 100, timeout: 5000 }
+    "new-entry and Dashboard masthead buttons are gone from Service",
+    !masthead.actions && !masthead.newEntry && !masthead.dashboardLink,
+    JSON.stringify(masthead)
   );
 
   // ---------- D2: report dialog (X + ESC) ----------
+  // Reports/dues now live on the Dashboard; the Service desk stays front-desk only.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="open-report"]', { timeout: 15000 });
   await page.click('[data-testid="open-report"]');
   await page.waitForSelector('[data-testid="report-dialog"]', {
     polling: 100,
@@ -281,7 +298,7 @@ let browser = null;
   );
   check(
     "D3a",
-    "dues button shows live Bengali count + total",
+    "dues button shows live count + total across all dates",
     duesButtonText === duesLabel(duesBefore),
     JSON.stringify({ duesButtonText, expected: duesLabel(duesBefore) })
   );
@@ -333,6 +350,12 @@ let browser = null;
   );
 
   // ---------- D4: navbar search (desktop) ----------
+  // Search's edit action fills the Service form, so go back to that desk.
+  await page.goto(`${BASE}/service?date=${TODAY}`, {
+    waitUntil: "networkidle0",
+    timeout: 60000,
+  });
+  await page.waitForSelector('[data-testid="daily-services"]', { timeout: 15000 });
   const placeholder = await page.$eval(
     "#global-search",
     (el) => el.getAttribute("placeholder") || ""
@@ -474,268 +497,25 @@ let browser = null;
   // ---------- D6: product-sale mode ----------
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await new Promise((r) => setTimeout(r, 900));
 
   const defaultMode = await page.evaluate(() => ({
-    service: document
-      .querySelector('[data-testid="mode-service"]')
-      ?.getAttribute("aria-checked"),
-    product: document
-      .querySelector('[data-testid="mode-product"]')
-      ?.getAttribute("aria-checked"),
     model: document.querySelector('label[for="svc-model"]')?.textContent.trim(),
     problem: document.querySelector('label[for="svc-problem"]')?.textContent.trim(),
-    status: document.querySelector("#svc-status")?.textContent.trim(),
+    statusMissing: !document.querySelector("#svc-status"),
   }));
   check(
     "D6a",
-    "form defaults to 🛠️ সার্ভিসিং with service labels",
-    defaultMode.service === "true" &&
-      defaultMode.product === "false" &&
-      defaultMode.model === "মোবাইলের মডেল" &&
+    "form defaults to service labels with no new-entry status field",
+    defaultMode.model === "মোবাইলের মডেল" &&
       defaultMode.problem === "সমস্যা" &&
-      defaultMode.status === "চলছে",
+      defaultMode.statusMissing === true,
     JSON.stringify(defaultMode)
   );
 
-  await page.click('[data-testid="mode-product"]');
-  await new Promise((r) => setTimeout(r, 150));
-  const productMode = await page.evaluate(() => ({
-    service: document
-      .querySelector('[data-testid="mode-service"]')
-      ?.getAttribute("aria-checked"),
-    product: document
-      .querySelector('[data-testid="mode-product"]')
-      ?.getAttribute("aria-checked"),
-    model: document.querySelector('label[for="svc-model"]')?.textContent.trim(),
-    problem: document.querySelector('label[for="svc-problem"]')?.textContent.trim(),
-    status: document.querySelector("#svc-status")?.textContent.trim(),
-    statusDisabled: document.querySelector("#svc-status")?.disabled === true,
-    expenseEnabled: document.querySelector("#svc-expense")?.disabled === false,
-    hint: document.body.textContent.includes("SALES/দোকান"),
-  }));
-  check(
-    "D6b",
-    "🛍️ প্রোডাক্ট সেল renames model/details, forces ডেলিভারি, keeps expense",
-    productMode.service === "false" &&
-      productMode.product === "true" &&
-      productMode.model === "প্রোডাক্টের নাম (যেমন: Charger, Cable)" &&
-      productMode.problem === "বিবরণ (যেমন: 18W Type-C)" &&
-      productMode.status === "ডেলিভারি" &&
-      productMode.statusDisabled &&
-      productMode.expenseEnabled &&
-      productMode.hint,
-    JSON.stringify(productMode)
-  );
-
-  // Switching back restores the service labels and the previous status.
-  await page.click('[data-testid="mode-service"]');
-  await new Promise((r) => setTimeout(r, 150));
-  const backToService = await page.evaluate(() => ({
-    model: document.querySelector('label[for="svc-model"]')?.textContent.trim(),
-    problem: document.querySelector('label[for="svc-problem"]')?.textContent.trim(),
-    status: document.querySelector("#svc-status")?.textContent.trim(),
-    statusDisabled: document.querySelector("#svc-status")?.disabled === true,
-  }));
-  check(
-    "D6c",
-    "switching back restores service labels + status",
-    backToService.model === "মোবাইলের মডেল" &&
-      backToService.problem === "সমস্যা" &&
-      backToService.status === "চলছে" &&
-      backToService.statusDisabled === false,
-    JSON.stringify(backToService)
-  );
-
-  await page.click('[data-testid="mode-product"]');
-  await new Promise((r) => setTimeout(r, 150));
-  await page.click("#svc-tech");
-  await page.waitForSelector('[role="option"]', { polling: 100, timeout: 5000 });
-  const techOptions = await page.$$eval('[role="option"]', (els) =>
-    els.map((e) => e.textContent.trim())
-  );
-  check(
-    "D6d",
-    "product mode lists SALES from the roster (sorted first)",
-    techOptions[0] === "SALES" && techOptions.includes("SALES"),
-    techOptions.join(",")
-  );
-  await page.evaluate(() => {
-    [...document.querySelectorAll('[role="option"]')]
-      .find((o) => o.textContent.trim() === "SALES")
-      ?.click();
-  });
-  await page.keyboard.press("Escape");
-  await new Promise((r) => setTimeout(r, 150));
-
-  await typeInto(page, "svc-name", PRODUCT_NAME);
-  await typeInto(page, "svc-phone", SEARCH_PHONE);
-  await typeInto(page, "svc-model", "18W Charger");
-  await typeInto(page, "svc-problem", "Type-C 1m");
-  await typeInto(page, "svc-bill", "800");
-  await typeInto(page, "svc-adv", "500");
-  await typeInto(page, "svc-expense", "*J#");
-  const expensePreview = await page.$eval(
-    "#svc-expense-help",
-    (el) => el.textContent || ""
-  );
-  check(
-    "D6e",
-    "expense secret code still decodes in product mode",
-    expensePreview.includes("গোপন কোড") && expensePreview.includes("*J#") && expensePreview.includes("৳১৫০০"),
-    expensePreview
-  );
-  await submitButton(page, "সেভ করুন");
-  await waitToast(page, "সেভ হয়েছে").catch(() => null);
-  await waitDailyRow(page, PRODUCT_NAME, true);
-  const created = (
-    await (
-      await api(page, `/api/services?date=${TODAY}`)
-    ).body.services
-  ).find((s) => s.customerName === PRODUCT_NAME);
-  check(
-    "D6f",
-    "product saves into model/problem, status Delivered, technician SALES",
-    created &&
-      created.model === "18W Charger" &&
-      created.problem === "Type-C 1m" &&
-      created.status === "Delivered" &&
-      created.technician === "SALES" &&
-      created.totalBill === 800 &&
-      created.advance === 500 &&
-      created.due === 300 &&
-      created.shopExpense === "*J#" &&
-      created.expenseAmount === 1500,
-    JSON.stringify(
-      created && {
-        model: created.model,
-        problem: created.problem,
-        status: created.status,
-        tech: created.technician,
-        due: created.due,
-        code: created.shopExpense,
-        expense: created.expenseAmount,
-      }
-    )
-  );
-  const duesAfter = (await api(page, "/api/services/dues")).body;
-  await page.waitForFunction(
-    (expected) =>
-      document.querySelector('[data-testid="open-dues"]')?.textContent.trim() ===
-      expected,
-    { polling: 100, timeout: 8000 },
-    duesLabel(duesAfter)
-  );
-  check(
-    "D6g",
-    "dues button updates live after the product sale",
-    duesAfter.count === duesBefore.count + 1 &&
-      duesAfter.totalDue === duesBefore.totalDue + 300,
-    JSON.stringify({ before: duesBefore, after: duesAfter })
-  );
-
-  // Editing the saved product row must infer product mode from SALES.
-  await clickDailyRowButton(page, PRODUCT_NAME, "এডিট");
-  await page.waitForFunction(
-    (name) => document.querySelector("#svc-name")?.value === name,
-    { polling: 100, timeout: 8000 },
-    PRODUCT_NAME
-  );
-  const editMode = await page.evaluate(() => ({
-    product: document
-      .querySelector('[data-testid="mode-product"]')
-      ?.getAttribute("aria-checked"),
-    model: document.querySelector('label[for="svc-model"]')?.textContent.trim(),
-    status: document.querySelector("#svc-status")?.textContent.trim(),
-  }));
-  check(
-    "D6h",
-    "editing a SALES row reopens product mode with Delivered",
-    editMode.product === "true" &&
-      editMode.model === "প্রোডাক্টের নাম (যেমন: Charger, Cable)" &&
-      editMode.status === "ডেলিভারি",
-    JSON.stringify(editMode)
-  );
-  await page.evaluate(() => {
-    const cancel = [...document.querySelectorAll("form button")].find(
-      (b) => b.textContent.trim() === "বাতিল"
-    );
-    cancel?.click();
-  });
-  await new Promise((r) => setTimeout(r, 200));
-
-  // Product-mode validation wording.
-  await page.click('[data-testid="mode-product"]');
-  await typeInto(page, "svc-name", PRODUCT_NAME + "X");
-  await typeInto(page, "svc-phone", SEARCH_PHONE);
-  await submitButton(page, "সেভ করুন");
-  await waitToast(page, "প্রোডাক্টের নাম দিন").catch(() => null);
-  check(
-    "D6i",
-    "product mode validation says প্রোডাক্টের নাম দিন",
-    (await page.evaluate(() => document.body.textContent)).includes(
-      "প্রোডাক্টের নাম দিন"
-    )
-  );
-  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
-    { polling: 500, timeout: 30000 }
-  );
-  await new Promise((r) => setTimeout(r, 700));
-
-  // ---------- D7: one-screen desktop + responsive dialogs ----------
-  await page.setViewport({ width: 1920, height: 1080 });
-  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
-    { polling: 500, timeout: 30000 }
-  );
-  // Wait for real cards (not skeletons): their row count drives the layout.
-  await page.waitForFunction(
-    () => document.querySelectorAll('[data-testid="tech-card"]').length >= 4,
-    { polling: 200, timeout: 15000 }
-  );
-  await new Promise((r) => setTimeout(r, 900));
-  // Reloads can restore an old scroll position. The zero-scroll guarantee is
-  // measured from the top, so reset it explicitly first.
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await new Promise((r) => setTimeout(r, 250));
-  const fit = await page.evaluate(() => {
-    const form = document.querySelector("form");
-    const table = document.querySelector('[data-testid="daily-services"]');
-    const save = [...form.querySelectorAll("button[type='submit']")][0];
-    return {
-      viewport: window.innerHeight,
-      scrollY: Math.round(window.scrollY),
-      formTop: Math.round(form.getBoundingClientRect().top),
-      formBottom: Math.round(form.getBoundingClientRect().bottom),
-      saveBottom: Math.round(save.getBoundingClientRect().bottom),
-      tableTop: Math.round(table.getBoundingClientRect().top),
-      overflowX:
-        document.documentElement.scrollWidth > window.innerWidth + 1,
-    };
-  });
-  console.log("reached D7", JSON.stringify(fit));
-  check(
-    "D7a",
-    "1920×1080: form + table start visible with no page overflow",
-    fit.formTop >= 0 &&
-      fit.formTop < fit.viewport &&
-      fit.tableTop >= 0 &&
-      fit.tableTop < fit.viewport &&
-      fit.overflowX === false,
-    JSON.stringify(fit)
-  );
-  check(
-    "D7b",
-    "1920×1080: save button visible without page scroll",
-    fit.saveBottom <= fit.viewport,
-    JSON.stringify({ saveBottom: fit.saveBottom, viewport: fit.viewport })
-  );
 
   await page.setViewport({ width: 1366, height: 900 });
   await new Promise((r) => setTimeout(r, 300));
@@ -766,6 +546,9 @@ let browser = null;
 
   await page.setViewport({ width: 390, height: 844 });
   await new Promise((r) => setTimeout(r, 300));
+  // D7d checks the relocated report/dues dialogs on the Dashboard.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="open-report"]', { timeout: 15000 });
   // Reloads preserve scroll; bring the action row out from under the sticky
   // header and use a DOM click so Puppeteer does not scroll it back under.
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -785,16 +568,7 @@ let browser = null;
   const duesMobileOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth + 1
   );
-  await page.evaluate(() => {
-    const d = document.querySelector('[data-testid="dues-dialog"]');
-    const x = d
-      ? [...d.querySelectorAll("button")].find(
-          (b) => b.textContent.trim() === "Close"
-        )
-      : null;
-    x?.click();
-  });
-  await waitGone('[data-testid="dues-dialog"]');
+  await closeDialog("dues-dialog");
   check(
     "D7d",
     "mobile report/dues dialogs do not overflow the page horizontally",

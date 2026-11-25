@@ -13,8 +13,9 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useShopSettings } from "@/components/ShopSettingsProvider";
 import { dayLabel, dhakaDateKey } from "@/lib/dhaka";
-import { telHref, whatsAppHref } from "@/lib/contact";
+import { normalizeBdPhone, telHref, whatsAppHref } from "@/lib/contact";
 import { formatTaka } from "@/lib/utils";
 import type { ServiceDTO } from "@/lib/types";
 
@@ -25,6 +26,19 @@ interface SearchResponse {
   query: string;
   count: number;
   services: ServiceDTO[];
+}
+
+/**
+ * Every row of the same grouped visit, oldest first. A phone search shows
+ * these as "ডিভাইস 1 / 2 / …" so a multi-device job reads like the service
+ * list instead of N near-identical results.
+ */
+function visitDevices(services: ServiceDTO[], row: ServiceDTO): ServiceDTO[] {
+  if (!row.groupId) return [row];
+  const grouped = services.filter((s) => s.groupId === row.groupId);
+  return (grouped.length ? grouped : [row])
+    .slice()
+    .sort((a, b) => a.id - b.id);
 }
 
 /** Shared debounce + fetch logic for the desktop and mobile search widgets. */
@@ -87,7 +101,11 @@ function SearchResults({
   onPick: (service: ServiceDTO) => void;
   onEdit: (service: ServiceDTO) => void;
 }) {
+  const { settings } = useShopSettings();
   const trimmed = query.trim();
+  const phoneSearch =
+    /^[+\d\s-]+$/.test(trimmed) &&
+    normalizeBdPhone(trimmed).replace(/\D/g, "").length >= 10;
 
   if (trimmed.length === 0) {
     return (
@@ -167,6 +185,70 @@ function SearchResults({
                     <StatusBadge status={s.status} />
                   </span>
                 </span>
+                {phoneSearch ? (
+                  <span className="mt-1 block space-y-0.5 text-xs leading-snug text-foreground/75">
+                    <span className="block">
+                      <span className="font-semibold text-maher-navy">
+                        টেকনিশিয়ান:
+                      </span>{" "}
+                      {s.technician || "—"}
+                      {" · "}
+                      <span className="font-semibold text-maher-navy">বিল</span>{" "}
+                      {formatTaka(s.totalBill)}
+                      {" · "}
+                      <span className="font-semibold text-maher-navy">জমা</span>{" "}
+                      {formatTaka(s.advance)}
+                      {" · "}
+                      <span className="font-semibold text-maher-navy">বাকি</span>{" "}
+                      {formatTaka(s.due)}
+                    </span>
+                    {s.deliveryDate ? (
+                      <span className="block">
+                        <span className="font-semibold text-maher-navy">
+                          ডেলিভারি:
+                        </span>{" "}
+                        {dayLabel(dhakaDateKey(s.deliveryDate))}
+                      </span>
+                    ) : null}
+                    {visitDevices(result.services, s).length > 1 ? (
+                      <span className="block space-y-0.5">
+                        {visitDevices(result.services, s).map((d, i) => (
+                          <span key={d.id} className="block">
+                            <span className="font-semibold text-maher-navy">
+                              ডিভাইস {i + 1}:
+                            </span>{" "}
+                            {d.model || "—"}
+                            {d.problem ? ` • ${d.problem}` : ""}
+                            {d.solution ? (
+                              <>
+                                {" — "}
+                                <span className="font-semibold text-maher-navy">
+                                  সমাধান:
+                                </span>{" "}
+                                {d.solution}
+                              </>
+                            ) : null}
+                          </span>
+                        ))}
+                      </span>
+                    ) : s.solution ? (
+                      <span className="block">
+                        <span className="font-semibold text-maher-navy">
+                          সমাধান:
+                        </span>{" "}
+                        {s.solution}
+                      </span>
+                    ) : null}
+                    {s.condition ? (
+                      <span className="block">
+                        <span className="font-semibold text-maher-navy">
+                          শর্ত:
+                        </span>{" "}
+                        {s.condition}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
               </button>
               <div className="flex shrink-0 items-center gap-0.5">
                 <Button
@@ -191,7 +273,7 @@ function SearchResults({
                   title="WhatsApp"
                 >
                   <a
-                    href={whatsAppHref(s)}
+                    href={whatsAppHref(s, settings.shopName)}
                     target="_blank"
                     rel="noreferrer"
                     aria-label={`${s.customerName}-কে WhatsApp করুন`}

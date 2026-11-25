@@ -23,6 +23,26 @@ import {
 } from "@/components/ui/dialog";
 import type { TechnicianDTO } from "@/lib/types";
 
+/** Stable, dependency-free initials badge palette (no image/CDN calls). */
+const AVATAR_TONES = [
+  "border-[#35648C]/30 bg-[#35648C]/10 text-[#2F5F88]",
+  "border-[#2E7D5C]/30 bg-[#2E7D5C]/10 text-[#2E7D5C]",
+  "border-[#9A6714]/30 bg-[#9A6714]/10 text-[#9A6714]",
+  "border-[#7C96AD]/40 bg-[#7C96AD]/15 text-[#223D57]",
+];
+
+function avatarTone(name: string): string {
+  return AVATAR_TONES[
+    Array.from(name).reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % AVATAR_TONES.length
+  ];
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/[\s_-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2)).toUpperCase();
+}
+
 /**
  * Roster management (v1.1). Self-contained like RestoreDialog: it refetches
  * when opened and calls `onChanged` after every mutation, which is what makes
@@ -183,24 +203,29 @@ export function TechnicianManager({
           className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
         >
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-lg font-extrabold text-maher-navy">
               <span className="inline-flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                টেকনিশিয়ান ব্যবস্থাপনা
+                <Settings className="h-5 w-5 text-maher-royal" />
+                👥 টেকনিশিয়ান ও স্টাফ ব্যবস্থাপনা
               </span>
             </DialogTitle>
+            <p className="pt-1 text-xs font-medium text-muted-foreground">
+              মোট {active.length} জন কর্মী • কাজের ইতিহাস সুরক্ষিত
+            </p>
           </DialogHeader>
 
-          <div className="flex items-end gap-2">
-            <div className="min-w-0 flex-1">
-              <label
-                htmlFor="tech-new-name"
-                className="mb-1 block text-sm font-medium"
-              >
-                নতুন টেকনিশিয়ানের নাম
-              </label>
+          <div className="rounded-xl border border-maher-border bg-maher-surface/40 p-2.5">
+            <label
+              htmlFor="tech-new-name"
+              className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-maher-royal"
+            >
+              নতুন কর্মী
+            </label>
+            <div className="flex items-stretch gap-2">
               <Input
                 id="tech-new-name"
+                data-testid="technician-name-input"
+                autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
@@ -210,25 +235,28 @@ export function TechnicianManager({
                   }
                 }}
                 placeholder="যেমন: RAKIB"
+                className="h-11 min-w-0 flex-1 border-maher-navy/25 bg-white font-medium text-maher-navy shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-maher-navy/25"
               />
+              <span data-testid="technician-add-btn" className="inline-flex">
+                <Button
+                  onClick={() => void add()}
+                  disabled={adding || !newName.trim()}
+                  data-testid="btn-add-technician"
+                  className="h-11 shrink-0 gap-1.5 whitespace-nowrap bg-maher-navy px-3 text-xs font-bold text-white hover:bg-maher-royal disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {adding ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
+                  ＋ কর্মী যোগ করুন
+                </Button>
+              </span>
             </div>
-            <Button
-              onClick={() => void add()}
-              disabled={adding || !newName.trim()}
-              className="bg-primary hover:bg-primary/90"
-            >
-              {adding ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <UserPlus className="mr-1 h-4 w-4" />
-              )}
-              যোগ করুন
-            </Button>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              নাম স্বয়ংক্রিয়ভাবে বড় হাতের অক্ষরে সেভ হবে; ডুপ্লিকেট চলবে না।
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            নাম ছোট হাতের অক্ষরে লিখলেও বড় হাতের অক্ষরে সেভ হবে (যেমন
-            &quot;rakib&quot; → RAKIB)। একই নাম দুইবার যোগ করা যাবে না।
-          </p>
 
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
@@ -236,79 +264,111 @@ export function TechnicianManager({
             </p>
           ) : (
             <>
-              <p className="text-sm font-semibold text-foreground">
-                সক্রিয় টেকনিশিয়ান ({active.length})
+              <p className="text-sm font-semibold text-maher-navy">
+                সক্রিয় টেকনিশিয়ান তালিকা ({active.length})
               </p>
               {active.length === 0 ? (
                 <p className="rounded-lg border border-dashed py-4 text-center text-sm text-muted-foreground">
-                  কোনো টেকনিশিয়ান নেই। উপরে নাম লিখে যোগ করুন।
+                  কোনো টেকনিশিয়ান নেই। উপরে নাম লিখে যোগ করুন।
                 </p>
               ) : (
-                <ul className="space-y-2">
+                <ul data-testid="technician-list" className="space-y-2">
                   {active.map((t) => (
                     <li
                       key={t.id}
                       data-testid={`tech-row-${t.name}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border p-2"
+                      onDoubleClick={() => {
+                        if (editingId !== t.id) {
+                          setEditingId(t.id);
+                          setEditName(t.name);
+                        }
+                      }}
+                      className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-maher-border bg-white px-2.5 py-2 shadow-card transition-colors hover:border-maher-navy/30 hover:bg-maher-surface/40"
                     >
+                      <span
+                        data-testid={`technician-item-${t.name}`}
+                        className="flex min-w-0 flex-1 items-center gap-2.5"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border font-mono text-sm font-extrabold ${avatarTone(t.name)}`}
+                        >
+                          {initialsOf(t.name)}
+                        </span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-sm font-bold text-maher-navy">
+                            {t.name}
+                          </span>
+                          <span className="mt-0.5 inline-flex w-fit items-center gap-1 rounded-full border border-[#2E7D5C]/25 bg-[#2E7D5C]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#2E7D5C]">
+                            <span aria-hidden="true">●</span> সক্রিয়
+                          </span>
+                        </span>
+                      </span>
                       {editingId === t.id ? (
-                        <div className="flex min-w-0 flex-1 items-center gap-1">
+                        <span className="flex shrink-0 items-center gap-1.5">
                           <Input
                             id="tech-edit-name"
+                            autoFocus
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
-                            className="h-8"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void rename(t, editName, false);
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditingId(null);
+                              }
+                            }}
+                            className="h-8 w-28 sm:w-36"
                             aria-label={`${t.name} নতুন নাম`}
                           />
                           <Button
                             size="sm"
-                            className="bg-primary hover:bg-primary/90"
+                            aria-label="সংরক্ষণ"
+                            className="h-8 bg-maher-navy px-2 text-[11px] font-bold text-white hover:bg-maher-royal"
                             disabled={busyId === t.id || !editName.trim()}
                             onClick={() => void rename(t, editName, false)}
                           >
-                            সেভ
+                            সংরক্ষণ
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="h-8 px-2 text-[11px] font-semibold"
                             onClick={() => setEditingId(null)}
                           >
                             বাতিল
                           </Button>
-                        </div>
+                        </span>
                       ) : (
-                        <>
-                          <span className="min-w-0 truncate font-medium">
-                            {t.name}
-                          </span>
-                          <span className="flex shrink-0 gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8"
-                              title="এডিট"
-                              aria-label={`${t.name} এডিট`}
-                              onClick={() => {
-                                setEditingId(t.id);
-                                setEditName(t.name);
-                              }}
-                            >
-                              <Pencil />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-maher-due"
-                              title="ডিলিট"
-                              aria-label={`${t.name} ডিলিট`}
-                              // The shop must always keep one technician.
-                              disabled={active.length <= 1}
-                              onClick={() => setDeleteTarget(t)}
-                            >
-                              <Trash2 />
-                            </Button>
-                          </span>
-                        </>
+                        <span className="flex shrink-0 gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-lg text-maher-royal transition-colors hover:bg-maher-navy/10"
+                            title="এডিট"
+                            aria-label={`${t.name} এডিট`}
+                            onClick={() => {
+                              setEditingId(t.id);
+                              setEditName(t.name);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-lg text-maher-due transition-colors hover:bg-maher-due/10"
+                            title="ডিলিট"
+                            aria-label={`${t.name} ডিলিট`}
+                            // The shop must always keep one technician.
+                            disabled={active.length <= 1}
+                            onClick={() => setDeleteTarget(t)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </span>
                       )}
                     </li>
                   ))}

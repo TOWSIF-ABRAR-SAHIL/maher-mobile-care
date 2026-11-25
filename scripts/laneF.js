@@ -6,6 +6,7 @@ const {
   closeBrowser,
   dhakaToday,
   launchBrowser,
+  openSection,
   resolveTestBase,
   shiftDay,
   trackErrors,
@@ -34,6 +35,37 @@ const check = (id, name, ok, extra = "") => {
 };
 
 let browser = null;
+
+/** Fill the first part of a device through the redesigned PartsEditor. */
+async function fillFirstPart(page, editorTestId, { name, price, supplier }) {
+  await page.$eval(`[data-testid="${editorTestId}"]`, (el) =>
+    el.scrollIntoView({ block: "center" })
+  );
+  const added = await page.evaluate((testId) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+    const button = [...(root?.querySelectorAll("button") || [])].find((b) =>
+      b.textContent.includes("পার্টস যোগ করুন")
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  }, editorTestId);
+  if (!added) throw new Error(`Cannot add a part in ${editorTestId}`);
+  await page.waitForSelector(`[data-testid="${editorTestId}-row-0"]`, {
+    timeout: 5000,
+  });
+  const setField = async (suffix, value) => {
+    const id = await page.$eval(
+      `[data-testid="${editorTestId}-row-0"] input[data-field$=":${suffix}"]`,
+      (el) => el.id
+    );
+    await typeInto(page, id, value);
+  };
+  await setField("name", name);
+  await setField("price", price);
+  await setField("supplier", supplier);
+  await page.keyboard.press("Escape");
+}
 
 async function addRoster(page) {
   const roster = (await api(page, "/api/technicians")).body;
@@ -66,7 +98,63 @@ async function dayServices(page) {
 }
 
 async function closeDialog(page) {
-  await page.keyboard.press("Escape");
+  // A dues-list receipt opens on top of the dues dialog, so one Escape only
+  // dismisses the topmost Radix layer. Peel every layer off, using a trusted
+  // Close click (then the React handler) if Escape is swallowed by an input.
+  for (
+    let attempt = 0;
+    attempt < 5 && (await page.$('[role="dialog"]'));
+    attempt += 1
+  ) {
+    const before = await page.evaluate(
+      () => document.querySelectorAll('[role="dialog"]').length
+    );
+    await page.keyboard.press("Escape");
+    const reduced = await page
+      .waitForFunction(
+        (count) => document.querySelectorAll('[role="dialog"]').length < count,
+        { polling: 100, timeout: 2000 },
+        before
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (reduced) continue;
+    const marked = await page.evaluate(() => {
+      const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+      const top = dialogs[dialogs.length - 1];
+      const x = top
+        ? [...top.querySelectorAll("button")].find(
+            (b) => b.textContent.trim() === "Close"
+          )
+        : null;
+      if (!x) return false;
+      x.setAttribute("data-testid", "dialog-close-probe");
+      return true;
+    });
+    if (marked) {
+      await page.click('[data-testid="dialog-close-probe"]').catch(() => {});
+    } else {
+      await page.evaluate(() => {
+        const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+        const top = dialogs[dialogs.length - 1];
+        const x = top
+          ? [...top.querySelectorAll("button")].find(
+              (b) => b.textContent.trim() === "Close"
+            )
+          : null;
+        const key = x && Object.keys(x).find((k) => k.startsWith("__reactProps"));
+        const handler = key ? x[key]?.onClick : null;
+        if (typeof handler === "function") {
+          handler({
+            preventDefault() {},
+            stopPropagation() {},
+            defaultPrevented: false,
+          });
+        }
+      });
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
   await page.waitForFunction(
     () => !document.querySelector('[role="dialog"]'),
     { polling: 100, timeout: 8000 }
@@ -118,7 +206,7 @@ function visitCards(page, customer) {
   const errors = trackErrors(page);
   await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   await addRoster(page);
@@ -344,7 +432,7 @@ function visitCards(page, customer) {
   // ---- F5: UI multi-device entry (primary + one extra device) ----
   await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
   await page.waitForFunction(
-    () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+    () => !!document.querySelector('[data-testid="daily-services"]'),
     { polling: 500, timeout: 30000 }
   );
   // Wait for the fetched roster to fill the form's technician select.
@@ -352,12 +440,18 @@ function visitCards(page, customer) {
     () => document.querySelector("#svc-tech")?.textContent?.includes("NURUL"),
     { polling: 200, timeout: 15000 }
   );
-  // Each device card owns a date input, defaulted to the selected entry day.
+  // Delivery is optional and starts blank; the quick chips live in the
+  // collapsed "আরও তথ্য" section.
+  await openSection(page, "form-more");
   const formDefaults = await page.evaluate(() => ({
     device1: document.querySelector("#svc-delivery-date")?.value || "",
-    inDeviceCard: !!document.querySelector('[data-testid="device-delivery-0"]'),
-    insideDeviceCard: !!document.querySelector(
-      '[data-testid="device-1"] #svc-delivery-date'
+    inMoreSection: !!document.querySelector(
+      '[data-testid="form-more"] [data-testid="device-delivery-0"]'
+    ),
+    chips: ["আজ", "কাল", "৩ দিন", "৭ দিন"].every((label) =>
+      document
+        .querySelector('[data-testid="form-more"]')
+        ?.textContent?.includes(label)
     ),
   }));
   await typeInto(page, "svc-name", UI_GROUP);
@@ -381,10 +475,14 @@ function visitCards(page, customer) {
   await typeInto(page, "svc-device-1-problem", "দ্বিতীয় ডিভাইস");
   await typeInto(page, "svc-device-1-bill", "800");
   await typeInto(page, "svc-device-1-delivery-date", shiftDay(TODAY, 6));
-  // Money, status and shop cost are entered once for the whole visit.
+  // Money and status are entered once for the whole visit; the internal
+  // shop cost now lives in device 1's itemized part line.
   await typeInto(page, "svc-adv", "500");
-  await typeInto(page, "svc-expense", "*J#");
-  await typeInto(page, "svc-parts-shop", "Group Parts");
+  await fillFirstPart(page, "svc-parts", {
+    name: "Group Display",
+    price: "*J#",
+    supplier: "Group Parts",
+  });
   const uiMoney = await page.evaluate(() => ({
     total: document.querySelector("#svc-total-bill")?.value,
     due: document.querySelector("#svc-due")?.value,
@@ -404,6 +502,10 @@ function visitCards(page, customer) {
   const uiRows = (await dayServices(page)).filter(
     (s) => s.customerName === UI_GROUP
   );
+  const uiDetail = uiRows[0]
+    ? (await api(page, `/api/services/${uiRows[0].id}`)).body
+    : null;
+  const uiPart = uiDetail?.parts?.[0];
   check(
     "F5",
     "UI form saves numbered devices with one shared advance and auto total",
@@ -419,10 +521,11 @@ function visitCards(page, customer) {
       uiRows[0].due === 1000 &&
       uiRows[1].due === 800 &&
       uiRows.reduce((sum, r) => sum + r.due, 0) === 1800 &&
-      uiRows[0].expenseAmount === 1500 &&
-      uiRows[1].expenseAmount === 0 &&
-      uiRows[0].partsShop === "Group Parts" &&
-      uiRows[1].partsShop === null &&
+      uiRows[0].partsCost === 1500 &&
+      uiRows[1].partsCost === null &&
+      uiPart?.priceCode === "*J#" &&
+      uiPart?.unitCost === 1500 &&
+      uiPart?.supplier === "Group Parts" &&
       uiMoney.total === "2300" &&
       uiMoney.due === "1,800" &&
       !uiMoney.perDeviceMoney,
@@ -432,8 +535,8 @@ function visitCards(page, customer) {
       bills: uiRows.map((r) => r.totalBill),
       advances: uiRows.map((r) => r.advance),
       dues: uiRows.map((r) => r.due),
-      expenses: uiRows.map((r) => r.expenseAmount),
-      shops: uiRows.map((r) => r.partsShop),
+      partsCosts: uiRows.map((r) => r.partsCost),
+      part: uiPart,
       group: uiRows[0]?.groupId === uiRows[1]?.groupId,
       uiMoney,
     })
@@ -441,11 +544,11 @@ function visitCards(page, customer) {
 
   check(
     "F15",
-    "each device has its own delivery date, defaulted to the entry day",
-    formDefaults.device1 === TODAY &&
-      formDefaults.inDeviceCard &&
-      formDefaults.insideDeviceCard &&
-      secondDeviceDefault === TODAY &&
+    "delivery starts blank; each device keeps its own chosen day",
+    formDefaults.device1 === "" &&
+      formDefaults.inMoreSection &&
+      formDefaults.chips &&
+      secondDeviceDefault === "" &&
       isoDay(uiRows[0].deliveryDate) === shiftDay(TODAY, 4) &&
       isoDay(uiRows[1].deliveryDate) === shiftDay(TODAY, 6),
     JSON.stringify({
@@ -588,7 +691,7 @@ function visitCards(page, customer) {
       uiVisit[0].deviceLines === 2 &&
       uiVisit[0].text.includes("UI Primary") &&
       uiVisit[0].text.includes("UI Secondary") &&
-      uiVisit[0].text.includes("২টি ডিভাইস"),
+      uiVisit[0].text.includes("2টি ডিভাইস"),
     JSON.stringify({
       rows: uiVisit.length,
       devices: uiVisit[0]?.devices,
@@ -648,8 +751,8 @@ function visitCards(page, customer) {
     "one visit ID, each device numbered, total strip organised",
     /^#\d+$/.test(visitLabels.id) &&
       visitLabels.labels.length === 2 &&
-      visitLabels.labels[0].includes("ডিভাইস ১") &&
-      visitLabels.labels[1].includes("ডিভাইস ২") &&
+      visitLabels.labels[0].includes("ডিভাইস 1") &&
+      visitLabels.labels[1].includes("ডিভাইস 2") &&
       visitLabels.strip.includes("ভিজিটের মোট") &&
       !visitLabels.oldHint,
     JSON.stringify(visitLabels)
@@ -809,8 +912,8 @@ function visitCards(page, customer) {
       /^#\d+$/.test(mobileVisit[0].id || "") &&
       mobileVisit[0].text.includes("UI Primary") &&
       mobileVisit[0].text.includes("UI Secondary") &&
-      mobileVisit[0].text.includes("ডিভাইস ১") &&
-      mobileVisit[0].text.includes("ডিভাইস ২") &&
+      mobileVisit[0].text.includes("ডিভাইস 1") &&
+      mobileVisit[0].text.includes("ডিভাইস 2") &&
       mobileVisit[0].text.includes("ভিজিটের মোট"),
     JSON.stringify({
       cards: mobileVisit.length,
@@ -877,15 +980,14 @@ function visitCards(page, customer) {
       mixedRows[0].deviceLines === 3 &&
       mixedRows[0].text.includes("Mixed A") &&
       mixedRows[0].text.includes("Mixed C") &&
-      hint.includes("২টি ডিভাইস মিলেছে"),
+      hint.includes("2টি ডিভাইস মিলেছে"),
     JSON.stringify({ chip, rows: mixedRows.length, lines: mixedRows[0]?.deviceLines, hint })
   );
 
   // ---- F19: the dues list shows one row per visit with ONE slip ----
-  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForSelector('[data-testid="daily-services"]', {
-    timeout: 30000,
-  });
+  // Dues moved to the Dashboard; the Service desk stays front-desk only.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector('[data-testid="open-dues"]', { timeout: 15000 });
   await page.evaluate(() => {
     const button = document.querySelector('[data-testid="open-dues"]');
     if (!button) throw new Error("dues button missing");
@@ -965,7 +1067,10 @@ function visitCards(page, customer) {
   );
 
   // ---- F7: returned-row Edit stays available; ledger fields are locked ----
-  await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(`${BASE}/service?date=${TODAY}`, {
+    waitUntil: "networkidle0",
+    timeout: 60000,
+  });
   await waitDailyRow(page, RETURN_JOB, true);
   await clickDailyRowButton(
     page,

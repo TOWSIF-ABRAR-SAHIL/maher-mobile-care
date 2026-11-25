@@ -141,6 +141,80 @@ async function main() {
       String(badStatus.status)
     );
 
+    // ---- Phase 1: optional solution + condition (shared validation) ----
+    // Fully paid on purpose: an unpaid row here would land in the all-dates
+    // dues aggregate asserted by D2/D3 further down.
+    const phaseName = unique("PhaseOne");
+    const phaseCreate = await api("/api/services", json({
+      ...overpayBody,
+      customerName: phaseName,
+      advance: 5000,
+      solution: "ডিসপ্লে ঠিক করা হয়েছে",
+      condition: "ডেটার দায় দোকান নেবে না",
+    }));
+    check(
+      "P1",
+      "create accepts optional solution + condition",
+      phaseCreate.ok &&
+        phaseCreate.body.solution === "ডিসপ্লে ঠিক করা হয়েছে" &&
+        phaseCreate.body.condition === "ডেটার দায় দোকান নেবে না",
+      JSON.stringify({
+        status: phaseCreate.status,
+        solution: phaseCreate.body.solution,
+        condition: phaseCreate.body.condition,
+      })
+    );
+    if (phaseCreate.ok) createdIds.push(phaseCreate.body.id);
+
+    const tooLong = "ক".repeat(501);
+    const longSolutionUpdate = await api(
+      `/api/services/${phaseCreate.body.id}`,
+      put({ solution: tooLong })
+    );
+    const longConditionUpdate = await api(
+      `/api/services/${phaseCreate.body.id}`,
+      put({ condition: tooLong })
+    );
+    const longCreate = await api(
+      "/api/services",
+      json({
+        ...overpayBody,
+        customerName: unique("PhaseLong"),
+        advance: 0,
+        solution: tooLong,
+      })
+    );
+    check(
+      "P2",
+      "501-char solution/condition rejected on create and update",
+      longSolutionUpdate.status === 400 &&
+        longConditionUpdate.status === 400 &&
+        longCreate.status === 400 &&
+        String(longSolutionUpdate.body.error || "").includes("বেশি"),
+      JSON.stringify({
+        updateSolution: longSolutionUpdate.status,
+        updateCondition: longConditionUpdate.status,
+        create: longCreate.status,
+      })
+    );
+
+    const phaseClear = await api(
+      `/api/services/${phaseCreate.body.id}`,
+      put({ solution: "", condition: "" })
+    );
+    check(
+      "P3",
+      "blank edit clears solution + condition to NULL",
+      phaseClear.ok &&
+        phaseClear.body.solution === null &&
+        phaseClear.body.condition === null,
+      JSON.stringify({
+        status: phaseClear.status,
+        solution: phaseClear.body.solution,
+        condition: phaseClear.body.condition,
+      })
+    );
+
     const dueName = unique("ApiDue");
     const dueRow = await api("/api/services", json({
       customerName: dueName,
@@ -257,6 +331,7 @@ async function main() {
     const expectedSheets = [
       "সারসংক্ষেপ",
       "সার্ভিস খাতা",
+      "সার্ভিস পার্টস",
       "সম্পূর্ণ ডেটা (অডিট)",
     ];
     check(
@@ -413,6 +488,35 @@ async function main() {
       crafted.close();
     }
 
+    // Phase 2 history that MUST NOT survive a pre-Phase-2 snapshot: without
+    // the snapshot's own Payment/Purchase rows, allocations could point at
+    // service ids that no longer exist.
+    const phase2Name = unique("RestorePay");
+    const phase2Phone = "01000000991";
+    const phase2Row = await api("/api/services", json({
+      customerName: phase2Name,
+      phone: phase2Phone,
+      model: "M",
+      technician: "NURUL",
+      problem: "P",
+      totalBill: 500,
+      advance: 0,
+      status: "Pending",
+      shopExpense: "",
+      serviceDate: TODAY,
+    }));
+    const phase2Pay = await api("/api/payments", json({
+      phone: phase2Phone,
+      customerName: phase2Name,
+      amount: 100,
+      method: "CASH",
+    }));
+    const phase2Purchase = await api("/api/purchases", json({
+      supplier: unique("RestoreSupplier"),
+      paid: 0,
+      items: [{ name: "restore-cable", quantity: 1, unitCost: 50 }],
+    }));
+
     const restored = await api("/api/backup/restore", json({ file: craftedName }));
     const afterRestore = await api(`/api/services?date=${TODAY}`);
     const highId = afterRestore.body.services.find((s) => s.id === HIGH_ID);
@@ -429,6 +533,30 @@ async function main() {
         highId.damageLoss === 0 &&
         highId.damageNote === null,
       `${restored.status} ${JSON.stringify(restored.body.error || "")}`
+    );
+
+    // ---- R2b: a pre-Phase-2 snapshot also clears payment/purchase history ----
+    const phase2PayAfter = await api(`/api/payments?phone=${phase2Phone}&name=${encodeURIComponent(phase2Name)}`);
+    const purchasesAfter = await api("/api/purchases");
+    check(
+      "R2b",
+      "old snapshot clears Phase 2 history and warns instead of dangling",
+      phase2Row.ok &&
+        phase2Pay.status === 201 &&
+        phase2Purchase.status === 201 &&
+        restored.ok &&
+        String(restored.body.warning || "").includes("পেমেন্ট") &&
+        (phase2PayAfter.body.payments || []).length === 0 &&
+        (phase2PayAfter.body.slips || []).length === 0 &&
+        (purchasesAfter.body.purchases || []).length === 0,
+      JSON.stringify({
+        create: phase2Row.status,
+        pay: phase2Pay.status,
+        buy: phase2Purchase.status,
+        warning: restored.body.warning || null,
+        payments: (phase2PayAfter.body.payments || []).length,
+        purchases: (purchasesAfter.body.purchases || []).length,
+      })
     );
 
     const nextCreate = await api("/api/services", json({
@@ -627,14 +755,19 @@ async function main() {
     );
 
     // ---- TC: v1.1 dynamic technicians -----------------------------------
-    // The technician list is database-backed now, so the seeded four must be
-    // present and the rules (unique, normalized, last-active, cascade) must
-    // hold at the API level.
-    const techList = await api("/api/technicians");
+    // Fresh installs no longer carry demo staff; this suite creates the four
+    // names it needs through the API, then checks the rules (unique,
+    // normalized, last-active, cascade) at the API level.
     const seededNames = ["NURUL", "RONI", "ASRAFUL", "NAYEM"];
+    for (const name of seededNames) {
+      if (!(await api("/api/technicians")).body.technicians?.some((t) => t.name === name)) {
+        await api("/api/technicians", json({ name }));
+      }
+    }
+    const techList = await api("/api/technicians");
     check(
       "TC1",
-      "seeded technicians are active after migration",
+      "technicians created through the API are active",
       techList.ok &&
         seededNames.every((n) =>
           techList.body.technicians.some((t) => t.name === n && t.isActive)

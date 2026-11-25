@@ -33,11 +33,29 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   try {
     await page.setViewport({ width: 1366, height: 900 });
     const errors = trackErrors(page);
+    const initialDateRequests = [];
+    page.on("request", (request) => {
+      const url = request.url();
+      if (
+        url.includes("/api/services?date=") ||
+        url.includes("/api/stats?date=")
+      ) {
+        initialDateRequests.push(url);
+      }
+    });
 
     await page.goto(`${BASE}/service`, { waitUntil: "networkidle0", timeout: 30000 });
     await page.waitForFunction(
-      () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+      () => !!document.querySelector('[data-testid="daily-services"]'),
       { timeout: 15000 }
+    );
+    check(
+      "DN0",
+      initialDateRequests.length > 0 &&
+        initialDateRequests.every((url) => url.includes(`date=${TODAY}`)),
+      `service page defaults to today's Dhaka date (${TODAY}) — ${JSON.stringify(
+        initialDateRequests.slice(0, 4)
+      )}`
     );
 
     // One row on the current day so the list has something to keep visible.
@@ -65,7 +83,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     await page.reload({ waitUntil: "networkidle0", timeout: 30000 });
     await page.waitForFunction(
-      () => document.body.textContent.includes("টেকনিশিয়ান অনুযায়ী"),
+      () => !!document.querySelector('[data-testid="daily-services"]'),
       { timeout: 15000 }
     );
     await page.waitForFunction(
@@ -122,9 +140,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         listSkeletons: section
           ? section.querySelectorAll('[class*="animate-pulse"]').length
           : -1,
+        // The old daily-summary cards are gone; a date move must not flash a
+        // skeleton anywhere on the front-desk page.
         statsSkeletons: document.querySelectorAll(
-          '[data-testid="today-stats"] [class*="animate-pulse"], ' +
-            '[data-testid="technician-stats"] [class*="animate-pulse"]'
+          'main [class*="animate-pulse"]'
         ).length,
         rows: rows.length,
         scrollY: Math.round(window.scrollY),
@@ -147,7 +166,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await serviceResponse;
     await page.waitForFunction(
       () =>
-        document.body.textContent.includes("কোন সার্ভিস এন্ট্রি নেই"),
+        document.body.textContent.includes(
+          "কোন সার্ভিস এন্ট্রি পাওয়া যায়নি — বাম পাশের ফর্ম থেকে নতুন সার্ভিস এন্ট্রি করুন।"
+        ),
       { timeout: 10000 }
     );
     check("next day data replaces the old list", true);

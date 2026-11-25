@@ -226,4 +226,49 @@ check("PK-10", "the build preserves before deleting and restores on the success 
   );
 });
 
+// --- desktop mode: AppData is the only shop-data root -------------------------
+
+check("PK-11", "desktop builds keep no local folders at all", () => {
+  const { keepDirsFor, DESKTOP_KEEP_DIRS } = require("./portable-keep.mjs");
+  assert.deepStrictEqual(keepDirsFor(), [...KEEP_DIRS]);
+  assert.deepStrictEqual(keepDirsFor({ desktop: true }), [...DESKTOP_KEEP_DIRS]);
+  assert.deepStrictEqual(DESKTOP_KEEP_DIRS, []);
+});
+
+check("PK-12", "an old local package cannot carry its shop.db into a desktop build", () => {
+  const root = makePackage();
+  try {
+    const hold = preservePackageData(root, os.tmpdir(), { desktop: true });
+    assert.strictEqual(hold, null, "desktop mode must not preserve local data/logs");
+    assert.ok(
+      fs.readFileSync(path.join(root, "data", "shop.db")).equals(DB_BYTES),
+      "a local database must be left where it is, never copied into the installer"
+    );
+  } finally {
+    clean(root);
+  }
+});
+
+check("PK-13", "desktop restore cannot overwrite an existing AppData shop.db", () => {
+  const source = makePackage();
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "pk-appdata-"));
+  const hold = preservePackageData(source);
+  const appDataDb = Buffer.from("SQLite format 3\0real AppData records");
+  try {
+    fs.mkdirSync(path.join(target, "data"), { recursive: true });
+    fs.writeFileSync(path.join(target, "data", "shop.db"), appDataDb);
+    const outcome = restorePackageData(target, hold, { desktop: true });
+    assert.deepStrictEqual(outcome, { restored: [], skipped: [] });
+    assert.ok(
+      fs.readFileSync(path.join(target, "data", "shop.db")).equals(appDataDb),
+      "the AppData database is authoritative and must never be replaced by package data"
+    );
+    assert.ok(!fs.existsSync(path.join(target, "logs")), "desktop restore must not create local logs");
+  } finally {
+    if (hold) releaseHold(hold);
+    clean(source);
+    clean(target);
+  }
+});
+
 for (const line of results) console.log(line);

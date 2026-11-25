@@ -138,6 +138,22 @@ async function api(page, path, options = {}) {
   }, { p: path, init: options });
 }
 
+/** Open a collapsed <details> section by its data-testid (idempotent). */
+async function openSection(page, testId) {
+  const result = await page.evaluate((id) => {
+    const section = document.querySelector(`[data-testid="${id}"]`);
+    if (!(section instanceof HTMLDetailsElement)) return "missing";
+    if (section.open) return "open";
+    const summary = section.querySelector("summary");
+    if (!summary) return "no-summary";
+    summary.click();
+    return "clicked";
+  }, testId);
+  if (result === "missing" || result === "no-summary") {
+    throw new Error(`Cannot open form section: ${testId} (${result})`);
+  }
+}
+
 async function typeInto(page, id, value) {
   await page.$eval(
     `#${id}`,
@@ -228,7 +244,12 @@ async function clickDailyStatus(page, name) {
           card.textContent.includes(rowName)
         );
       if (!row) throw new Error("daily row missing: " + rowName);
-      const button = row.querySelector("td button, button");
+      // The model cell now carries a solution quick-edit button before the
+      // status cell, so "first button" is no longer the status badge. Target
+      // it by its stable aria-label instead.
+      const button =
+        row.querySelector('button[aria-label^="অবস্থা বদলান"]') ||
+        row.querySelector("td button, button");
       if (!button) throw new Error("status button missing for " + rowName);
       button.click();
     },
@@ -268,6 +289,7 @@ module.exports = {
   launchBrowser,
   monthContaining,
   monthLabel,
+  openSection,
   requireTestEnv,
   resolveChromePath,
   resolveTestBase,

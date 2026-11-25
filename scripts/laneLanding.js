@@ -1,6 +1,6 @@
-/* Landing + Service utilities: `/` redirects to the Service desk, the navbar
- * has exactly two destinations, and refresh / backup / restore still live on
- * the Service page.
+/* Landing + Dashboard: `/` opens the Dashboard, the navbar has four
+ * destinations, and backup / restore / technician management live there.
+ * Service stays a pure front desk with a Dashboard link.
  *
  * Run only through `npm test` (scripts/run-tests.js), which supplies a fresh
  * throwaway database, backup folder and server.
@@ -20,7 +20,6 @@ const BASE = resolveTestBase();
 const TODAY = dhakaToday();
 const YESTERDAY = shiftDay(TODAY, -1);
 const LONG_AGO = shiftDay(TODAY, -2);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const GROUP_NAME = uniqueName("LandGroup");
 const PENDING_NAME = uniqueName("LandPending");
@@ -53,16 +52,56 @@ let browser = null;
     });
 
   const closeDialog = async () => {
-    const open = await page.$('[role="dialog"]');
-    if (!open) return;
-    await page.evaluate(() => {
+    if (!(await page.$('[role="dialog"]'))) return;
+    // Radix's Close button ignores a synthetic `.click()` from page.evaluate.
+    // Use a real mouse click on the X, then Escape, then the React handler.
+    const marked = await page.evaluate(() => {
       const dlg = document.querySelector('[role="dialog"]');
-      const close = dlg
+      const x = dlg
         ? [...dlg.querySelectorAll("button")].find(
             (b) => b.textContent.trim() === "Close"
           )
         : null;
-      close?.click();
+      if (!x) return false;
+      x.setAttribute("data-testid", "dialog-close-probe");
+      return true;
+    });
+    if (marked) {
+      await page.click('[data-testid="dialog-close-probe"]').catch(() => {});
+      const gone = await page
+        .waitForFunction(() => !document.querySelector('[role="dialog"]'), {
+          polling: 100,
+          timeout: 2500,
+        })
+        .then(() => true)
+        .catch(() => false);
+      if (gone) return;
+    }
+    await page.keyboard.press("Escape");
+    const escaped = await page
+      .waitForFunction(() => !document.querySelector('[role="dialog"]'), {
+        polling: 100,
+        timeout: 2500,
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (escaped) return;
+    await page.evaluate(() => {
+      const dlg = document.querySelector('[role="dialog"]');
+      const x = dlg
+        ? [...dlg.querySelectorAll("button")].find(
+            (b) => b.textContent.trim() === "Close"
+          )
+        : null;
+      const key = x && Object.keys(x).find((k) => k.startsWith("__reactProps"));
+      const handler = key ? x[key]?.onClick : null;
+      if (typeof handler === "function") {
+        handler({
+          preventDefault() {},
+          stopPropagation() {},
+          defaultPrevented: false,
+        });
+      }
     });
     await page.waitForFunction(() => !document.querySelector('[role="dialog"]'), {
       polling: 100,
@@ -159,23 +198,11 @@ let browser = null;
     throw new Error("overdue seed failed: " + JSON.stringify(old.body));
   }
 
-  // ---------- L0: `/` lands on the Service desk ----------
+  // ---------- L0: `/` lands on the Dashboard ----------
   await page.goto(BASE, { waitUntil: "networkidle0", timeout: 60000 });
-  await page.waitForFunction(
-    (name) =>
-      document
-        .querySelector('[data-testid="daily-services"]')
-        ?.textContent?.includes(name),
-    { polling: 200, timeout: 30000 },
-    PENDING_NAME
-  );
-  await page.waitForFunction(
-    (day) =>
-      document.querySelector('[data-testid="daily-services"]')?.dataset.date ===
-      day,
-    { polling: 200, timeout: 10000 },
-    TODAY
-  );
+  await page.waitForSelector('[data-testid="dashboard-title"]', {
+    timeout: 15000,
+  });
 
   const landing = await page.evaluate(() => {
     const header = document.querySelector('[data-testid="app-header"]');
@@ -194,38 +221,32 @@ let browser = null;
       brandHref: brand?.getAttribute("href") ?? null,
       brandLabel: brand?.getAttribute("aria-label") ?? "",
       rootLinks: document.querySelectorAll('a[href="/"]').length,
-      stageLine:
-        document.body.textContent.includes("আজকের ধাপ") ||
-        !!document.querySelector('[data-testid="service-stage-line"]'),
-      hasUtilities: !!document.querySelector(
-        '[data-testid="service-utilities"]'
-      ),
+      hasDashboard: !!document.querySelector('[data-testid="dashboard-overview"]'),
     };
   });
   console.log("reached L0", JSON.stringify(landing));
   check(
     "L0",
-    "/ redirects to the Service desk with no query loss",
-    landing.path === "/service" &&
+    "/ opens the Dashboard with no query loss",
+    landing.path === "/dashboard" &&
       landing.search === "" &&
-      landing.h1 === "" &&
-      !landing.stageLine &&
-      landing.hasUtilities,
+      landing.h1 === "ড্যাশবোর্ড" &&
+      landing.hasDashboard,
     JSON.stringify(landing)
   );
   check(
     "L1",
-    "navbar has exactly Service + Product, no Home",
-    landing.navLinks.join(",") === "সার্ভিস,প্রোডাক্ট" &&
-      landing.navItems.join(",") === "service,products" &&
+    "navbar has Dashboard + Service + Product + Parts, no root link",
+    landing.navLinks.join(",") === "ড্যাশবোর্ড,সার্ভিস,প্রোডাক্ট,পার্টস" &&
+      landing.navItems.join(",") === "dashboard,service,products,parts" &&
       landing.rootLinks === 0,
     JSON.stringify({ links: landing.navLinks, items: landing.navItems })
   );
   check(
     "L2",
-    "brand points straight at /service",
-    landing.brandHref === "/service" &&
-      landing.brandLabel.includes("সার্ভিস"),
+    "brand points straight at /dashboard",
+    landing.brandHref === "/dashboard" &&
+      landing.brandLabel.includes("ড্যাশবোর্ড"),
     JSON.stringify({ href: landing.brandHref, label: landing.brandLabel })
   );
 
@@ -275,36 +296,42 @@ let browser = null;
     })
   );
 
-  // Back to today's full desk for the utility checks.
-  await page.goto(`${BASE}/service?date=${TODAY}`, {
+  // ---------- Dashboard: overview, backup, restore, technician manager ----------
+  await page.goto(`${BASE}/dashboard`, {
     waitUntil: "networkidle0",
     timeout: 60000,
   });
-  await page.waitForSelector('[data-testid="service-utilities"]', {
+  await page.waitForSelector('[data-testid="dashboard-overview"]', {
     timeout: 15000,
   });
-
-  // ---------- L4: refresh (behind the data menu) hits the day endpoint ----------
-  await page.click('[data-testid="service-data-menu"]');
-  await page.waitForSelector('[data-testid="service-refresh"]', {
-    timeout: 15000,
-  });
-  const refreshed = await Promise.all([
-    page.waitForResponse(
-      (res) =>
-        res.url().includes(`/api/services?date=${TODAY}`) && res.status() === 200,
-      { timeout: 20000 }
-    ),
-    page.click('[data-testid="service-refresh"]'),
-  ]).then(([res]) => res.ok());
   await page.waitForFunction(
-    () => !document.querySelector('[data-testid="service-data-dialog"]'),
-    { polling: 100, timeout: 10000 }
+    () =>
+      !document
+        .querySelector('[data-testid="dashboard-overview"]')
+        ?.textContent?.includes("লোড হচ্ছে"),
+    { polling: 200, timeout: 20000 }
   );
-  await sleep(300);
-  check("L4", "service refresh reloads the day", refreshed);
 
-  // ---------- L5: backup snapshot + Excel download + stamp ----------
+  // ---------- L4: overview cards are backed by the live stats API ----------
+  const stats = await get("/api/stats");
+  const overview = await page.evaluate(() => ({
+    today: document.querySelector('[data-testid="dashboard-today"]')?.textContent ?? "",
+    finance:
+      document.querySelector('[data-testid="dashboard-finance"]')?.textContent ?? "",
+    lowStock:
+      document.querySelector('[data-testid="dashboard-low-stock"]')?.textContent ?? "",
+  }));
+  const statsCount = String(stats.today?.count ?? 0);
+  check(
+    "L4",
+    "dashboard overview reflects the live stats/API data",
+    overview.today.includes(statsCount) &&
+      overview.finance.includes("কাস্টমার বাকি") &&
+      overview.lowStock.length > 0,
+    JSON.stringify({ statsCount, overview })
+  );
+
+  // ---------- L5: the export picker downloads an Excel copy ----------
   await page.evaluate(() => {
     window.__backupDownload = null;
     window.__backupFetch = null;
@@ -323,49 +350,54 @@ let browser = null;
       return original.call(this);
     };
   });
-  await page.click('[data-testid="service-backup"]');
+  await page.click('[data-testid="dashboard-backup"]');
+  await page.waitForSelector('[data-testid="export-excel"]', {
+    visible: true,
+    timeout: 15000,
+  });
+  await page.click('[data-testid="export-excel"]');
   await page.waitForFunction(
     () => typeof window.__backupDownload === "string",
-    {
-      polling: 200,
-      timeout: 20000,
-    }
+    { polling: 200, timeout: 20000 }
   );
   await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="service-utilities"]')
-        ?.textContent?.includes("সর্বশেষ ব্যাকআপ"),
+    () => {
+      const stamp = document
+        .querySelector('[data-testid="dashboard-last-backup"]')
+        ?.textContent?.trim();
+      return !!stamp && stamp !== "এখনো নেই";
+    },
     { polling: 300, timeout: 20000 }
   );
-  const backup = await page.evaluate(() => {
-    const section = document.querySelector('[data-testid="service-utilities"]');
-    return {
-      download: window.__backupDownload,
-      fetch: window.__backupFetch,
-      label: [...(section?.querySelectorAll("p") || [])].find((p) =>
-        p.textContent.includes("সর্বশেষ ব্যাকআপ")
-      )?.textContent,
-    };
-  });
+  // Radix keeps the dialog mounted for its 200ms exit animation. Wait for the
+  // overlay to unmount before clicking the next dashboard action, otherwise
+  // the click lands on the closing overlay instead of Restore.
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="export-excel"]'),
+    { polling: 100, timeout: 5000 }
+  );
+  const backup = await page.evaluate(() => ({
+    download: window.__backupDownload,
+    fetch: window.__backupFetch,
+    stamp: document
+      .querySelector('[data-testid="dashboard-last-backup"]')
+      ?.textContent?.trim(),
+  }));
   console.log("reached L5", JSON.stringify(backup));
   check(
     "L5",
-    "backup stamp + Excel workbook download update in place",
+    "dashboard backup picker downloads Excel and updates Last Backup",
     typeof backup.download === "string" &&
-      backup.download.startsWith("maher-backup-") &&
+      backup.download.startsWith("mss-backup-") &&
       backup.download.endsWith(".xlsx") &&
       typeof backup.fetch === "string" &&
-      !!backup.label,
+      !!backup.stamp &&
+      backup.stamp !== "এখনো নেই",
     JSON.stringify(backup)
   );
 
   // ---------- L6: restore still requires its confirmation click ----------
-  await page.click('[data-testid="service-data-menu"]');
-  await page.waitForSelector('[data-testid="service-restore"]', {
-    timeout: 15000,
-  });
-  await page.click('[data-testid="service-restore"]');
+  await page.click('[data-testid="dashboard-restore"]');
   await page.waitForFunction(
     () =>
       [...document.querySelectorAll('[role="dialog"]')].some((dlg) =>
@@ -378,10 +410,12 @@ let browser = null;
       const dlg = [...document.querySelectorAll('[role="dialog"]')].find((d) =>
         d.textContent?.includes("ব্যাকআপ থেকে ফিরিয়ে আনুন")
       );
-      return !!dlg &&
+      return (
+        !!dlg &&
         [...dlg.querySelectorAll("button")].some(
           (b) => b.textContent.trim() === "Restore"
-        );
+        )
+      );
     },
     { polling: 200, timeout: 15000 }
   );
@@ -409,42 +443,50 @@ let browser = null;
     )
   );
   await closeDialog();
-  check("L6", "restore opens from Service and asks for confirmation", armed);
+  check("L6", "restore opens from Dashboard and asks for confirmation", armed);
 
-  // ---------- L7: report / dues / technician dialogs still open ----------
-  const dialogs = {};
-  for (const [button, testid, key] of [
-    ["open-report", "report-dialog", "report"],
-    ["open-dues", "dues-dialog", "dues"],
-    ["open-technician-manager", "tech-manager", "tech"],
-  ]) {
-    await page.click(`[data-testid="${button}"]`);
-    await page.waitForSelector(`[data-testid="${testid}"]`, { timeout: 15000 });
-    dialogs[key] = await page.evaluate(
-      (selector) => !!document.querySelector(selector),
-      `[data-testid="${testid}"]`
-    );
-    await closeDialog();
-  }
-  check(
-    "L7",
-    "report, dues and technician manager stay on Service",
-    dialogs.report && dialogs.dues && dialogs.tech,
-    JSON.stringify(dialogs)
+  // ---------- L7: technician manager lives on Dashboard, not Service ----------
+  await page.click('[data-testid="dashboard-open-technician-manager"]');
+  await page.waitForSelector('[data-testid="tech-manager"]', { timeout: 15000 });
+  const tech = await page.evaluate(
+    () => !!document.querySelector('[data-testid="tech-manager"]')
   );
-
-  // ---------- L8: 390px still fits ----------
-  await page.setViewport({ width: 390, height: 844 });
+  await closeDialog();
   await page.goto(`${BASE}/service?date=${TODAY}`, {
     waitUntil: "networkidle0",
     timeout: 60000,
   });
-  await page.waitForSelector('[data-testid="service-utilities"]', {
+  await page.waitForSelector('[data-testid="daily-services"]', { timeout: 15000 });
+  const desk = await page.evaluate(() => ({
+    dashboardLink: !!document.querySelector('[data-testid="service-dashboard-link"]'),
+    removed: [
+      "open-report",
+      "open-dues",
+      "open-technician-manager",
+      "service-utilities",
+    ].filter((id) => !!document.querySelector(`[data-testid="${id}"]`)),
+  }));
+  check(
+    "L7",
+    "technician manager is on Dashboard; Service has no masthead buttons",
+    tech &&
+      !desk.dashboardLink &&
+      desk.removed.length === 0,
+    JSON.stringify({ tech, desk })
+  );
+
+  // ---------- L8: 390px still fits, with four tabs ----------
+  await page.setViewport({ width: 390, height: 844 });
+  await page.goto(`${BASE}/dashboard`, {
+    waitUntil: "networkidle0",
+    timeout: 60000,
+  });
+  await page.waitForSelector('[data-testid="dashboard-overview"]', {
     timeout: 15000,
   });
   const mobile = await page.evaluate(() => {
     const nav = document.querySelector('[data-testid="header-nav"]');
-    const utils = document.querySelector('[data-testid="service-utilities"]');
+    const overview = document.querySelector('[data-testid="dashboard-overview"]');
     const rect = (el) => {
       if (!el) return null;
       const r = el.getBoundingClientRect();
@@ -457,22 +499,18 @@ let browser = null;
       nav: [...(nav?.querySelectorAll("a") || [])].map((a) =>
         a.textContent.trim()
       ),
-      stageLine:
-        document.body.textContent.includes("আজকের ধাপ") ||
-        !!document.querySelector('[data-testid="service-stage-line"]'),
-      utilities: rect(utils),
+      overview: rect(overview),
     };
   });
   console.log("reached L8", JSON.stringify(mobile));
   check(
     "L8",
-    "390px: two tabs, no stage line, utilities fit the viewport",
+    "390px: four tabs, no overflow, dashboard overview fits the viewport",
     !mobile.overflow &&
-      mobile.nav.join(",") === "সার্ভিস,প্রোডাক্ট" &&
-      !mobile.stageLine &&
-      !!mobile.utilities &&
-      mobile.utilities.left >= 0 &&
-      mobile.utilities.right <= 391,
+      mobile.nav.join(",") === "ড্যাশবোর্ড,সার্ভিস,প্রোডাক্ট,পার্টস" &&
+      !!mobile.overview &&
+      mobile.overview.left >= 0 &&
+      mobile.overview.right <= 391,
     JSON.stringify(mobile)
   );
 

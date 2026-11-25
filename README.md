@@ -1,4 +1,4 @@
-# MAHER MOBILE CARE — দৈনিক সার্ভিস ট্র্যাকার
+# MSS (Mobile Service System) — দৈনিক সার্ভিস ট্র্যাকার
 
 Single-page, **100% offline** service tracker for a mobile repair shop.
 Bengali UI, local SQLite database, no cloud, no login, no internet needed
@@ -8,6 +8,40 @@ Bengali UI, local SQLite database, no cloud, no login, no internet needed
 http://localhost:3000   →   /service — the service desk (the landing page)
 http://localhost:3000/products → the stock page (প্রোডাক্ট ও ইনভেন্টরি)
 ```
+
+## Unreleased / NOTUN (v1.2.0-er por) — MSS white-label
+
+- **Platform brand = MSS.** Installer (`MSS-Setup-1.2.0.exe`), app/taskbar/window
+  title (`MSS (Mobile Service System)`), Electron app name and system alerts.
+  `PLATFORM_BRAND` in `lib/shop.ts` owns these strings; vendor support stays on
+  `01533315357` / `https://wa.me/8801533315357`.
+- **Tenant identity = `ShopSettings` only.** Navbar, footer, receipt, WhatsApp
+  text, licence hub, reports and backup workbooks read the live shop profile.
+  Empty profile falls back to setup hints (`MSS - শপ প্রোফাইল সেটআপ করুন`,
+  `আপনার দোকানের নাম`) or the MSS platform brand — never an old shop name.
+- **Clean-slate first launch.** Migrations seed no services, debts, products,
+  categories, technicians or shop profile. Dashboard counters start at `৳0`/`0`
+  and the onboarding banner is visible. `scripts/clean-slate-fresh-install.js`
+  pins the contract on a throwaway database.
+- The private wire identifier `maher-mobile-care` and `MAHER_*` environment
+  names are retained for older launchers/tests; they are never rendered.
+- **Assisted installer.** `MSS-Setup-<version>.exe` is no longer one-click: the
+  wizard offers the install path plus a second page for the shop data folder,
+  defaulting to `D:\MSS-Data` on a non-C drive. Drive C: is always rejected
+  (empty/uncreatable folders are rejected too), and the chosen root is written beside `MSS.exe`
+  and into the registry for the next update. `scripts/mss-installer-contract.js`
+  pins the wizard, the no-C rule and the legacy-data move on throwaway folders.
+- **In-place updates.** Running a newer `MSS-Setup-<version>.exe` on a PC that
+  already has MSS first shows an **Update / Cancel** dialog. Cancel quits
+  without touching data; Update keeps the existing appId, install path and data
+  root. electron-builder 26 has no `deleteAppDataOnUpdate` setting: an update
+  never touches the chosen data root by design. The schema-valid
+  `nsis.deleteAppDataOnUninstall` is pinned `false`. A pre-wizard install that
+  still has `%AppData%\MSS\data\shop.db` or `%AppData%\MAHER-MOBILE-CARE\data\shop.db`
+  is copied into the new non-C root on first run (never its old DB pointer), and
+  pending migrations then apply with a safety snapshot. See
+  `PREPARE-WINDOWS.md` "Update by installer"; `scripts/mss-update-contract.js`
+  pins the migration promise on a throwaway database.
 
 ---
 
@@ -39,7 +73,7 @@ webpack bundle (`serverComponentsExternalPackages`) — this is required for the
 build to succeed, not an optimisation.
 
 **Node version:** developed and verified on **Node 20.20.2 / npm 10.8.2**
-(build, lint and typecheck pass on it). The current 374-check regression (and
+(build, lint and typecheck pass on it). The current 564-check regression (and
 the earlier v1.2.0 312-check run) also ran on **Node 24.15.0 / npm 11.12.1**
 on the Windows build host.
 
@@ -101,9 +135,25 @@ Other scripts:
 `lib/db-path.ts` is the single resolver used by the app, the Prisma CLI and the
 test harness, in this order:
 
-1. `MAHER_DB_PATH` — explicit override (used by the test harness)
-2. `DATABASE_URL` — from `.env` (normal shop setup: `file:./prisma/dev.db`)
-3. `./prisma/dev.db` — built-in default
+1. **Verified custom location** — `maher-db-location.json` beside the default DB
+   (written by the Dashboard's location dialog, see below)
+2. `MAHER_DB_PATH` — explicit override (used by the test harness and launchers)
+3. `MAHER_USER_DATA_DIR` — Electron/test root; the installed app uses the wizard's
+   non-C root from `mss-data-root.txt` (default `D:\MSS-Data`)
+4. `DATABASE_URL` — from `.env` (normal shop setup: `file:./prisma/dev.db`)
+5. `./prisma/dev.db` — built-in default
+
+The pointer is a small local config file, **not** a `ShopSettings` row: a row can
+only be read after the database is already open, so the pointer has to win before
+any connect. It accepts either a folder (the default DB filename is appended) or
+a direct `.db` file path. It is honoured only when the folder is reachable and the
+file has a real SQLite header; a disconnected D: drive silently falls back to the
+default location and the Dashboard shows **কাস্টম ডাটাবেজ লোকেশন পাওয়া যায়নি — আগের
+নিরাপদ লোকেশনে ফিরে এসেছি।** instead of crashing. `lib/prisma.ts` keeps one stable
+proxy and re-resolves on every access, so a successful move switches the **live**
+connection over without a restart (and re-applies WAL/NORMAL/5000 on the new
+handle). `scripts/first-run.mjs` mirrors the resolver so portable migrations can
+never land on the old C: file.
 
 `MAHER_BACKUP_DIR` overrides the `backups/` folder the same way. Change these
 only if you deliberately keep the shop data somewhere else — nothing else needs
@@ -235,6 +285,9 @@ packaging/                  → launchers copied verbatim into the Windows packa
   MAHER STOP.bat            → stops the shop by port owner
   start-maher.bat           → server-only fallback for troubleshooting
   README.txt                → Bangla instructions shipped inside the package
+tools/keygen-crm/           → STANDALONE admin desk (never shipped to the shop):
+                              Ed25519 private key, CLI + localhost GUI, SQLite
+                              customer ledger and one-click WhatsApp messages
 PREPARE-WINDOWS.md          → step-by-step Windows handover guide (Bangla)
 next.config.mjs             → keeps native better-sqlite3 out of the webpack bundle;
                               MAHER_STANDALONE=1 opts into the standalone build
@@ -253,13 +306,18 @@ app/
                               (form column + list column, header, footer)
   products/
     page.tsx               → stock & product sales page (state + dialogs)
-  layout.tsx               → Bengali metadata, font CSS, Toaster
+  layout.tsx               → Bengali metadata, font CSS, Toaster, LicenseProvider
+                              (full-screen gate when the machine is locked)
   globals.css              → Tailwind + theme + overflow-x:clip (sticky-safe)
   icon.svg                 → favicon (local file, offline)
   fonts/                   → self-hosted Noto Sans Bengali: *.woff2 + @font-face
                               CSS + OFL.txt licence (bundled, zero network)
   api/
     health/route.ts        → GET = readiness probe (reports which DB file is live)
+    license/status/route.ts → GET = machine ID, active/trial state, expiry, guard
+    license/activate/route.ts → POST = Ed25519 + machine + expiry verification
+    license/preview/route.ts → POST = read-only signature check for the renewal chip
+    license/test/route.ts  → POST = env-guarded test hooks (never in a shop build)
     technicians/route.ts   → GET (?all=true) roster, POST add
     technicians/[id]/route.ts → PUT rename (2-step cascade), DELETE deactivate,
                                 POST reactivate
@@ -275,24 +333,34 @@ app/
     products/route.ts      → GET list / POST create, products/[id] → PUT / DELETE
                               (DELETE refuses while sales still reference it)
     product-categories/route.ts → GET / POST, [id] → PUT / DELETE (guard applies)
-    parts-shops/route.ts   → GET ?all=true parts-shop names for the form datalist
+    parts-shops/route.ts   → GET ?all=true parts-shop names for the form shop picker
     stats/route.ts         → GET ?date= / ?from=&to= / ?all=1 daily + per-technician totals
     stats/monthly/route.ts → GET ?date= (rolling 30d) or ?from=&to= range
-    backup/route.ts        → GET = CSV or Excel workbook (?format=xlsx),
+    backup/route.ts        → GET = CSV, Excel (?format=xlsx), system SQLite
+                              snapshot (?format=system) or PDF (?format=pdf),
                               POST = DB snapshot + prune
     backup/list/route.ts   → GET = snapshot list
-    backup/restore/route.ts→ POST = restore snapshot (atomic + column-validated)
+    backup/restore/route.ts→ POST = restore a named snapshot or an uploaded
+                              .db / .sql / .maherbackup file (atomic +
+                              column-validated, ShopSettings never swapped)
 components/
   AppHeader.tsx            → the live header: sticky navbar, date nav, আজ,
                              Sync, Backup, Restore, ⚙️ technician, Print,
                              search (Ctrl+K) + nav links
-  AppNavLinks.tsx          → সার্ভিস / স্টক nav links (service desk is landing)
+  AppNavLinks.tsx          → renders lib/nav-links.ts (সার্ভিস / প্রোডাক্ট / পার্টস;
+                              service desk is landing)
   Header.tsx, ProductsHeader.tsx → legacy headers, currently unimported
   HeaderSearch.tsx         → navbar search: live dropdown; mobile 🔍 sheet
   HeaderDatePicker.tsx     → calendar popover in the header (opens once,
                              toggles closed on the second click)
   PageLead.tsx             → page lead block under the header (title + sub)
   BrandMark.tsx            → logo mark used by the header
+  licensing/LicenseProvider.tsx → root status fetch + global gatekeeper
+  licensing/LicenseGate.tsx → premium full-screen activation screen (machine ID,
+                              copy feedback, key, support bar), only when locked
+  licensing/license-context.ts → shared status/activate context for card + gate
+  dashboard/LicenseCard.tsx → premium subscription hub: status badge, progress
+                              bar, machine ID, WhatsApp support, renewal modal
   DailySummary.tsx         → daily cards row (wraps TodayStats + TechnicianStats)
   TechnicianStats.tsx      → one card per roster technician (5-col desktop grid)
   TodayStats.tsx           → 4 daily cards (কাজ/বিল/বাকি/খরচ) + refund/damage hints
@@ -316,19 +384,36 @@ components/
   StatusBadge.tsx          → colored Bengali status badges
   Receipt.tsx              → customer bill (single + combined group slip, print/PDF)
                              + PaidStamp (জমা paid marker)
-  RestoreDialog.tsx        → snapshot list + 2-step restore confirm
+  dashboard/BackupExportDialog.tsx → 4-format backup picker on the Dashboard
+  RestoreDialog.tsx        → uploaded file / snapshot list + 2-step restore confirm
   TechnicianManager.tsx    → roster dialog: add / rename / deactivate / reactivate
   ProductDialog.tsx        → product create/edit dialog (products page)
   CategoryManagerDialog.tsx→ category add/rename/delete dialog (products page)
+  PurchasesPanel.tsx       → দোকান ও ক্রয় tab: purchase bills, summary cards,
+                              supplier payment dialog (oldest bill first)
+  PurchaseDialog.tsx       → নতুন ক্রয়: supplier/invoice/date, line items,
+                              optional now-payment; receiving writes stock
+  PaymentDialog.tsx        → টাকা নিন: amount, method (নগদ/বিকাশ/অন্য), note,
+                              live slip preview (oldest first, no overpay)
   AutoBackup.tsx           → client-side backup nudge (mounted in app/layout)
   ui/                      → shadcn primitives (button, input, table, dialog…)
 lib/
   prisma.ts                → cached Prisma client + local SQLite adapter
   db-path.ts               → single source of truth for the DB file + backup dir
+  licensing/machine-id.ts  → deterministic Windows/macOS/Linux hardware fingerprint
+  licensing/hardware.ts    → getMachineFingerprint() alias; hardware-only, no shop/DB reads
+  licensing/crypto.ts      → Ed25519 token verification (public key only)
+  licensing/public-key.ts  → generated public key — the only key in the app
+  licensing/clock-guard.ts → monotonic lastSeenTimestamp, >1h rollback lock
+  licensing/license-store.ts → atomic local state/trial/clock file
+  licensing/license-status.ts → status computation shared by both API routes
+  licensing/types.ts       → dependency-free DTOs for client + server
   technicians.ts           → roster rules: normalize, duplicate guard, cascade rename,
                              card list (active ∪ worked-today), last-active guard
   service-validation.ts    → shared create/update rules (UI and API can't drift)
   dhaka.ts                 → Asia/Dhaka day bounds, real calendar-date validation
+  nav-links.ts             → single source of truth for the three navbar destinations
+                              (pure data: key/route/Bengali label; no React)
   utils.ts                 → statuses (incl. Returned), Bengali-digit parse, due,
                              ৳ format (+ FALLBACK_TECHNICIANS, only used if the
                              roster request fails)
@@ -339,35 +424,51 @@ lib/
                              threshold, movement validation
   inventory-data.ts        → product/category/stock read-write helpers used by
                              the products API routes
+  payments.ts              → customer receipts: normalize customer key, validate
+                             amount/method, allocate oldest unpaid slip first,
+                             refuse overpay, per-customer ledger
+  payment-methods.ts       → client-safe method vocabulary (CASH/BKASH/OTHER +
+                             Bengali labels), re-exported by payments.ts
+  purchases.ts             → supplier bills: validate lines, receive stock,
+                             supplier payments oldest-first, refuse overpay
   expense-code.ts          → shop-expense keypad code (*J# ⇄ 1500) encode/decode,
                              mirrored on server and form
   contact.ts               → WhatsApp/phone message text
   shop.ts                  → shop name/address/phone (receipt + footer source)
   receipt-pdf.ts           → client-side receipt PDF file name + download
   download.ts              → shared Blob → browser download helper
-  export.ts                → report export builders (BOM CSV + SheetJS xlsx),
-                             daily breakdown, privacy column policy
+  export.ts                → shared report layout (newest-first sort, Bengali status, daily roll-up),
+                             BOM CSV + ExcelJS xlsx builders, paginate helper, privacy column policy
   backup-workbook.ts       → server-side Excel backup workbook (ExcelJS):
                              summary, date-ordered service ledger, full audit
-  report-pdf.ts            → multi-page A4 report PDF (canvas-sliced capture)
+  report-pdf.ts            → multi-page A4 report PDF (one PDF page per report page)
   backup.ts                → shared localStorage keys/stamps for auto-backup
   use-last-backup.ts       → hook: last-backup stamp (AutoBackup + backup strip)
   use-media-query.ts       → hook: CSS media query, SSR-safe (defaultValue first)
   generated/               → Prisma client output (generated, do not edit)
 prisma/
-  schema.prisma            → Service model (28 columns, incl. return/refund/damage,
+  schema.prisma            → Service model (33 columns, incl. return/refund/damage,
                               write-off, grouped visits, delivery dates, optional
-                              IMEI + archived soft-delete) + Technician model
-                              (v1.1 roster) + inventory models: ProductCategory,
-                              Product, SaleItem, StockMovement
+                              IMEI, check-off + archived soft-delete) + Technician
+                              model (v1.1 roster) + inventory models:
+                              ProductCategory, Product, SaleItem, StockMovement
+                               + payments/purchases: Payment, PaymentAllocation,
+                               Purchase, PurchaseItem, PurchasePayment,
+                               PurchasePaymentAllocation, ServicePart
   dev.db                   → THE database (all shop records — back this up!)
   migrations/              → init + add_archived + add_technician + add_parts_shop
                               + add_return_refund_damage_loss
                               + add_group_delivery_expense_flag
-                              + add_service_imei + add_inventory
+                              + add_service_imei + add_inventory + stock_sync
+                               + sale_line_price_note + add_solution_condition
+                               + add_payments_purchases + add_service_parts
+                               + add_service_part_purchases
+                               + clear_demo_technician_seed (untouched DB only)
 backups/                   → snapshots: maher-*.db (keeps 30) + safety-*.db (keeps 5)
 scripts/
-  run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB guard
+  run-tests.js             → npm test: one fresh throwaway DB per suite + live-DB
+                              guard; legacy roster seeded on throwaway DBs only
+                              (clean-slate suite excepted)
   build-portable.mjs       → npm run build:portable: bundle Node 22, swap in the
                              Windows better-sqlite3, strip leaks, assert no .db/.env
   first-run.mjs            → create/upgrade the shop DB without the Prisma CLI;
@@ -379,26 +480,75 @@ scripts/
   backfill-expense-codes.ts→ dry-run/convert old expense rows; --confirm writes
   expense-upgrade.test.js  → first-run/backfill/audit repair suite (10 checks)
   test-support.js          → shared browser helpers (launch, type, wait, api…)
+  offline-licensing.test.js → isolated licensing suite: machine ID, signature/
+                              machine/expiry rejection, clock lock, activation,
+                              dashboard renewal (own license file + test hooks)
   e2e-maher.js             → core flow E2E (9 checks)
-  e2e-p0.js                → P0 features E2E (13 checks)
+  e2e-p0.js                → P0 features E2E (11 checks)
   laneA.js                 → Lane A audit (26 checks)
   laneBC.js                → Lanes B+C audit (24 checks)
-  laneD.js                 → redesign/search/product-sale audit (29 checks)
+  laneD.js                 → redesign/search/product-sale audit (19 checks)
   laneE.js                 → return/refund + damage-loss/write-off audit (18 checks)
   laneF.js                 → v1.2.0 grouped visits, delivery dates, returned-row
                              edit + write-off audit (22 checks)
   laneG.js                 → optional IMEI, posted lock fields ignored,
                              multi-device independence (18 checks)
-  laneLanding.js           → `/` redirect, exactly two nav links, refresh +
+  laneH.js                 → per-device solution + per-visit condition:
+                             validation, সমাধান খাতা search, receipt শর্ত,
+                             grouped copy, old-snapshot restore (14 checks)
+  laneI.js                 → Phase 2 payments & purchases: allocation
+                              oldest-first, overpay, paid-slip lock, retired
+                              verify tick (404), purchase intake + supplier
+                              dues (20 checks)
+  laneJ.js                 → service-part purchase bills: linked device,
+                              wholesale lines, partial supplier payment and
+                              cost isolation (5 checks)
+  laneK.js                 → customer history by normalized mobile number:
+                              history dialog, header search shows সমাধান/শর্ত
+                              only for number queries (7 checks)
+  laneLanding.js           → `/` redirect, exactly three nav links, refresh +
                              backup + restore on the Service page (10 checks)
-  api-check.js             → API contract + validation + restore-guard + roster (59)
+  product-dashboard.js     → stock-room metric cards + corner icons, 10s privacy
+                              reveal, unified toolbar, status chips, quick
+                              STOCK_IN + toast, both empty states (17)
+  api-check.js             → API contract + validation + restore-guard + roster (67)
   technician-mgmt.js       → v1.1 roster dialog + card filtering (25 checks)
   responsive-check.js      → 10 widths, 360–1920px: header, search, card/table,
                              grid, sticky actions + dialogs (74 checks)
   date-nav-flicker.js      → changing day keeps the list on screen, no skeletons (4)
   header-calendar.js       → the navbar calendar closes on the 2nd click (5)
+  real-viewport.js         → laptop-height layout: 1280x585/650, 1366x650,
+                             1536x730, 1920x1080 (9 checks)
   launcher-decide.test.js  → launcher reuse / takeover / refuse rules (14 checks)
   portable-keep.test.js    → a portable rebuild keeps the shop DB intact (10 checks)
+  service-part-resolution.js → 4-way part status, stock/writeoff/damage,
+                               restore + privacy (25 checks)
+  parts-date-shop-filter.js → /parts 3-mode date switcher, saved+past shop
+                               dropdown, table/card scope, visible code +
+                               masked amount, row/reveal-all eyes, badge
+                               colours, toolbar line, shop dashboard + jump (20)
+  service-return-workflow.js → checking fee, warranty/custom refunds, grouped
+                               cash/transfer, bulk part resolution (22 checks)
+  form-field-order.js      → new entry and Edit share field order AND structure
+                              (form-more + device-1 card, same labels, both bill
+                              inputs editable and in sync), no duplicate svc-*
+                              ids, saved parts keep their entry order, clean field copy (11)
+  customer-address-warranty.js → visit address + per-device warranty: validation,
+                               form chips, both searches, receipts, grouped and
+                               product-anchor copy, old-snapshot restore (13)
+  dashboard-cipher-qc.js   → Secret Code Engine/Converter QC contract: live
+                              bidirectional converter, unified 11-card keypad,
+                              collision banner + rose field styling, sr-only
+                              legacy word input, shared Save/Sync gate (15 checks)
+  clean-slate-fresh-install.js → fresh DB has zero services/debts/products/staff,
+                              empty profile, onboarding banner and MSS chrome (10)
+  mss-rebrand-contract.js  → MSS platform brand, dynamic tenant identity, empty
+                               first run, private wire ids and shipped docs (24)
+  mss-update-contract.js   → reinstall over an existing MSS is an in-place update:
+                               chosen data root kept, pending migrations + safety
+                               snapshot, idempotent rerun (9)
+  mss-installer-contract.js → assisted wizard, D:\MSS-Data default, drive C rejected,
+                               Update / Cancel prompt, legacy AppData move (15)
   service-list-design.js   → Counter Ledger design contract (19 checks) — kept OUT
                               of the default run; run it with MAHER_TEST_SUITES
                               =scripts/service-list-design.js npm test
@@ -428,13 +578,17 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   from 1280px, so it never eats half the screen. Keyboard `←`/`→` changes day
   (not while typing). The two search boxes state their scope: the header search
   keeps `🔍 নাম, ফোন, মডেল বা বিল নং খুঁজুন… (Ctrl+K)` and searches every day;
+  typing a **mobile number** (local `01…` or `+880…`) lists that customer's
+  older jobs with **every detail** — date, model, problem, technician,
+  বিল / জমা / বাকি, delivery date, status — plus the stored **সমাধান** and
+  **শর্ত** notes, so the technician can read the past fix before starting;
   the service list's own search reads **এই তালিকায় খুঁজুন...** and filters only
   what is on screen, with the searchable fields in its `aria-label`/`title`.
   Both carry `data-scope`.
-- **নতুন সার্ভিস এন্ট্রি** — a primary button in the service masthead scrolls to
-  the entry form and puts the cursor in কাস্টমারের নাম; on a phone it switches
-  to the form tab first. The header chrome and the other masthead actions stay
-  where they were.
+- **নতুন সার্ভিস এন্ট্রি** — this is now just the heading of the entry form;
+  the duplicate masthead button with the same label was removed. Deep links and
+  the header CTA still scroll to the form and put the cursor in কাস্টমারের নাম
+  (on a phone they switch to the form tab first).
 - Technician cards — one per **active** technician (card count follows the
   roster), plus a greyed “নিষ্ক্রিয়” card for anyone who has left the shop but
   still has work on the shown date, so the day's cards always add up to
@@ -467,16 +621,20 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - **Report export (post-v1.2.0)** — the report dialog has an
   “এই হিসাবের এক্সপোর্ট:” row with **PDF / CSV / Excel**, always following the
   chosen window (একদিন / তারিখ রেঞ্জ / সব তারিখ) and its presets. All three
-  build locally (offline, no cloud): CSV is UTF-8 with BOM + formula-injection
-  guards, Excel is a real `.xlsx` with 3 sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস)
-  via SheetJS, PDF slices a print-friendly Bengali report sheet across multiple
-  A4 pages (first 1000 detail rows; CSV/Excel carry the rest). Every format
-  carries the totals plus a per-day breakdown and row-level list — including
-  **ফেরত / ফেরত তারিখ** for returned jobs — capped at 5000 rows with a warning;
-  per-row খরচ/IMEI/refund-damage notes are never exported (only the aggregate
-  খরচ appears). Files are stamped `MAHER-Report-<from>_<to>.*`, or
-  `MAHER-Report-all.*` for সব তারিখ. Export buttons exist only in the dialog,
-  never in the print copy.
+  build locally (offline, no cloud) from one shared layout so all three agree:
+  title + window → summary → daily roll-up → detail ledger → footer, newest
+  day / highest id first, with Bengali status labels. CSV is UTF-8 **with BOM**
+  + CRLF + every cell quoted (Excel-safe on Windows); Excel is a real `.xlsx`
+  with 3 titled sheets (সারাংশ / দৈনিক ভাঙতি / সার্ভিস) via **ExcelJS**, with
+  column widths, frozen headers and totals rows; the PDF captures the
+  print-friendly Bengali report sheet one section page per A4 sheet, repeating
+  headings and page n/N (detail capped at 1000 rows with an on-page notice,
+  CSV/Excel carry up to 5000). Returned-only days with no work or cost are
+  dropped from the roll-up. Row blocks include **ফেরত / ফেরত তারিখ** but never
+  per-row খরচ / write-off flags / IMEI / notes — only the aggregate খরচ appears.
+  Files are stamped `MSS-Report-<from>_<to>.*`, or `MSS-Report-all.*` for
+  সব তারিখ. The sheet headline uses the live shop name (MSS before setup).
+  Export buttons exist only in the dialog, never in the print copy.
 - **List date modes (post-v1.2.0)** — a segmented switch on the service list
   masthead: **একদিন** (default, byte-identical legacy view with the day nav and
   `←`/`→` keys), **তারিখ রেঞ্জ** (শুরু/শেষ pickers; starts as the selected day
@@ -530,12 +688,21 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   `scripts/service-list-design.js` (19 checks) pins the service-list half of
   that contract.
 - **স্টক page (`/products`)** — eyebrow “স্টক রুম”, title “প্রোডাক্ট ও
-  ইনভেন্টরি”: product list with search, price/stock, the category manager
-  dialog and low-stock warnings, all served from the live `ProductCategory` /
-  `Product` tables (creating a product logs its opening stock as a
-  `StockMovement`). The `SaleItem` sale-line table and the `saleRef` idempotency
-  key already exist in the schema as the foundation for linking product sales to
-  stock, but app code does not write them yet.
+  ইনভেন্টরি” with a live count badge; the two page actions sit on the right
+  (**＋ নতুন প্রোডাক্ট**, **⚙️ ক্যাটাগরি ব্যবস্থাপনা**). Four summary cards carry
+  corner micro-icons (blue `Package`, emerald `Boxes`, amber `AlertTriangle`,
+  slate `Wallet`); the amber low-stock card is a button that activates the
+  **⚠️ কম স্টক** chip, and the wallet card's eye reveals the internal valuation
+  for ten seconds with the tooltip
+  “দোকানের ক্রয়মূল্য ও ইনভেন্টরি মূল্য দেখুন (১০ সেকেন্ড)”. The search field
+  (`id="product-search"`) and category select share one filter bar directly
+  above the stock-status chips, so the counter laptop never scrolls sideways.
+  A true zero-product shop gets an onboarding box pointing at the category
+  manager; a filtered zero gets **ফিল্টার রিসেট করুন** instead. Everything is
+  served from the live `ProductCategory` / `Product` tables (creating a product
+  logs its opening stock as a `StockMovement`). The `SaleItem` sale-line table
+  and the `saleRef` idempotency key already exist in the schema as the foundation
+  for linking product sales to stock, but app code does not write them yet.
 - **🛍️ প্রোডাক্ট সেল** — a toggle at the top of the form switches between
   🛠️ সার্ভিসিং (default) and product sale. Product mode renames the fields to
   **প্রোডাক্টের নাম (যেমন: Charger, Cable)** and **বিবরণ (যেমন: 18W Type-C)**,
@@ -545,13 +712,21 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   in product mode. Editing such a row reopens in product mode.
 - **Overpay is rejected.** জমা can never exceed মোট বিল — the save is blocked
   with “জমা মোট বিলের বেশি হতে পারে না”.
-- **⚖️ ফেরত / ড্যামেজ ক্ষতি** on an active row opens one dialog with two tabs.
-  **ফেরত / রিফান্ড** closes an unfinished job as **ফেরত**, returns the full
-  recorded জমা and clears বাকি. When the row has a parts cost, the tab asks
-  whether that cost was **written off** (parts unused/returned) or **kept** as a
-  shop loss; old API callers that omit the choice keep the cost, so nothing
-  silently disappears. **ড্যামেজ ক্ষতি** records an internal technician-damage
-  cost; it never alters the customer's bill.
+- **⚖️ ফেরত / ড্যামেজ ক্ষতি** on an active row (including **ডেলিভারি**) opens one
+  dialog with two tabs. **ফেরত / রিফান্ড** closes the job as **ফেরত**, clears
+  `deliveredAt`/বাকি and accepts an optional **চেকিং / সার্ভিস ফি (৳)** plus a
+  custom **কাস্টমারকে ফেরত (৳)**; leaving both blank keeps the original
+  full-advance refund. A grouped visit can instead choose **গ্রুপের অন্য ডিভাইসে
+  জমা করুন** — the retained advance moves to an active sibling's জমা and reduces
+  its বাকি, with no cash leaving the drawer. Attached parts are listed with
+  one-click bulk resolution (**সব পার্টস মহাজনে ফেরত**, **সব পার্টস দোকানের স্টকে
+  জমা**, **কাজের সময় নষ্ট হয়েছে**) in the same transaction as the return. When
+  a parts cost has no bulk choice, the tab still asks whether it was
+  **written off** (parts unused/returned) or **kept** as a shop loss; old API
+  callers that omit the choice keep the cost, so nothing silently disappears.
+  **ড্যামেজ ক্ষতি** records an internal technician-damage cost; it never alters
+  the customer's bill. No supplier price, parts-shop name or damage loss is
+  printed on a receipt/PDF.
 - **A returned row stays safely editable (v1.2.0).** The pencil is available
   again for customer, phone, model, problem, technician, service date, shop
   expense/parts shop, delivery date and damage loss/note. Bill, জমা, বাকি and
@@ -590,11 +765,16 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   table's action column stays pinned to the right when the table scrolls.
   Client-side filter
   within the selected day (name / ID / phone / model / problem), status chips
-  with counts. The **খরচ** column is always visible and shows the stored code.
+  with counts — **সব / পেন্ডিং / চলছে / সম্পন্ন / ডেলিভারি / ফেরত / বাকি**. The
+  last chip is a money filter, not a seventh status: it keeps only visits whose
+  device still has `বাকি > 0` and isn't Returned (the same rule as
+  `/api/services/dues`), so the dues list is reachable without leaving the list.
+  The **খরচ** column is always visible and shows the stored code.
   A header **খরচ দেখান** button reveals every row at once (and **খরচ লুকান**
-  hides them again), while each row's own eye reveals **only that row's** amount
-  for 10 seconds. A legacy plain-number value is masked as `৳••••` until it is
-  converted, and a written-off cost carries a grey **বাতিল** badge. The
+  hides them again; the pressed button keeps its navy fill, so it never fades
+  into the white toolbar), while each row's own eye reveals **only that row's**
+  amount for 10 seconds. A legacy plain-number value is masked as `৳••••` until
+  it is converted, and a written-off cost carries a grey **বাতিল** badge. The
   parts-shop name sits under the code. Grouped devices show a **👥 গ্রুপ** badge
   (and a visit shows “Nটি ডিভাইস”); both sit in an `sr-only` wrapper, so screen
   readers still announce them while the visible ID column stays narrow. The
@@ -609,38 +789,50 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 **Safety:**
 - Delete = archive (soft). Archive view (all dates) + 1-click restore.
-- Backup button = server snapshot (`backups/maher-*.db`, newest **30** kept) +
-  a real **Excel workbook** download (Bengali headers, frozen/filterable
-  headers, date/currency formats, totals) + “সর্বশেষ ব্যাকআপ” label. The
-  workbook has **সারসংক্ষেপ / সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)** sheets;
+- **Backup button = a 4-format picker**, not an immediate download. Choose
+  **সম্পূর্ণ সিস্টেম রিকভারি ব্যাকআপ** (`MAHER_SYSTEM_BACKUP_YYYY-MM-DD_HH-mm.db`,
+  a SQLite snapshot with the local `ShopSettings` row removed), **এক্সেল
+  স্প্রেডশিট**, **পিডিএফ সামারি রিপোর্ট** or **সিএসভি ডাটা ফাইল**. Server
+  snapshots (`backups/maher-*.db`, newest **30** kept) still happen with the
+  scheduled/auto path and the “সর্বশেষ ব্যাকআপ” label updates on every export.
+  The Excel workbook has Bengali headers, frozen/filterable
+  headers, date/currency formats and totals. It has
+  **সারসংক্ষেপ / সার্ভিস খাতা / সম্পূর্ণ ডেটা (অডিট)** sheets;
   the ledger is one flat 12-column table, oldest date first with a running
   **ক্রম** (তারিখ / কাস্টমার / ফোন / মডেল / সমস্যা / টেকনিশিয়ান / অবস্থা /
   বিল / জমা / বাকি / ডেলিভারি), and the audit sheet plus `GET /api/backup`
-  CSV carry every column, including cost, return/refund/damage, write-off,
-  group, delivery, IMEI and `saleRef`.
+  CSV carry every column, including cost, return/refund/damage, inspection fee
+  and reason, write-off, group, delivery, IMEI and `saleRef`.
 - The Service desk keeps **ব্যাকআপ** one click away in the compact strip beside
   the stamp; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…** live behind **⋯ → ডেটা ও
   ব্যাকআপ**, and the strip says **ডেটা এই PC-তে** instead of an online/offline
   badge. Restore still uses its own 2-step confirmation dialog.
 - Auto snapshot on first load of the day (staff can forget safely).
-- Restore dialog = snapshot list + 2-step confirm. A restore first writes
+- Restore dialog = upload a `.db` / `.sql` / `.maherbackup` file **or** pick an
+  older snapshot, then confirm twice. The exact warning is
+  `সতর্কতা: ব্যাকআপ ফাইলটি রিস্টোর করলে বর্তমানের অসংরক্ষিত ডাটা প্রতিস্থাপিত হবে। আপনি কি নিশ্চিত?`
+  and success shows `ডাটা সফলভাবে রিস্টোর করা হয়েছে!`. Uploads are checked for
+  extension, SQLite magic bytes (or a safe `Service`-creating SQL dump) and the
+  expected schema *before* a safety copy is made. A restore first writes
   `backups/safety-*.db` (newest **5** kept) holding your *current* data, so a
   wrong restore is itself restorable. The swap is atomic and
   snapshot-column-validated — a bad snapshot is rejected *before* anything is
-  touched. Older snapshots without the optional columns still restore; those
-  fields default to `NULL`/`0`/`false` (including `groupId`, `deliveryDate`,
-  `deliveredAt` and `expenseWrittenOff`). A restored pre-v1.1.3 numeric shop expense
+  touched. `ShopSettings` id 1 is never read or replaced, and a successful
+  restore refreshes the global shop-settings context. Older snapshots without
+  the optional columns still restore; those fields default to
+  `NULL`/`0`/`false` (including `groupId`, `deliveryDate`, `deliveredAt` and
+  `expenseWrittenOff`). A restored pre-v1.1.3 numeric shop expense
   is converted to a code immediately; the same repair also runs on every start.
 - Archiving a returned job warns that its refund, expense and damage loss also
   leave every report and the profit calculation.
 - Print guard blocks blank prints; paper gets receipt-only or clean dashboard.
 
 **Customer bill (print/PDF):**
-- Preview dialog → print. Shop header (name/address/phone from `lib/shop.ts`),
-  `বিল নং` (= row id), date, status, customer + job + technician,
-  বিল / জমা / **বাকি**, the customer's name in the signature area, and
-  “ধন্যবাদ, আবার আসবেন”. The address is
-  `D107 (Level 3), Sena Shopping Complex, Nabinagar, Ashulia 1344` — the old
+- Preview dialog → print. Shop header (name/slogan/address/phone/terms from the
+  live `ShopSettings` profile, never a hardcoded store), `বিল নং` (= row id),
+  date, status, customer + job + technician, বিল / জমা / **বাকি**, the customer's
+  name in the signature area, and “ধন্যবাদ, আবার আসবেন”. Before setup the name
+  reads `আপনার দোকানের নাম`; empty address/phone lines are omitted. The old
   “Chandra Rd.” text was removed in v1.0.3.
 - A navy **PAID** seal is printed only when `due = 0` and `totalBill > 0`
   (fully paid). Unpaid and partial bills never show it, and a returned job
@@ -695,13 +887,33 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 - `damageLoss` is a separate internal shop cost for technician-caused damage
   (≤ ৳ scope is the same numeric rules as a bill). It is **not** `shopExpense`
   and never touches the customer's bill or receipt.
-- **Return/refund is full-advance only, never partial.** `POST
-  /api/services/[id]/refund` sets `status = Returned`, `returnedAt`,
-  `refundAmount = advance`, `due = 0`, `deliveredAt = null`, and keeps the
-  original bill/advance for audit. When the row has a cost, the body may send
+- **Return/refund is bounded by the recorded জমা — full, custom or fee-less.**
+  `POST /api/services/[id]/refund` sets `status = Returned`, `returnedAt`,
+  `due = 0`, `deliveredAt = null` and `refundAmount` to the cash actually handed
+  back. With no body it still returns the whole জমা and keeps the original bill/
+  advance for audit. `inspectionFee` retains a diagnostic charge: the default
+  cash back is `advance − fee`, and a **fee return** promotes the retained
+  amount to the row's final `totalBill`/`advance` (due 0) so it reports as pure
+  labour income. `refundAmount` allows a smaller/custom cash refund; without a
+  fee the original bill/advance stay untouched for audit. `fee ≤ advance` and
+  `refund + fee ≤ advance` are enforced (400), as is overpay. Delivered jobs may
+  be reversed as warranty returns; archived and already-returned rows may not.
+  Only that endpoint may set `Returned`; the normal create/edit form cannot.
+- **Grouped partial return: cash or transfer, never both.** A grouped device can
+  send `advanceAction: "transfer"` with `transferToId` pointing at another
+  active, non-archived, non-`Returned`, non-`PRODUCT` device in the same
+  `groupId`. The retained advance is added to that sibling's `advance`, its
+  `due` is recomputed as `max(0, totalBill − advance)`, no cash is refunded and
+  no inspection fee may be charged. The cash button keeps the older behaviour.
+- **Bulk part resolution on return.** `partResolution` accepts `RETURNED`,
+  `MOVED_TO_STOCK` or `DAMAGED` and resolves every attached `ServicePart` inside
+  the same SQLite transaction as the status close. The first two write the
+  repair cost off (`expenseWrittenOff = true`); `DAMAGED` carries it via
+  `Service.damageLoss` and skips the separate expense question. Stock moves,
+  supplier balances and damage loss follow the same rules as the `/parts`
+  ledger. When the row has a cost and no bulk choice, the body may send
   `expenseAction: "writeoff"` (parts unused/returned) or `"keep"` (shop keeps
-  the loss); omitting it preserves the previous behaviour (keep). Only that
-  endpoint may set `Returned`; the normal create/edit form cannot.
+  the loss); omitting it preserves the previous behaviour (keep).
 - **Returned rows accept safe edits, not ledger edits.** `PUT /api/services/[id]`
   allows customer/phone/model/problem/technician/service date/expense/parts
   shop/delivery date/damage fields, but rejects any `totalBill`, `advance` or
@@ -709,10 +921,13 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   the form, and `refundAmount`/`returnedAt` are never rewritten by an edit.
 - **Refund is a cash memo, not a second profit deduction.** Returned rows are
   excluded from count, bill, due, revenue and technician performance, so their
-  bill never becomes profit. Their `damageLoss` always remains a shop loss; their
-  `expenseAmount` remains a loss unless it was explicitly written off. Refund
-  reports group by the job's **service date**, not the later `returnedAt`
-  timestamp, so the cash memo stays with the day the job belonged to.
+  original bill never becomes profit. The one exception is a retained inspection
+  fee: its amount is added to daily/monthly `bill` and `profit` as labour
+  income; the cash refunded is never added or subtracted twice. Their
+  `damageLoss` always remains a shop loss; their `expenseAmount` remains a loss
+  unless it was explicitly written off. Refund reports group by the job's
+  **service date**, not the later `returnedAt` timestamp, so the cash memo stays
+  with the day the job belonged to.
 - `profit = active bill − expenseAmount (all non-archived rows not written off)
   − damageLoss (all non-archived rows)`. Returned bills contribute zero; refunds
   are not subtracted again and a written-off cost is not subtracted either.
@@ -721,7 +936,10 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   customer pays ৳1500, profit ৳1000. Unfinished job → return/refund, customer
   pays ৳0; a kept ৳800 parts cost plus ৳500 damage remains a shop loss (profit
   −৳1300 for that job), while writing the same ৳800 cost off leaves only the
-  ৳500 damage (profit −৳500).
+  ৳500 damage (profit −৳500). A returned job with জমা ৳500 and a ৳100 checking
+  fee refunds ৳400 and reports ৳100 labour profit; a custom refund of ৳250 with
+  no fee keeps the original bill/advance for audit but only ৳250 leaves the
+  drawer.
 - **Grouped visits are an audit convenience, not a new ledger.** `POST
   /api/services/batch` creates up to **8** device rows in one transaction with a
   shared opaque `groupId`. Each row still owns its bill, advance, due, status,
@@ -773,12 +991,51 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
   expected date from create time (the API still accepts one shared date as a
   fallback for older callers), and each device's status/actual date moves
   independently.
+- **Later payments are receipts, and the oldest slip settles first.**
+  `POST /api/payments` records one customer receipt (`amount`, method
+  (`CASH`/`BKASH`/`OTHER`), optional note) and allocates it across that
+  customer's unpaid, non-returned slips **oldest first** (`serviceDate`, then
+  `id`), writing one `PaymentAllocation` per touched slip. A customer is keyed
+  by the normalized `phone` digits; when no phone is recorded, the exact trimmed
+  name is used. The amount may never exceed the outstanding total (400), and no
+  slip's `due` can go below ৳0, so a receipt can never create a negative বাকি.
+- **Paid is derived; a paid slip's advance may only rise together with its
+  bill.** A row is **পরিশোধিত** exactly when `due === 0` — there is no sixth
+  status, no `paid` column and no `FLOW_STATUSES` change. Once a slip is paid,
+  `PUT /api/services/[id]` refuses a lower `totalBill`, a lower `advance`, or an
+  `advance` change on its own (400), while descriptive edits
+  (customer/phone/model/problem/solution/condition/IMEI/technician/delivery
+  date) still save. The bill may always rise. When a new part is added to an
+  already paid job, the customer can pay that extra charge at the counter: the
+  edit raises `totalBill` and `advance` together (e.g. 6000 → 6500), leaving
+  `due` at 0 — no silent rewrite of settled money, and an advance above the new
+  bill is still an overpay (400). Raising the bill alone instead leaves a fresh
+  বাকি the customer can pay through **টাকা নিন**.
+- **The যাচাই tick is retired.** The manual "checked by hand" tick never
+  changed money, and both its row button and `POST /api/services/[id]/verify`
+  are gone. The `verified`/`verifiedAt` columns stay in the database, the raw
+  audit sheet and the backup JSON so older snapshots still restore — nothing in
+  the UI writes them any more.
+- **Purchases sit outside the service ledger.** A `Purchase` (supplier,
+  optional invoice, date, line items, optional now-payment) is a stock document:
+  receiving it writes `STOCK_IN` movements and updates `Product.stock` /
+  `purchasePrice`. Supplier payments (`POST /api/purchases/payments`) settle the
+  oldest open bill first and refuse overpay the same way. Purchase totals are
+  **never** a service expense, never reduce লাভ, and no purchase price,
+  supplier name or profit figure reaches a customer receipt/PDF.
 - **Cost-code privacy lives only in the service table.** The খরচ column is
   always visible and shows only the stored code (e.g. `*B#`); a legacy
   plain-number cost is rendered as `৳••••`. The header's **খরচ দেখান** button
-  reveals every row at once (no timer), and each row's own eye reveals only that
-  row's decoded amount for 10 seconds. The parts-shop name sits under the code;
-  the decoded total never appears on a customer copy.
+  reveals every row at once (no timer; the pressed state is a navy fill, never
+  white-on-white), and each row's own eye reveals only that
+  row's decoded amount for 10 seconds. A parts-only row shows each part's stored
+  price code next to the same eye — the parts total stays masked (`পার্টস ••••`,
+  or `পার্টস (3) ••••` when a device carries several parts, which get one readable
+  name/quantity/code line each) until revealed, and the header toggle uncovers
+  it too. A legacy parts row with
+  no stored `priceCode` shows the code derived from its unit cost (`2000` →
+  `A+#`), never the raw taka. The parts-shop name sits under the code; the
+  decoded total never appears on a customer copy.
 - Everything else stays open: the entry form shows the decoded amount, the
   daily খরচ card shows the real total (including damage loss), and the monthly
   report shows real খরচ/লাভ. The customer receipt/PDF never prints cost, code,
@@ -786,21 +1043,25 @@ out/                        → build output: MAHER/ package + zip (git-ignored)
 
 ### Data model (`prisma/schema.prisma`)
 
-One table, `Service`, 28 columns (grouped below by role):
+One table, `Service`, 35 columns (grouped below by role):
 
 | Column | Type | Meaning |
 |---|---|---|
 | `id` | Int | primary key, **auto-increment** — printed as `বিল নং` |
 | `customerName`, `phone` | String | customer; `phone` drives the call/WhatsApp buttons |
 | `model`, `problem` | String | handset + reported fault |
+| `solution` | String? | internal per-device work note (≤500); never printed, never matched by a text search — shown only when a mobile-number search lists the customer's history |
+| `condition` | String? | customer terms for the visit (≤500); copied to every row, printed as the শর্ত block |
 | `technician` | String | roster name (plain text so old snapshots stay valid) |
 | `totalBill`, `advance`, `due` | Int | the money triple (`due` is derived; Returned stores 0) |
 | `status` | String | `Pending`/`In-Progress`/`Completed`/`Delivered`/`Returned` |
 | `shopExpense` | String? | canonical keypad code (`*J#`); legacy numeric/code aliases still decode, free text |
 | `expenseAmount` | Int | decoded numeric cost for profit (1500 for `*J#`) |
 | `partsShop` | String? | internal parts-buying shop name, never printed |
-| `returnedAt` | DateTime? | when the full advance was returned |
-| `refundAmount` | Int | cash returned (equals the recorded advance) |
+| `returnedAt` | DateTime? | when the job was closed as returned (full, custom or fee return) |
+| `refundAmount` | Int | cash handed back (`advance` by default; 0 for a group transfer) |
+| `inspectionFee` | Int | retained checking/service fee; final bill for a fee return, counted as labour income |
+| `returnReason` | String? | internal reason the customer returned the device; never printed |
 | `refundNote` | String? | internal return note; never printed for the customer |
 | `damageLoss` | Int | internal technician-damage cost; never printed |
 | `damageNote` | String? | internal damage description; never printed |
@@ -810,14 +1071,23 @@ One table, `Service`, 28 columns (grouped below by role):
 | `groupId` | String? | opaque id shared by every device row of one customer visit |
 | `deliveryDate` | DateTime? | expected handover day (Dhaka key at ~midday) |
 | `deliveredAt` | DateTime? | actual handover timestamp, server-owned from the `Delivered` status |
+| `verified` | Boolean | **legacy/dormant** manual tick — its UI and API were retired; the column is kept only so older snapshots still restore and the raw audit sheet keeps its history |
+| `verifiedAt` | DateTime? | legacy timestamp of the retired tick (kept for old snapshots/audit only) |
 | `serviceDate` | DateTime | stored ~midday +06:00 so day bucketing is unambiguous |
 | `archived` | Boolean | soft-delete flag; hides the row from every list and stat |
 | `createdAt`, `updatedAt` | DateTime | audit trail (used by the backup export) |
 
-There is deliberately **no payment-history table** — `advance` is the single
-payment figure the shop records, and `refundAmount` is its return memo. A
-partial refund is not modelled because the shop only accepts full-advance
-returns.
+**Payments are receipts, not a `paid` column.** `advance` is still the single
+figure recorded on the slip at entry, and `due` stays derived
+(`max(0, bill − advance)`). A later customer payment is a **`Payment`** row plus
+**`PaymentAllocation`** rows that settle that customer's unpaid, non-returned
+slips **oldest first**; a slip is “পরিশোধিত” only when `due` reaches `0`, so
+there is no sixth status and no duplicated paid flag. An overpay (more than the
+outstanding total) is refused with `400` and `due` can never go negative. A
+customer is keyed by the normalized `phone` digits (falling back to the exact
+name when no phone is recorded) — no `Customer` table. `refundAmount` stays the
+cash memo; custom refunds, retained inspection fees and same-group advance
+transfers are all bounded by the recorded জমা and never reallocate a `Payment`.
 
 A second, tiny table holds the roster (v1.1):
 
@@ -845,6 +1115,42 @@ Today the app writes `Product`, `ProductCategory` and the `OPENING` movement
 (creating a product); `SaleItem`, `SALE`/`RETURN` movements and `Service.saleRef`
 exist in the schema but are not yet driven by app code.
 
+Six tables carry **Phase 2 money** — customer receipts and shop purchases. The
+repair-parts ledger adds `ServicePart` plus a type/link on `Purchase`; these
+remain internal bookkeeping and never alter customer money.
+are a bookkeeping layer only: they never change `totalBill`, and a purchase is
+never a service expense or a profit line.
+
+| Table | Role |
+|---|---|
+| `Payment` | one customer receipt: normalized `phone` (or exact name fallback), amount, method (`CASH`/`BKASH`/`OTHER`), `paidAt`; its allocations must add up to the amount |
+| `PaymentAllocation` | links one receipt to one `Service` slip (`serviceId` with **no** foreign key, so a restore can swap the `Service` table) with the settled amount; oldest unpaid slip first, never more than that slip's due |
+| `Purchase` | supplier bill: `supplier` + normalized `supplierKey`, `purchaseType` (`STOCK`/`SERVICE_PART`), optional linked `serviceId`, `invoiceNo`, `purchaseDate`, `total`, `paid` (`due` is derived at read time) |
+| `PurchaseItem` | one line of a purchase: product (or free-text name), `quantity`, `unitCost`; receiving it writes `STOCK_IN` movements and updates `Product.stock` / `purchasePrice` |
+| `PurchasePayment` | one supplier payment with method + `paidAt` |
+| `PurchasePaymentAllocation` | links one supplier payment to one `Purchase`, oldest open bill first, never overpaid |
+
+`npm test` always starts these six tables empty. A snapshot that contains them
+replaces the live copies (they are part of the backup); an older snapshot without
+them leaves them empty and the restore answer carries a warning, so a stale
+allocation can never point at a service id from another shop.
+
+`SERVICE_PART` bills contain free-text wholesale items for one repair device.
+They never write `STOCK_IN`; their item totals become that device's internal
+repair cost. A device cannot carry both manual `ServicePart` lines and a linked
+service-part bill: creating either one is refused with `409` while the other
+exists, so the same purchase is never counted twice. With neither, the device
+keeps using its `shopExpense` lump.
+
+Each `ServicePart` line is also its own purchase record: optional `supplier` +
+normalized `supplierKey`, the stored `priceCode` (a plain amount is canonically
+encoded, a typed code is kept exactly),
+`purchaseDate` (required for new lines, `NULL` only on pre-ledger rows), and a
+whole-line `paidAt`/`paidNote` marker. That marker is deliberately **not** a
+`PurchasePayment`: it never allocates money, never changes supplier due and
+never touches `Service.due`. Supplier payments still settle all open bills
+oldest-first.
+
 ---
 
 ## 6. Offline & data-safety notes
@@ -856,9 +1162,13 @@ exist in the schema but are not yet driven by app code.
   unsaved open form is lost.
 - A restore never leaves you without a way back: it writes a `safety-*.db` copy
   of your current data first, then swaps atomically, and a snapshot that does
-  not match the expected schema is refused before any row is touched. The
-  return/refund/damage/write-off/group/delivery columns are optional on restore,
-  so pre-v1.1.2 snapshots still work and those fields become `NULL`/`0`/`false`.
+  not match the expected schema is refused before any row is touched. Uploaded
+  files pass extension + magic-byte/schema checks, SQL dumps are imported into
+  a fresh local file with `ATTACH`/`DETACH`/`VACUUM`/`LOAD_EXTENSION` rejected,
+  and `ShopSettings` id 1 is never swapped. The
+  return/refund/damage/write-off/group/delivery/inspection-fee/return-reason
+  columns are optional on restore, so pre-v1.1.2 and pre-v1.2.0 snapshots still
+  work and those fields become `NULL`/`0`/`false`.
 - Same-disk backup does NOT protect against disk death/theft — copy the Excel
   backup (or `backups/`) to a pen drive periodically. Browser code cannot write
   to pen drives automatically (security rule) — this one step stays manual.
@@ -876,12 +1186,12 @@ exist in the schema but are not yet driven by app code.
 
 ## 7. Test status
 
-`npm test` runs the full regression (17 suites, 374 checks) entirely on
+`npm test` runs the full regression (46 suites, 921 checks) entirely on
 **throwaway databases** — it never starts the app against `prisma/dev.db`.
 
 For a by-hand walkthrough of the whole app — paper printouts, real WhatsApp and
 dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
-**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (175 steps, each marked safe or risky).
+**[`MANUAL-TEST.md`](MANUAL-TEST.md)** (278 steps, each marked safe or risky).
 
 - **One fresh database, backup folder and server per suite.** Each DB has a
   unique filename and `/api/health` must report it before the suite runs, so a
@@ -897,20 +1207,48 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **The client is regenerated per suite.** `lib/generated/prisma` is gitignored,
   so `run-tests.js` runs `prisma generate` after `migrate deploy`; without it a
   schema change would build against a stale client.
-- Current full run (post-v1.2.0): **17/17 suites, 374/374 checks** — Launcher
-  decide 14 · Portable keep 10 · Expense upgrade 10 · E2E 9+13 · Lane A 26 ·
-  Lanes B+C 24 · Lane D 29 · Lane E 18 · Lane F 22 · Lane G 18 · Lane Landing
-  10 · API 63 · Technician 25 · Responsive 74 · Date-nav 4 · Header calendar 5,
-  0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged.
+- Current full run (post-v1.2.0 + MSS white-label): **46/46 suites, 921/921
+  checks** — Launcher decide 14 · Portable keep 13 · User data dir 9 · Electron
+  env 9 · Desktop package 26 · Expense upgrade 10 · E2E 9+11 · Lane A 26 ·
+  Lanes B+C 24 · Lane D 19 · Lane E 18 · Lane F 22 · Lane G 18 · Lane H 14 ·
+  Lane I 20 · Lane J 5 · Lane K 7 · Lane L 36 · Lane Landing 10 · Product
+  dashboard 18 · Service-part resolution 27 · Parts date/shop filter 20 ·
+  Service return workflow 25 · Form field order 11 · API 67 · Technician 27 ·
+  Responsive 74 · Date nav flicker 5 · Header calendar 5 · Real viewport 9 ·
+  Customer address/warranty 13 · White-label 10 · Dashboard premium 28 ·
+  Clean-slate fresh install 10 · MSS rebrand contract 28 · MSS update contract 9
+  · MSS installer contract 18 · Cipher sync 12 ·
+  Settings save pipeline 12 · Backup/restore overhaul 37 · Power-failure
+  resilience 9 · Custom DB path 9 · Secret code 17 · Dashboard cipher QC 15 ·
+  Offline licensing 86, 0 FAIL, 0 JS errors; the live shop DB hash stayed
+  unchanged.
+- **Windows harness note:** two plain PowerShell-piped full runs died with a
+  native `0xC0000409` at different suites (once at Lane E, once at Lane H),
+  while isolated suites stayed green. The clean run above used
+  `NODE_OPTIONS=--max-old-space-size=4096` with plain `cmd` redirection. No
+  suite reported a product failure in either crashed run.
 - The Counter Ledger design contract runs **separately** (it is deliberately
-  not in the default 374): `MAHER_TEST_SUITES=scripts/service-list-design.js
+  not in the default 921): `MAHER_TEST_SUITES=scripts/service-list-design.js
   npm test` → **19/19 checks**.
 - v1.2.0 release run (historical): **13/13 suites, 312/312 checks** — Launcher
   14 · Expense upgrade 10 · E2E 9+13 · Lane A 26 · Lanes B+C 24 · Lane D 28 ·
   Lane E 18 · Lane F 8 · API 59 · Technician 25 · Responsive 74 · Date-nav 4,
   0 FAIL, 0 JS errors; the live shop DB hash stayed unchanged. Since then:
-  portable-keep, Lane G, Lane Landing and header-calendar were added (+43),
-  Lane D/F grew (+15), and API grew 59→63 (+4) — 374 today.
+  portable-keep, Lane G, Lane Landing, header-calendar and real-viewport were
+  added, Lane H (সমাধান/শর্ত) and Lane I (পেমেন্ট/ক্রয়) followed, API grew
+  59→67, Lane J added 5 service-part checks, Lane K added 7 customer-history
+  checks and Lane L added 36 optional-part/ledger checks; the unreleased work
+  added user-data-dir (9), electron-env (9), desktop-package (24),
+  service-part-resolution (27), parts-date-shop-filter (20),
+  service-return-workflow (25), form-field-order (11), white-label (10),
+  cipher-sync (12), settings-save-pipeline (12), backup-restore-overhaul (37)
+  and power-failure-resilience (9), grew portable-keep 10→13,
+  expense-upgrade 10→12 and product-dashboard 13→17, added custom-db-path (9)
+  and kept customer-address-warranty (13) — **749 at that point**; later
+  unreleased work grew technician 25→27, dashboard-premium 17→23 and
+  dashboard-cipher-qc 11→15, licensing grew to 86, clean-slate added 10 and
+  the MSS rebrand contract added 24 and grew to 28, the update contract added
+  9 and the installer contract added 15 and grew to 18 — **921 today**.
 - v1.1.4 historical run: **11/11 suites, 298/298 checks** — same suites before
   Lane F and the date-nav regression were added.
 - v1.1.3 historical run: **11/11 suites, 230/230 checks** — same suites with
@@ -918,9 +1256,10 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - v1.1.2 historical run: **10/10 suites, 215/215 checks** — Lane E 15 · API 56 ·
   Technician 24; the new expense-upgrade suite did not exist yet.
 - **The by-hand checklist is the final acceptance pass.** `MANUAL-TEST.md` has
-  175 steps, including a real PDF print/read-back; run it on the target PC after
+  278 steps, including a real PDF print/read-back; run it on the target PC after
   any UI change. The automated suite mirrors its critical paths, including the
-  code-only cost column and the return/refund/damage ledger.
+  code-only cost column, the return/refund/damage ledger and the payment/purchase
+  rules.
 - Desktop + 360–1920px responsive widths + print-emulation verified; the shop
   DB stayed byte-identical (hash-checked).
 
@@ -953,8 +1292,8 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   swaps rows inside a single `BEGIN IMMEDIATE … COMMIT` transaction. Old or
   incomplete snapshots get a 400 naming the missing columns; a bad snapshot or
   a power cut can no longer empty the live database. The return/refund/damage,
-  write-off, group and delivery columns are optional on restore, with
-  `NULL`/`0`/`false` defaults.
+  write-off, group, delivery, inspection-fee and return-reason columns are
+  optional on restore, with `NULL`/`0`/`false` defaults.
 - **Returned is terminal and accounting-safe.** Only the refund endpoint can set
   it; the generic validator rejects bill/advance/status edits on a returned row,
   so a later form save cannot silently resurrect an old bill. Safe descriptive
@@ -1044,6 +1383,387 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 > `1.2.0` until the next tagged release.
 
 **Added**
+- **100% offline, hardware-locked licensing (Ed25519)** — the app now derives a
+  stable `MHR-XXXX-XXXX-XXXX-XXXX` fingerprint from motherboard/CPU/disk/BIOS
+  identifiers (`lib/licensing/machine-id.ts`) and verifies signed keys with a
+  public key only (`lib/licensing/{crypto,public-key}.ts`). A signed payload
+  carries `machineId`, `shopName`, `type`, `issuedAt` and `expiresAt`; the token
+  is `MHR-KEY-<base64url payload>.<base64url signature>`. `GET
+  /api/license/status` and `POST /api/license/activate` do every check on
+  localhost. A monotonic high-water mark detects a >1-hour clock rollback and
+  locks the app with the exact
+  **কম্পিউটারের তারিখ ও সময় পরিবর্তন শনাক্ত হয়েছে। অনুগ্রহ করে সঠিক সময় ঠিক করুন।** warning.
+  Fresh installs get a **30-day trial** (`DEFAULT_TRIAL_DAYS = 30`, overridable
+  with `MAHER_TRIAL_DAYS`); the state file lives beside the shop DB (or
+  `MAHER_USER_DATA_DIR`) so a DB restore cannot reset it. Tiers are `TRIAL`
+  (30 days), `1_YEAR` (365), `2_YEARS` (730), `3_YEARS` (1095) and `LIFETIME`
+  (`expiresAt: null`); `ANNUAL` remains a verified legacy alias for 1_YEAR and
+  the admin-only `30_DAYS` alias canonicalises to a fresh 30-day `TRIAL`.
+  An active, unclaimed trial persisted by a pre-30-day build is upgraded once
+  on read to `installedAt + 30 days` (expired trials, claimed licences and an
+  explicit `MAHER_TRIAL_DAYS` override are never rewritten), so an old install
+  shows the same Bengali expiry as a fresh one.
+  `GET /api/license/status` also exposes explicit `isExpired`/`unlimited`
+  flags, `totalDays` and `progressPercent`; a lifetime key is never expired and
+  uses an in-process `Infinity` days sentinel (serialised as `null` on the wire,
+  so no JSON client can misread it). A full-screen `LicenseProvider`/
+  `LicenseGate` covers `/dashboard`, `/service`, `/products` and `/parts` when
+  locked. The dashboard hub is a crisp white/light card
+  (`bg-white border-slate-200/80 rounded-2xl shadow-sm`) that matches the other
+  dashboard cards, titled **🛡️ লাইসেন্স ও সাবস্ক্রিপশন হাব**
+  (**অফলাইন সিকিউরড অ্যাক্টিভেশন সিস্টেম**) with the exact 3-step banner
+  **১. মেশিন আইডি কপি করুন ➔ ২. হোয়াটসঅ্যাপে কি সংগ্রহ করুন ➔ ৩. সফটওয়ার
+  সক্রিয় করুন**, soft-pill dynamic badges (no duplicate inner trial strip) (`● ফ্রি ট্রায়াল: N দিন বাকি` amber,
+  `● সক্রিয় (N বছর মেয়াদী)` blue, `● সক্রিয় (লাইফটাইম আনলিমিটেড)` emerald,
+  `● মেয়াদ উত্তীর্ণ (লকড)` rose), the four Bengali grid labels with the real
+  Asia/Dhaka expiry date, an emerald/teal progress bar hidden for lifetime
+  (replaced by **💎 আজীবন ব্যবহারের নিশ্চয়তা**), a monospace machine ID with
+  `✓ কপি হয়েছে!` feedback for 2.5 seconds and a company WhatsApp support link
+  (`01533315357`) that prefills the machine ID. The light-themed, downtime-free
+  renewal modal (**সফটওয়ার লাইসেন্স সক্রিয় / রিনিউ করুন**) uses a scoped
+  `bg-slate-900/40 backdrop-blur-sm` overlay (the shared Dialog primitive is
+  untouched) and shows a green `✓ সঠিক কি: … • …`, amber
+  `⚠️ এই কি-টি অন্য পিসির জন্য তৈরি করা হয়েছে` or red
+  `✕ অকার্যকর বা ভুল লাইসেন্স কি` chip from `POST /api/license/preview` before
+  activation. `tools/keygen-crm/` is the standalone admin CLI + localhost GUI
+  (dark/light mode, all six tier choices, customer search, renewal alerts) with
+  the private key, a SQLite customer ledger and one-click WhatsApp messages.
+  The isolated `scripts/offline-licensing.test.js` suite pins machine binding,
+  signature/expiry rejection, exact tier durations, clock tampering, all four
+  locked routes, activation, renewal, CRM isolation and GUI endpoints; every
+  legacy suite gets its own license file and an explicit unlocked-trial bypass,
+  so no test touches shop licensing state.
+- **Tier-aware license actions** — the hub's bottom action area now follows the
+  tier, not just the paid/unpaid verdict. LIFETIME shows a non-clickable emerald
+  pill (**💎 লাইসেন্স সক্রিয় — আজীবন ব্যবহারের নিশ্চয়তা**), the no-fee assurance
+  and a high-affordance secondary button
+  (**⚙️ লাইসেন্স কি পরিবর্তন / আপডেট করুন**, `data-testid="license-change-key-btn"`)
+  that opens the light activation modal without changing the machine ID — no
+  renewal button at all. 1/2/3-year licences get **🔄 মেয়াদের সময় বাড়ান / এক্সটেন্ড
+  করুন** with the automatic-extension hint, trials get **🚀 ফুল ভার্সনে আপগ্রেড
+  করুন / লাইসেন্স কি দিন** plus a separate vendor-hotline 01533315357 purchase
+  link, and expired/locked installs get the high-contrast **🚨 সফটওয়ার আনলক
+  করতে লাইসেন্স কি দিন** CTA. The vendor/licensing hotline is fixed at
+  `01533315357` / `https://wa.me/8801533315357` across every licensing surface
+  (`LicenseCard`, `LicenseGate`, `license-support-link`); the shop owner's
+  configurable business number lives only in Shop Profile and never overrides
+  it. The `btn-open-license-modal`, `license-renew-btn` and original support-link
+  testids/href are preserved wherever those states still expose them.
+- **Real hardware machine ID (CIM lock)** — Windows fingerprints now come from
+  a single batched `powershell.exe` CIM query reading motherboard UUID,
+  baseboard serial, CPU ProcessorId and BIOS serial, parsed with the
+  `__MAHER_CIM__` marker and hashed as `sha256(parts.join("|"))`. The old `wmic`
+  path and its invalid `(try { ... } catch { '' })` PowerShell calls always
+  failed, so the previous ID was hostname-derived: **keys signed for that ID
+  must be re-issued**. Empty or placeholder fields are filtered, and the
+  hostname/platform seed is used only when no hardware value is readable. The
+  ID is cached in memory (~0ms warm, ~400ms cold on this PC).
+- **First-time shop profile onboarding banner** — an untouched install (no
+  `ShopSettings` row, so `updatedAt === null`) gets a soft amber banner between
+  Dashboard Overview and Quick Actions with the exact Bengali welcome copy
+  (**🏬 স্বাগতম! আপনার দোকানের নাম ও প্রাথমিক তথ্য সেটআপ করে নিন**), a
+  `✏️ শপ প্রোফাইল সেটআপ করুন` action that smooth-scrolls to and focuses
+  `দোকানের নাম` with a brief highlight pulse, and a `পরে করব ✕` link that hides
+  it for the current tab only (`sessionStorage`). A successful save from
+  `সব সেটিংস সংরক্ষণ ও পুরো সিস্টেমে সিঙ্ক করুন` stores both
+  `shop_onboarding_completed = true` and `shop_profile_configured = true` in
+  `localStorage`; a shop with an existing saved profile never sees the banner,
+  so old snapshots stay backward compatible.
+- **Hardened backup export & safe restore pipeline** — `GET /api/backup` now
+  checkpoints the active WAL with `PRAGMA wal_checkpoint(TRUNCATE)` before every
+  format, and audits all six backup models (`Service`, `Product`,
+  `CustomerPayment` → `Payment`, `SupplierExpense` → `Purchase`, `Technician`,
+  reserved `AuditLog`) in a UTF-8 BOM CSV footer, an `X-Backup-Models` header and
+  the Excel summary sheet. `POST /api/backup/restore` now writes every upload to
+  a unique `temp-restore-*.db`, runs read-only `PRAGMA quick_check` (exact
+  failure: **ব্যাকআপ ফাইলটি নষ্ট বা ক্ষতিগ্রস্ত (Corrupted SQLite file)**),
+  reports essential tables/counts as metadata, keeps the transactional
+  ATTACH/swap (so no Windows file-lock `EBUSY` and the local pointer survives),
+  writes `shop.db.pre-restore.bak` beside the active DB, cleans `-wal`/`-shm`
+  temp sidecars and returns `servicesCount`/`productsCount`. Uploads accept
+  `.db`, `.sqlite`, `.sql` and `.maherbackup`.
+  `POST /api/backup/inspect` powers the new read-only metadata preview.
+  The Dashboard button (`btn-restore-backup`) opens the
+  `modal-restore-backup` dropzone; after choosing a file the card shows name,
+  size and detected record count, then the high-contrast amber/rose warning
+  **সতর্কতা: ব্যাকআপ রিস্টোর করলে বর্তমান ডাটাবেজ প্রতিস্থাপিত হবে। নিশ্চিত করুন?**
+  and `btn-confirm-restore` (**⚠️ রিস্টোর শুরু করুন**). The loading state shows
+  **ডাটাবেজ রিস্টোর করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।**, success shows
+  **ডাটাবেজ সফলভাবে রিস্টোর করা হয়েছে!**, then the window reloads to clear
+  stale cache. Old snapshots and the legacy test IDs/warning/toast still work.
+- **Custom database location engine (D:/E: drive support)** — the Dashboard
+  **ডাটা নিরাপত্তা** card now shows `বর্তমান ডাটাবেজ লোকেশন: …` and a
+  **📂 ডাটাবেজ লোকেশন পরিবর্তন করুন** button (`btn-change-db-path`). The dialog
+  takes a full folder path (or a `.db` file), shows the exact
+  **সতর্কতা: ডাটাবেজটি নতুন লোকেশনে স্থানান্তর করা হবে। নিশ্চিত করুন?** warning,
+  a **ডাটাবেজ স্থানান্তর করা হচ্ছে...** loading state and the exact
+  **ডাটাবেজ লোকেশন সফলভাবে পরিবর্তিত হয়েছে!** toast. `POST
+  /api/backup/change-db-path` checkpoints with `PRAGMA wal_checkpoint(TRUNCATE)`,
+  copies to a temp file in the target folder, runs `PRAGMA quick_check` on the
+  copy (and compares schema/row count/byte size with the source), atomically
+  renames it, then writes the local pointer config **only after** verification.
+  The original file is never deleted — it stays as the emergency fallback.
+  The dialog now also offers **ফোল্ডার নির্বাচন করুন / ব্রাউজ**
+  (`btn-browse-db-folder`): a native Windows folder dialog in the Electron
+  desktop app (`dialog:select-directory` with `openDirectory` +
+  `createDirectory`) and a browser File System Access / hidden directory-input
+  fallback. One-click `D:\MAHER_DATA` / `E:\MAHER_DATA` / `C:\MAHER_DATA`
+  presets fill the path, and the live **👉 চূড়ান্ত ডাটাবেজ ফাইল: …** preview
+  appends the active `.db` filename to a folder. Missing target folders are
+  created recursively and write-tested before copying, temporary WAL sidecars
+  are cleaned up, and the success toast reports the migrated record count
+  beside the green **● সক্রিয়** badge.
+
+  `GET /api/db-location` reports `activePath`, `defaultPath`, `configuredPath`,
+  `source` (`default`/`custom`/`fallback`) and the fallback reason; `DELETE
+  /api/backup/change-db-path` drops the pointer and returns to the launcher
+  default. A missing drive/DB makes the resolver fall back to `%AppData%` (or the
+  throwaway dev path) with an on-card `role="alert"` instead of a crash. Live
+  Prisma connections follow the pointer on their next access with the WAL/NORMAL/
+  5000 PRAGMAs re-applied; no business calculation, receipt rule or existing
+  `data-testid` changed.
+- **Power-failure resilience & crash recovery** — the shared Prisma adapter
+  connection now applies `journal_mode = WAL`, `synchronous = NORMAL` and
+  `busy_timeout = 5000` before its first query, then schedules a lightweight
+  `quick_check` off the startup path; stale WAL journals are left to SQLite to
+  replay/checkpoint, never deleted by hand. `/api/health` reports the live
+  connection's `sqlite` diagnostics. New visits debounce-save typed state to
+  `localStorage:maher_service_entry_draft_v1`; after a crash/reload the form
+  shows the exact **⚡ অসম্পূর্ণ ড্রাফট উদ্ধার করা হয়েছে — 🔄 রিস্টোর করুন ✕ বাতিল**
+  banner and applies or clears the draft only on an explicit click (a
+  successful **সেভ করুন** also clears it). Editing an existing row never runs
+  this engine; the old navigation-only session draft is untouched.
+- **Four-format backup picker & safe offline restore** — the Dashboard
+  **এখন ব্যাকআপ নিন** action opens `BackupExportDialog` with the system
+  recovery `.db`, Excel, PDF and CSV options (each with its exact Bengali
+  subtext); a single click downloads only the chosen file. System backups are
+  consistent SQLite snapshots named `MAHER_SYSTEM_BACKUP_YYYY-MM-DD_HH-mm.db`
+  with the local `ShopSettings` table removed. `RestoreDialog` now accepts an
+  uploaded `.db` / `.sql` / `.maherbackup` file as well as the old snapshot
+  list, validates magic bytes and schema, keeps a `safety-*.db` copy, never
+  swaps `ShopSettings` id 1, and refreshes `ShopSettingsProvider` after a
+  successful restore. Extract/report/accounting rules are untouched.
+- **White-label shop profile & Dashboard Home** — one optional singleton
+  `ShopSettings` row (`id = 1`, migration `20261122120000_add_shop_settings`)
+  holds `shopName`, `slogan`, `address`, `phone`, `whatsapp`, `terms`, `logoPath`
+  and the `secretCipher` config. `GET/PUT /api/shop-settings` is the only write
+  path; a missing or unreadable row falls back to the built-in MAHER branding,
+  so a fresh install, an old backup or a build-time render always works.
+  `ShopSettingsProvider` mirrors the row into the client and the masthead,
+  footer, Dashboard brand preview (name, tagline, mobile, WhatsApp and address
+  with a map pin) and both receipt layouts (`receipt-terms`) read it live — no
+  reload, no CDN, no cloud. The table is deliberately **excluded from backup/restore**,
+  so branding survives a data restore.
+- **Dashboard is the landing page** — `/dashboard` (`components/dashboard/
+  DashboardView.tsx`) opens by default and groups five panels behind one shared
+  container: **Overview** (today's activity, financial health, low stock < 5),
+  **Quick actions**, **Technician management**, **Shop settings** (branding +
+  cipher tester) and **Data safety** (last backup, backup, restore). Reports,
+  dues and the receipt dialog were relocated to the Dashboard as
+  `components/dashboard/ReportDock.tsx`, so no money-reporting feature was
+  lost. `/` redirects to `/dashboard` unless a bookmarked Service deep-link
+  (`date`/`edit`/`receipt`/`status`/`mode`) is present, in which case those
+  params still forward to `/service`. The navbar is now
+  **ড্যাশবোর্ড → সার্ভিস → প্রোডাক্ট → পার্টস** (`lib/nav-links.ts`).
+- **Configurable secret expense-code cipher** — `lib/secret-code.ts` supports
+  two interchangeable ciphers. The default `keypad` map preserves every
+  historical code byte-for-byte (`*J#` = 1500, `T#` = 800, `GJ+` = 450, `1000`
+  = `*+#`; `1→*`, `2→ABC` … `9→WXYZ`, single `0` = `+`, `00` = `#`). Custom mode
+  stores an **eleven-digit character map** (`CipherConfig.groups`) where every
+  digit `1`–`9`, `0` and `00` owns a **list** of characters: encoding uses the
+  **first** character of each list, decoding accepts **any** character from it.
+  Fields accept `A, B, C` or `ABC`; the Dashboard grid has all eleven Bengali
+  digit fields (including `০০`), a **কীপ্যাড প্রিসেট লোড করুন** preset and a
+  **ক্লিয়ার** button. A character may belong to exactly one digit — a collision
+  is rejected live with an inline `'B' অক্ষরটি একাধিক ঘরে ব্যবহার করা হয়েছে।`
+  error, both fields turn red with `aria-invalid`, and Save/Sync stay disabled.
+  The old 10-character `word` is still accepted and mirrored via
+  `wordFromGroups`, so `ABCDEFGHIJ` still encodes `1500 → AEJJ`. The Dashboard
+  has a live amount→code→amount tester (`*J#` ↔ `৳১,৫০০`) whose inputs start
+  empty and show a clean `—` until typed; switching to a fully empty custom
+  grid seeds a unique `1=A … 9=I, 0=J, 00=K` map without overwriting partial
+  edits. A one-click **🔄 কোড সংরক্ষণ ও পুরো সিস্টেমে সিঙ্ক করুন** button PUTs the map and
+  immediately broadcasts it through `ShopSettingsProvider` — `/service` price
+  previews and `/parts` ledger amounts update without a reload. Explicit PUTs
+  validate strictly (HTTP 400 on collision or empty required digits) while
+  stored/legacy values are read leniently: runtime normalisation only parses
+   the persisted map and never re-runs the strict validator on the money path.
+   The active config is threaded
+  through `decodeShopExpense`, parts cost decoding, service validation and the
+  Service/Payment/Parts APIs, so the decode is consistent everywhere and
+  receipts/reports still hide the amount. Stored services are never re-encoded.
+- **Windows desktop EXE (Electron, Option A)** — `npm run build:desktop`
+  (`npm run dist`) stages the verified standalone server plus the pinned Node
+  22.14.0/ABI 127 runtime under `resources/app` and `resources/runtime` and
+  produces `out/MAHER-Electron/dist/MSS-Setup-1.2.0.exe` (assisted NSIS wizard,
+  x64) and `dist/win-unpacked/MSS.exe`. Product/shortcut/taskbar name is **MSS**;
+  the native window title is `${shopName — }MSS (Mobile Service System)` and the
+  renderer pushes profile changes to it through `window:set-title`. The shell
+  keeps the child API on `127.0.0.1`, waits for a health response that names the
+  expected database, and owns a single-instance lock. Production data lives in
+  the installer-chosen non-C folder (`D:\MSS-Data\data\shop.db` by default),
+  recorded beside `MSS.exe` in `mss-data-root.txt` and in the registry for the
+  next update. A packaged C: env override fails instead of bypassing the wizard;
+  a rebuild ships no `data/` folder, so a stale portable database can never
+  overwrite the installed ledger
+  (`scripts/portable-keep.test.js` PK-11…PK-13). The preload exposes
+  `maherDesktop.isElectron/setWindowTitle/printReceipt/getPrinters`; receipt
+  printing uses silent IPC in Electron and keeps `window.print()` in the browser.
+  `npm run electron:dev` runs an isolated loopback dev instance;
+  `npm run test:desktop` launches a packaged EXE against a throwaway user-data root
+  (migration, bridge/IPC, single-instance, zero page errors). The builder
+  config is `packaging/electron-builder.json`.
+- **পেমেন্ট (customer payments) & ক্রয় (shop purchases)** — money that arrives
+  after the job is booked is now a receipt, not an edit. **টাকা নিন** on a row
+  (or on a visit) opens a dialog for amount + method (নগদ / বিকাশ / অন্য); the
+  amount settles that customer's unpaid, non-returned slips **oldest first**,
+  and a slip turns **পরিশোধিত** only when its বাকি reaches ৳0 — `due` stays
+  derived, there is no sixth status and no `paid` column. Overpay is refused
+  (`400`) and `due` never goes negative. Once a slip is paid its জমা may only
+  rise together with its বিল; a lower bill, a lower জমা, or a জমা change on its
+  own is `400`. The new balance is payable through **টাকা নিন**, while
+  descriptive edits still work.
+  The old **যাচাই** tick was retired (no button, no endpoint); the
+  stored `verified` column survives only so older backups keep restoring.
+  The **স্টক** page gained a **দোকান ও ক্রয়** tab:
+  purchase documents with line items (receiving them writes `STOCK_IN` and
+  updates `stock` / `purchasePrice`), supplier bills settled oldest-first, one
+  method per payment. A purchase is bookkeeping only — never a service expense,
+  never a profit line — and no receipt or PDF shows a purchase price or supplier
+  name. Customers are keyed by normalized `phone` digits (exact-name fallback)
+  — no `Customer` table. Migration `20261113120000_add_payments_purchases`;
+  routes `/api/payments`, `/api/services/[id]/verify`, `/api/purchases`,
+  `/api/purchases/payments`. `laneI.js` (20 checks) pins the rules, and
+  `api-check.js` R2b proves a pre-Phase-2 snapshot clears these six tables and
+   answers with a warning instead of leaving dangling allocations.
+- **A paid slip can absorb an extra charge.** If a fault is found after a fully
+  paid job was booked, a new part means the bill must rise. The pencil's
+  **ডিভাইস বিল (৳)** field raises the bill; if the customer pays the extra
+  amount at the counter, the save raises জমা by the same edit (e.g. 6000 → 6500
+  on both) and the slip stays পরিশোধিত. Leaving জমা unchanged instead creates a
+  fresh বাকি payable through **টাকা নিন**. A lower bill, a lower জমা, a জমা
+  change without a bill rise, or an advance above the new bill is still `400`;
+  returned rows keep their money frozen. `laneI.js` I8 pins the
+  rise/decrease/together/overpay split.
+- **পার্টস কেনা খাতা (service-part supplier bills)** — `SERVICE_PART` supplier
+  bills record multiple free-text parts, wholesale supplier, buying price,
+  linked service/device and immediate or later supplier payment. They never
+  increase product stock, and their line total becomes the device's internal
+  repair cost exactly once; supplier due remains separate from the customer's
+  bill. The former edit-form **পার্টস কেনার বিল যোগ করুন** action is retired
+  (see Unreleased) — part money is entered once with the visit's
+  **পার্টস** rows. Migration
+  `20261113160000_add_service_part_purchases`; `laneJ.js` pins the linked-bill,
+  partial-payment and cost-isolation rules.
+- **পার্টস per-device purchase ledger** — each device (including every
+  device of a grouped visit) may add up to eight optional part lines: name,
+  quantity, **one price field** that accepts a plain amount or a keypad code
+  (a plain amount is encoded to a code on save: `1200` → `*A#`), buying
+  shop/supplier and a purchase date. A line is saved only when all four
+  are present (price `0` is valid, blank is not); fully blank rows are ignored,
+  partial rows are refused with a Bengali message, and a device with no lines
+  writes no `ServicePart` row and keeps the দোকান খরচ lump exactly as before.
+  A new line's purchase date defaults to **today** (editable, never derived
+  from the service date). Editing a saved line with a blank supplier/date keeps
+  the stored values, and a legacy `NULL` date is never silently filled or
+  cleared. The server decodes the price, saves its canonical code in `priceCode`
+  (plain amount → code, typed code unchanged), and always derives
+  `quantity × unitCost`. The **স্টক → দোকান ও
+  ক্রয়** tab now embeds an internal **সার্ভিস পার্টস খাতা**: date-range +
+  supplier filters, সব / Unpaid / Paid / তারিখহীন tabs, and summary cards that
+  depend only on date + supplier (switching the tab never hides another
+  status's money; unknown-date lines are listed but never totalled). Paid is a
+  whole-line flag with an append-only timestamped history — not a payment:
+  supplier balances, `PurchasePayment` allocation and `Service.due` stay
+  untouched. Paid/history lines cannot be repriced or deleted until they are
+  Unpaid with a reason; unknown-date lines need an explicit date/confirmation
+  (Paid) or reason + confirmation (delete); a returned job freezes its parts
+  (`409`) but still allows the Paid toggle. Supplier-wide bulk Paid/Unpaid is
+  atomic with a 100-id / 500-row cap, and a device with part lines and a linked
+  `SERVICE_PART` bill cannot coexist (`409` both directions). The Excel backup
+  gains a separate internal **সার্ভিস পার্টস** sheet (price code, supplier,
+  paid history, known-date totals) that never feeds the summary sheet, receipt
+  or PDF. Migration `20261116090000_service_part_purchase_fields` adds five
+  nullable columns + three indexes; `laneL.js` (36 checks) pins every rule.
+- **পার্টস খাতার তারিখ মোড ও দোকান ফিল্টার** — the internal ledger now uses the
+  service desk's exact switcher, **একদিন | তারিখ রেঞ্জ | সব তারিখ**, instead of
+  two raw date boxes. It opens on **একদিন** (today) with `আগের দিন` / `পরের দিন`
+  / `📅 আজ`; **তারিখ রেঞ্জ** shows `শুরুর তারিখ` – `শেষের তারিখ`, and **সব তারিখ**
+  hides the pickers and shows the full history. The **পার্টসের দোকান** dropdown
+  lists every saved shop *and* every shop seen on a past part line, defaulting
+  to **সব দোকান**. Date scope and shop travel together to `/api/service-parts`,
+  so the table and all four cards (চিহ্ন নেই / Paid চিহ্ন / মোট (তারিখ আছে) /
+  তারিখহীন) recalculate as one; bulk Paid/Unpaid follows the same scope. No
+  column, badge, action or other page moved — `parts-date-shop-filter.js`
+  (20 checks) pins the modes, combined filters, legacy money, the always-visible
+  `কোড:` with its taka hidden behind the row eye or the toolbar's **দাম দেখান /
+  দাম লুকান** reveal-all button, emerald/rose payment badges, the one-line
+  toolbar and 1280/1366 overflow-free layout. Shop names are managed from the
+  masthead's right-aligned **🏪 দোকান ব্যবস্থাপনা (Nটি)** button, not a top card.
+- **Shop manager is now an accounting dashboard** — `/parts` no longer opens with
+  a tall shop card: the **সার্ভিস পার্টস খাতা** starts right under the page lead.
+  `PartsShopManagerDialog` keeps the compact `দোকানের নাম` add form and lists
+  every saved / ledger-known shop with colour-coded tags: neutral slate
+  **মোট: ৳…**, emerald **পরিশোধ: ৳…** and either a rose **⚠️ বাকি: ৳…** badge or a
+  quiet green **✅ পরিশোধিত** tag. Paid is a whole-line marker, not a payment
+  record. The footer is a three-part ledger summary — **মোট বিল: ৳… |
+  পরিশোধিত: ৳… | মোট বাকি দেনা: ৳…** — with the total due in bold rose. Each row
+  also has a **🔍** button titled **এই দোকানের খাতা দেখুন**: it sets the ledger's
+  `পার্টসের দোকান` filter to that shop and closes the dialog without touching the
+  chosen date scope. A shop with transactions keeps its name but its trash button
+  is disabled with the tooltip **লেনদেন থাকায় দোকানটি ডিলিট করা যাবে না**.
+  `part-shop-row`, `part-shop-delete` and `part-shops-total` keep their testids;
+  R21 still proves a ledger write refreshes those parent figures. No API, schema
+  or ledger column changed.
+- **ড্যামেজ marked on the entry form, in the same save** — each optional part
+  row now carries a small **ড্যামেজ** checkbox. Ticking it writes
+  `partStatus = "DAMAGED"` on the new line, stamps a resolution note and moves
+  the full line cost into `Service.damageLoss` in the same transaction, so a
+  broken part no longer needs a second trip to `/parts`. The line keeps its full
+  audit record (name, price, supplier, date) and never enters the device's parts
+  cost or a customer receipt/PDF. Only `DAMAGED` is accepted from the form —
+  every other value is coerced to `USED`, so stock/return states still require
+  the audited **নিষ্পত্তি** dialog. A saved damaged line is frozen in the form;
+  later changes stay in `/parts`. `service-part-resolution.js` R22–R24 pin the
+  once-only loss, the re-save guard and the coercion rule.
+- **Stock page without the inventory dashboards** — the product page no longer
+  shows the six summary cards, the stock-status filter, the sort dropdown, the
+  ক্রয় eye toggle/column, visible SKU/barcode or the inventory-value card. It
+  keeps search, the category filter + manager, stock, selling price, add/edit/
+  archive and every purchase flow; the product dialog still takes the purchase
+  price, and an update that omits SKU/barcode keeps the stored values.
+- **সমাধান + শর্ত (per device / per visit)** — the work-done note is internal
+  only (max 500 chars: never on a receipt, never matched by a name/model/text
+  search, included in the CSV/Excel audit and in an old-snapshot-safe
+  restore). It is written from a small **সমাধান** button on each device line in
+  the service list — usually at handover — via `ServiceSolutionDialog`; the
+  same button edits a stored note. In a grouped visit every device gets **its
+  own** button, numbered **সমাধান 1 / সমাধান 2 / …** so they cannot be confused
+  (a single-device row stays plain **সমাধান**). শর্ত is one per visit: an
+  optional **কাস্টমারের শর্ত** section in the form (collapsed, so the bill +
+  জমা stay clear of the sticky save bar on a 585px-tall laptop screen) with
+  quick-insert chips; the same text is copied onto every device row *and* the
+  product anchor of a grouped visit, and its list marker opens a read-only
+  `ServiceConditionDialog`. There is no solution field in the form and no
+  separate সমাধান খাতা — the header search is the single history entry point
+  (see the গ্রাহকের ইতিহাস bullet). The condition prints as a **শর্ত** block on
+  the single receipt, the combined group slip and its PDF; the solution never
+  prints. Migration `20261113090000_add_solution_condition` (both columns
+  nullable); `laneH.js` (14 checks) pins the rules.
+- **গ্রাহকের ইতিহাস (customer history by mobile number)** — typing a customer's
+  phone number into the **header search** lists every earlier job for any date
+  and each result carries the full detail a technician needs: date, model,
+  problem, technician, বিল / জমা / বাকি, delivery date, status, and the stored
+  **সমাধান** + **শর্ত** notes. For a grouped visit the matching rows are folded
+  together and listed **device-wise** — **ডিভাইস 1 / 2 / …** with that device's
+  own model, problem and solution — instead of N near-identical results. A
+  local `01…` or `+880…` number both match
+  (digit-normalized), archived rows stay hidden, and name/model/problem queries
+  still never reveal the internal solution note. There is no extra history
+  button in the form — the search bar already does the job. Receipts/PDFs are
+  untouched; `GET /api/services/history?phone=` stays available as a read-only
+  API, and `laneK.js` (7 checks) pins the search API, the full-detail result
+  list and the privacy rule.
 - **IMEI per device** — optional field on every device card (max 32 chars,
   stored exactly as typed), carried in the Excel audit sheet and CSV backup,
   never shown in
@@ -1068,17 +1788,19 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   data live only in the audit sheet. Built server-side with ExcelJS
   (`lib/backup-workbook.ts`); the `.db` snapshot stays the real backup, and
   `GET /api/backup` keeps the full CSV for scripts (now with `saleRef`).
-- **Service desk is the landing page** — `/` redirects to `/service` and
-  forwards bookmarked `date`/`edit`/`receipt`/`status`/`mode` params; the
-  navbar now has exactly two destinations (সার্ভিস / স্টক), with a compact
-  backup strip on the desk and refresh/restore behind the **⋯ ডেটা ও ব্যাকআপ**
-  dialog. The old Home dashboard widgets are
-  retired; reports, dues, technicians and all data/backup behaviour are
-  unchanged (`laneLanding.js`).
-- **One-click new entry** — **নতুন সার্ভিস এন্ট্রি** at the front of the
-  service masthead scrolls to the form and focuses কাস্টমারের নাম (on a phone it
-  switches to the form tab first); the header chrome and every other action stay
-  exactly where they were.
+- **Service desk became the landing page (superseded in this same Unreleased
+  cycle)** — `/` redirected to `/service` and forwarded bookmarked
+  `date`/`edit`/`receipt`/`status`/`mode` params; the navbar had exactly two
+  destinations (সার্ভিস / স্টক), with a compact backup strip on the desk and
+  refresh/restore behind the **⋯ ডেটা ও ব্যাকআপ** dialog. The deep-link
+  forwarding survives today; the landing target, navbar, backup strip and
+  dashboard widgets have since been replaced by the white-label Dashboard
+  described at the top of this section (`laneLanding.js`).
+- **One-click new entry (masthead button since removed)** — **নতুন সার্ভিস
+  এন্ট্রি** at the front of the service masthead used to scroll to the form and
+  focus কাস্টমারের নাম (on a phone it switched to the form tab first). The label
+  now belongs to the form section itself; deep links and the header CTA still
+  jump to the form through `ServiceWorkspace`'s `newEntry`.
 - **Dues status chips** — **সব / পেন্ডিং / চলছে / সম্পন্ন / ডেলিভারি / ফেরত**
   with live visit counts and the service list's pill styling. Chips filter the
   visit rows, the row scrolls inside itself on narrow screens, and the **ফেরত**
@@ -1113,16 +1835,79 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   section headers (table + cards), newest day first.
 - **Report export (PDF / CSV / Excel)** — the report dialog's new
   “এই হিসাবের এক্সপোর্ট:” row follows the chosen window (একদিন / তারিখ রেঞ্জ /
-  সব তারিখ) and builds every file locally: `lib/export.ts` (BOM CSV + SheetJS
-  `.xlsx` with সারাংশ/দৈনিক ভাঙতি/সার্ভিস sheets) and `lib/report-pdf.ts` +
-  `components/report/ReportDocument.tsx` (canvas-sliced multi-page Bengali
-  A4). Detail rows now carry **ফেরত / ফেরত তারিখ**, files are stamped
-  `MAHER-Report-all.*` for সব তারিখ, and the PDF caps its detail table at 1000
-  rows (CSV/Excel carry up to 5000); expense amounts, write-off flags, IMEI and
-  damage/refund notes never enter a file (only the aggregate খরচ does). New
-  `xlsx@0.18.5` dependency — write-only, bundled, never parses untrusted input.
+  সব তারিখ) and builds every file locally from a single shared layout:
+  `lib/export.ts` (sorted rows, daily roll-up, BOM/CRLF CSV + ExcelJS `.xlsx`
+  with titled, width-set, frozen-header সারাংশ/দৈনিক ভাঙতি/সার্ভিস sheets) and
+  `lib/report-pdf.ts` + `components/report/ReportDocument.tsx` (one PDF page
+  per pre-laid-out Bengali A4 section page, headings repeated, page n/N).
+  Detail rows now carry **ফেরত / ফেরত তারিখ**, files are stamped
+  `MSS-Report-all.*` for সব তারিখ, and the PDF caps its detail table at 1000
+  rows with a visible notice (CSV/Excel carry up to 5000); expense amounts,
+  write-off flags, IMEI and damage/refund notes never enter a file (only the
+  aggregate খরচ does). CSV/Excel now depend on `exceljs` (write-only, bundled,
+  never parses untrusted input); the old `xlsx` dependency is no longer used
+  by report export. New `scripts/report-layout.test.ts` pins the layout
+  contract (`npx tsx --test scripts/report-layout.test.ts`).
 
 **Changed**
+- **Dashboard copy harmonised with the rest of the shop** — the Overview cards
+  now read **আজকের জমা ও সার্ভিস / নতুন সার্ভিস N · আজ জমা**,
+  **কাস্টমার বাকি / মোট কাস্টমার বকেয়া**, **সাপ্লায়ার দেনা / মোট সাপ্লায়ার
+  বকেয়া** and **স্বল্প স্টক প্রোডাক্ট / স্টক শেষ হওয়ার পথে**; the stock link is
+  **প্রোডাক্ট স্টক ↗**. Quick actions say **সার্ভিস এন্ট্রি ↗** and
+  **স্টক থেকে প্রোডাক্ট বিক্রি করুন**, the header CTA is **সার্ভিস পেজে যান ↗**,
+  and the admin jump is **ওভারভিউতে ফিরুন ↑**. The cipher helper is
+  **টাকা ↔ কোড কনভার্টার** and its tab is **কাস্টম কোড** (legacy sr-only label
+  updated too). Testids, bindings, dues/backup triggers and calculations are
+  unchanged; `dashboard-premium.js` pins the new copy.
+- **High-end counter/POS finish for `/service`** — the form and list now share
+  one quiet slate rhythm: `border-slate-200/80` cards, `shadow-sm`, uniform
+  `h-9`/`h-10` toolbar controls, `font-medium text-slate-700` labels and a
+  consistent `focus-visible:ring-2 focus-visible:ring-slate-900/10 focus:border-slate-800`
+  focus treatment. The duplicated accordion header is gone — the numbered
+  **ডিভাইস #১** card is the single visible collapse control while the old
+  **ডিভাইসের তথ্য** `<summary>` stays `sr-only` for the shared
+  `<details>`/`<summary>` test helper. Delivery shortcuts stay on one
+  clipped-free row of full-width cells (**আজ / কাল / ৩ দিন / ৭ দিন**), warranty
+  chips use Bengali digits while the stored values remain ASCII, and the money
+  row ends in a compact colored **বাকি: ৳…** strip. Status chips got smoother active transitions and subtle
+  count badges; the empty list now shows one quiet hint line instead of a
+  second button. Every testid, id, binding, calculation and Bengali receipt
+  string is unchanged; the pinned copy checks were updated with the labels.
+- **Service is a front-desk workspace; Dashboard is Home** — the Service page
+  keeps the new-job form, the local search and the date/status filters, and
+  nothing else. The masthead **নতুন সার্ভিস এন্ট্রি** and **ড্যাশবোর্ড** buttons
+  were removed along with the technician manager, report and dues pills, the
+  backup strip and the `আজকের হিসাব` tally (with its clickable technician
+  cards), which moved to the Dashboard or were retired from the front desk.
+  `DailySummary`, `TodayStats` and `TechnicianStats` are intentionally
+  unmounted; the Dashboard Overview carries the day's headline numbers instead.
+  No ledger calculation, route or API was changed — the pinned suites were
+  updated to read the relocated UI, and the white-label suite asserts the
+  removed controls never return.
+- **Manual পার্টস is now a purchase line, not a loose repeater** — the
+  in-form parts area is still optional (zero rows keeps the old দোকান খরচ lump
+  and writes nothing), but every line now records the buying shop, purchase
+  date and a Paid marker, and the internal ledger can price it from a code.
+  A linked `SERVICE_PART` supplier bill cannot live on a device that has part
+  lines (409 both directions), so the same purchase is never typed twice. The
+  old edit-form action for creating that bill is retired in Unreleased; new
+  part money goes into the **পার্টস** rows. Grouped multi-device
+  entry, সমাধান, শর্ত and the `ServicePart` API stay unchanged.
+- **Multi-part devices read cleanly in the service list** — a device with more
+  than one part no longer spills out as a bare run of price codes. The খরচ cell
+  now shows a **পার্টস (N)** chip and one aligned line per part — name,
+  `×quantity` when greater than one, and that part's safe price code on the
+  right — inside a compact bordered list. The taka (parts total and each line's
+  cost) stays behind the existing row eye / header **খরচ দেখান** toggle; the chip
+  reads `পার্টস (3) ••••` until revealed. A single-part device keeps its old
+  compact inline code, so no existing testid or layout changes. Every render
+  path (single row, grouped device line, mobile card) uses the same renderer.
+- **Seven row actions, still one tidy palette** — the service row gained the
+  **টাকা নিন** wallet next to print / WhatsApp / PDF / damage / edit / delete.
+  Below 1400px they tile in a 4-column grid (4 across, then 3 — 0px table
+  overflow at 1280), and from 1400px they sit on one line of seven; the design
+  contract's D8/D8b pins both widths plus the unbroken device badge.
 - **Compact backup strip** — the old full-width রিফ্রেশ/ব্যাকআপ/রিস্টোর rail
   became a slim strip under the service actions. **ব্যাকআপ** stays one click
   away next to **সর্বশেষ ব্যাকআপ**; **রিফ্রেশ** and **ব্যাকআপ থেকে রিস্টোর…**
@@ -1130,14 +1915,45 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   second confirmation click. The misleading online/offline badge is gone — the
   strip states **ডেটা এই PC-তে**. Testids, snapshot/CSV backup and every API
   stayed unchanged.
-- **Numbered device cards, one shared visit money block** — the first card is
-  always ডিভাইস ১ (add up to eight one at a time from an inline control); each
-  card keeps only model, problem and an optional bill (+ IMEI and its own
-  expected delivery day), while customer/phone/technician/status/service date/
-  মোট বিল/জমা are entered once. Device bills auto-sum into the visit total,
-  জমা is waterfall-allocated so no row overpays, and shop cost + parts shop
-  stay on ডিভাইস ১ so a grouped visit cannot multiply expenses. Batch API and
-  schema unchanged.
+- **Numbered, self-contained device cards, one shared visit money block** —
+  the first card is always ডিভাইস #১ and each card is that device's COMPLETE
+  information block: মোবাইলের মডেল → সমস্যা → ডিভাইস বিল (৳) →
+  ডেলিভারি তারিখ → IMEI → পার্টস, all together. A card starts open; it can
+  collapse to a one-line summary (model • problem • bill • parts count), and a
+  newly added device opens immediately without collapsing or clearing earlier
+  cards. Only **after** the last full card comes **আরেকটি ডিভাইস যোগ করুন**
+  (up to eight devices), so the shopkeeper finishes one device's details before
+  deciding to add another — the add option is never tucked above a separate
+  pile of "extra" fields. Customer/phone/
+  technician/status/service date/মোট বিল/জমা are entered once for the visit.
+  Device bills auto-sum into the visit total, জমা is waterfall-allocated so no
+  row overpays, and shop cost + parts shop stay on ডিভাইস ১ so a grouped visit
+  cannot multiply expenses. In the list each device line carries its own
+  **সমাধান** button, numbered **সমাধান 1 / 2 / …** in a grouped visit. Batch
+  API and schema unchanged.
+- **Focused entry-form pass** — the shared money block now reads **মোট বিল →
+  জমা → বাকি**, with **বাকি** rendered as a quiet amber/emerald status strip
+  (read-only input kept for the contracts) and no bare `৳0` totals. The
+  optional **পার্টস** area starts collapsed with no empty-state helper text
+  and shows a labeled total only once lines exist; delivery shortcuts use one
+  row of full-width cells so no Bengali label is clipped. Validation messages appear under their own
+  control with `aria-invalid` / `aria-describedby` and move focus there —
+  including part **দাম** vs purchase **তারিখ** and the right device in a grouped
+  visit — while the sticky save bar stays clear of the focused field. Payloads,
+  business rules and all field IDs/testids are unchanged.
+- **Decluttered entry-form copy** — the repetitive `(ঐচ্ছিক)` suffixes are gone
+  from **কাস্টমারের ঠিকানা**, **কাস্টমারের শর্ত**, **ওয়ারেন্টির মেয়াদ**,
+  **পার্টস** and the IMEI field; the device bill label now reads
+  **ডিভাইস বিল (৳)**. Every input and textarea inside the form now uses
+  `placeholder=""` — no gray dummy preview text anywhere (phone, address,
+  model, problem, IMEI, warranty, device/summary money, condition note, part
+  name/price/shop or the overridden-price note). Each box already has a clear
+  top label, so it stays pristine and ready for typing. The collapsed parts
+  card no longer prints the redundant `এখনো কোনো পার্টস যোগ করা হয়নি।`
+  helper. No calculation, validation rule, state hook or `data-testid` changed;
+  `form-field-order.js` O9 pins the copy and a broad no-non-empty-placeholder
+  contract, while `customer-address-warranty.js` AW5 and `laneG.js` G8 pin the
+  address and IMEI boxes.
 - **Wider service list, no horizontal scroll** — the shared container caps
   moved 1440/1600 → **1600/1840** (header, cards, list and footer stay aligned),
   the form column is **340px** at 1280px (380px from 1536px), grid tracks are
@@ -1163,8 +1979,124 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
 - **Daily cards label the shown window** — in range/all mode the cards say
   “নির্বাচিত সময়ের মোট …” with the range in the header; day mode still says
   আজকের/নির্বাচিত দিনের exactly as before.
+- **Compact counter layout for real laptop windows** — the service desk now
+  fits a 1280×585 window (a 1080p screen with Windows chrome): the backup strip
+  and page actions share one row, main spacing is `space-y-2`/`py-2`, the daily
+  summary bar and footer are slimmer, and device model/problem sit side by side.
+  The form starts at y207 (was 265) and the bill/auto-due row ends at y480,
+  clear of the sticky save bar at y532; the empty-state CTA stays at y499–531;
+  1920×1080 still has no vertical scrollbar. Container edges stay aligned at
+  1280/1366/1536/1920, the form column remains 340px (380px from 1536), and the
+  service list still never scrolls sideways. `scripts/real-viewport.js` pins
+  these rules across the five shop viewports.
+- **Empty-state hint focuses the name field** — a quiet line,
+  **কোন সার্ভিস এন্ট্রি পাওয়া যায়নি — বাম পাশের ফর্ম থেকে নতুন সার্ভিস এন্ট্রি
+  করুন।**, carries `data-testid="empty-new-entry"` and puts the cursor in
+  কাস্টমারের নাম immediately on desktop; phones keep the 350ms tab-swap delay.
+  The old duplicated `+ নতুন এন্ট্রি` button is gone.
+- **Products page reads like the counter** — search moved into the page header
+  (same `#product-search`), the separate filter toolbar merged into the
+  product-list header, and a truncated product name carries its full text in
+  `title`. At 1280px the list starts at y264 (was 343); mobile cards start at
+  y589 (was 740) and the desktop footer drops to 96/80px. The inventory
+  summary cards were later removed entirely (see the ledger/products bullet
+  above).
+- **Product purchase price stays internal to the dialog** — the list no longer
+  shows a ক্রয় column, its eye toggle or an aggregate ইনভেন্টরি মূল্য card; the
+  buying price is visible only while adding/editing a product, so shop prices
+  cannot be read over the counter.
+- **Stock-sync note** — a dismissible note above the product list says product
+  sales do not decrement stock yet; dismissal persists in
+  `localStorage:maher:stock-note-dismissed` and never flashes on load.
+- **On-screen digits are Latin; print stays Bengali** — money, visit/device
+  counts and on-screen dates use Latin digits (`৳1,200`, `8টি ভিজিট`,
+  `শুক্রবার, 6 নভেম্বর 2026`) through `lib/format.ts:latinDateLabel`, while
+  receipts, reports, monthly print and exported files keep Bengali digits
+  (`bengaliDateLabel` is unchanged). Inputs still accept Bengali digits.
+- **One visible bill, explicit dues scope** — a new entry shows only the visit
+  **মোট বিল (৳)**; per-device bill splitting moved inside **আরও তথ্য**
+  (`data-testid="form-more"`), whose visible summary is now the numbered device
+  card itself (the old **ডিভাইসের তথ্য** summary is `sr-only`). The auto field
+  is labelled **বাকি (স্বয়ংক্রিয়)** for screen readers and shown as a colored
+  **বাকি: ৳…** strip beside the two inputs at 1536px+. The dues toolbar states
+  its scope in the button: **সব তারিখের বাকি (Nটি ডিভাইস • ৳X)**.
+- **Delivery-date shortcuts** — the date starts empty with **আজ · কাল · ৩ দিন ·
+  ৭ দিন** chips on one row of full-width cells and a clear (×); every label is
+  fully legible in the 340px column without adding form height, and any typed
+  date is still accepted. The saved value and chip dates are unchanged.
+- **Category-aware product empty state** — with no categories the CTA reads
+  **প্রথম ক্যাটাগরি যোগ করুন** and opens the category dialog.
+- **Compact form mode switch** — the service/product buttons read **সার্ভিস /
+  প্রোডাক্ট** without emoji, fitting the 340px sidebar.
 
 **Fixed**
+- **Secret-code engine keeps modes separate and codes unambiguous** — the
+  Dashboard converter now uses only the active **valid** cipher: an incomplete
+  or duplicate custom word shows `সবগুলো ঘরে সঠিক অক্ষর দিন` instead of a
+  keypad `*J#`, both conflicting slots are highlighted with
+  `এই অক্ষরটি ইতোমধ্যে অন্য ঘরে ব্যবহার করা হয়েছে।`, and **সব সেটিংস সংরক্ষণ
+  করুন** stays disabled until all ten slots are filled with unique characters.
+  One save reaches the `/service` price preview and the `/parts` cost-code
+  tooltip instantly via `ShopSettingsProvider`; stored numeric part costs and
+  historical codes are never rewritten.
+- **Edit form is built like the visit that was entered** — opening **এডিট** no
+  longer swaps in a second, flat layout (model/technician, problem, IMEI,
+  bill/advance/due, status) with an empty device card and the parts section
+  parked at the very bottom. The edit view now uses the *same* device section
+  and numbered **ডিভাইস #১** card as a new entry, with the same labels
+  (`ডিভাইস বিল (৳)`), the parts editor inside that card, no duplicate
+  `svc-*` ids, and the shared bill/advance/due summary below. Both money inputs
+  write the same saved bill: `ডিভাইস বিল (৳)` and the মোট বিল summary stay
+  in sync, so editing either one updates the saved amount and বাকি. Saved parts
+  keep their entry order. No submit logic changed;
+  `form-field-order.js` (11 checks) pins the order, the structure, the two-way
+  bill sync, the unique ids, the saved part lines' entry order and the new split
+  action.
+- **No second way to add part money in Edit** — the
+  **পার্টস কেনার বিল যোগ করুন** action is gone from the edit form, matching new
+  entry: parts are typed once with the visit, and **আরেকটি পার্টস যোগ করুন**
+  inside **পার্টস** adds more rows. The `SERVICE_PART` API and any
+  existing linked bills are untouched; `laneI.js` I18 now pins both the stock
+  page and the edit form as having no purchase-bill action.
+- **One damaged unit out of many** — a part line with **পরিমাণ 2+** now offers
+  **১টি আলাদা লাইন — একটিকে ড্যামেজ দিন**. One click peels one unit into a new,
+  otherwise identical line placed first (new supplier/date, no saved id); the
+  remaining units stay on the original line. `quantity × price` is preserved, so
+  the parts total never changes — only the line the shopkeeper marks **ড্যামেজ**
+  moves to `Service.damageLoss`, exactly one unit's price. A saved line's own
+  damage toggle is locked (its status belongs to the parts ledger's
+  **নিষ্পত্তি**); the split gives the form a new line it may flag.
+  `form-field-order.js` O7–O8 pin the split, the unchanged total, the one-unit
+  loss and the locked saved toggle.
+- **Smooth /service ↔ /products navigation** — `html` now reserves the
+  scrollbar track with `scrollbar-gutter: stable`, so the taller service desk
+  and the shorter inventory view no longer shift the whole page sideways as
+  the scrollbar appears and disappears. The brand-blue masthead moved out of
+  the routed `<main>` into the root layout (`components/AppChrome.tsx`), where
+  it persists across client-side navigation instead of unmounting and
+  flickering; each page only lends it its global-search handlers through
+  `useAppHeader`. Both pages now use the same `max-w-7xl` container with
+  `space-y-2 px-3 py-2`, so the header sits at the same y-offset and the list
+  never scrolls horizontally at 390px or at shop-counter widths.
+- **বাকি chip in the service list** — the status strip gained a final **বাকি**
+  chip next to ফেরত. It filters the current date/list scope down to visits that
+  still owe money (`due > 0`, Returned excluded), reusing the dues API's exact
+  rule, so the shopkeeper no longer has to open the separate বাকি তালিকা dialog
+  just to spot unpaid slips. The dues dialog itself keeps its original six chips
+  (everything there is unpaid already). `?status=Due` also deep-links to it.
+- **খরচ reveal works for parts rows again** — a device with parts but no legacy
+  দোকান খরচ code now shows its part price codes plus the per-row eye, and the
+  parts total stays masked until that eye or the header **খরচ দেখান** reveals
+  it. Previously the eye was trapped inside the `shopExpense` block, so a
+  parts-only row had no eye and printed its cost in the clear. Legacy parts rows
+  with a null `priceCode` now derive the same code from the stored unit cost, so
+  the column always shows a code instead of a `৳••••` placeholder.
+- **Part prices become expense codes automatically** — a plain amount typed in
+  a part's **পার্টসের দাম (৳ বা কোড)** field is now saved as a canonical keypad
+  code (`1500` → `*J#`, `1200` → `*A#`) exactly like the old দোকান খরচ field; a
+  typed code still stays exactly as typed. The form's live preview shows the
+  generated code next to its decoded amount, and backfills/ledger/reports read
+  the same stored code. Money math is unchanged (`quantity × decoded amount`).
 - **Service-list inspection pass** — single-row cells all hang from the top
   edge (mixed alignment drifted columns on multi-line rows), the archived view
   no longer applies a leftover status filter that hid archived rows silently,
@@ -1178,13 +2110,142 @@ dialer, Excel opening the CSV, touch on a phone, two tabs at once — see
   “run MAHER STOP.bat” message instead of an EPERM dump. Pinned by
   `scripts/portable-keep.test.js` (PK-01…PK-10).
 - **Header calendar toggles closed** on a second click of its button.
+- **Parts-only refunds now ask about the cost** — a device whose repair cost
+  lives entirely in itemized parts (`expenseAmount === 0`) was refunded without
+  the **খরচ বাদ / ক্ষতি হিসেবে রাখুন** choice, and an explicit
+  `expenseAction:"writeoff"` was ignored. The return dialog and
+  `POST /api/services/[id]/refund` now check `partsCost` as well as the lump, so
+  unused/returned parts can be written off while used/damaged parts stay a loss.
+  `scripts/refund-cost-choice.test.ts` pins the shared rule.
+- **পার্টসের দোকান list is now managed and priced** — the **সার্ভিস পার্টস →
+  পার্টসের দোকান** card adds *and* removes saved shop names, and each shop now
+  shows its all-time parts bill from the service-part ledger beside its name,
+  with one **সব সময়ের পার্টস লাইন মোট** total (all line costs, regardless of the Paid marker — not a payment record). Names that only exist in saved part rows are
+  marked **খাতা থেকে** and have no delete button: deleting a name drops it from
+  the form's suggestion list only, never a past bill or part line, and Radix's
+  confirmation says so. `scripts/part-shops-billing.test.ts` pins the per-shop
+  roll-up, sorting and case-insensitive removal.
+  In a new service entry the **পার্টসের দোকান** field is now a single styled
+  combobox: clicking it opens the saved names as a list to pick from (arrow keys
+  and Enter work too); only a partial typed name narrows the list, while typing
+  a brand-new name is still allowed. This replaces the browser datalist — one
+  control, fed by the same shared list from `/parts`.
+- **Service-part resolution (পাঁচ প্রকার নিষ্পত্তি)** — an internal part line now
+  has a whole-line status. **ব্যবহৃত** (default) counts toward the device's
+  repair cost; **স্টকে যুক্ত** creates/reuses a product (buying price = the
+  part's `unitCost`, default selling price = +20%), increments its stock and
+  writes a `STOCK_IN` movement with the note `সার্ভিস #ID থেকে স্টকে যুক্ত`;
+  **ফেরত** removes the device cost, adds no stock, clears the Paid marker,
+  appends `ফেরতকৃত — …` to the history and drops the line from supplier balance
+  totals; **ড্যামেজ ক্ষতি** removes the device cost and adds the full
+  `unitCost × quantity` to `Service.damageLoss` exactly once while the supplier
+  stays payable; **খাতায় রাখা** (`KEPT_IN_LEDGER`) removes the device cost but
+  keeps the line in `/parts` with its supplier balance, adding no stock and no
+  damage charge — parts bought from another shop never enter our own Product
+  stock when a job is cancelled. Reversing
+  a stock move writes `STOCK_OUT` and is refused (`409`) if stock is short, so
+  stock and money never disagree. The `/parts` ledger gained a second chip
+  group (**সব | ব্যবহৃত | স্টকে যুক্ত | ফেরত | ড্যামেজ | খাতায় রাখা**) beside the unchanged
+  Paid tabs, a status badge on every row and a **নিষ্পত্তি / অবস্থা পরিবর্তন**
+  dialog; returned rows show **ফেরতকৃত** and can neither be marked Paid nor
+  deleted. `ServicePart.partStatus`, `resolutionNote`, `targetProductId` and
+  `resolvedAt` arrive in migration
+  `20261119120000_add_service_part_status_and_resolution`; old rows default to
+  `USED`, so no historical figure changes. Every transition is one SQLite
+  transaction, and receipts/PDFs still hide supplier prices, damage loss and
+  parts-shop names. `scripts/service-part-resolution.js` pins the rules.
+- **Return, warranty refund & inspection fee** — the ⚖️ dialog now handles real
+  customer returns. An optional **চেকিং / সার্ভিস ফি (৳)** is retained from the
+  advance: with জমা ৳500 and fee ৳100 the customer gets ৳400 cash, the row closes
+  as `Returned` with `totalBill`/`advance` = ৳100, `due` = 0, and daily/monthly
+  reports count that ৳100 as labour profit (not as a refund). A job may also be
+  returned after **ডেলিভারি** (warranty reversal): `deliveredAt` is cleared, a
+  full or custom **কাস্টমারকে ফেরত (৳)** is accepted, and the original
+  bill/advance stay on the row for audit when no fee is charged. In a grouped
+  visit, **কাস্টমারকে ক্যাশ ফেরত দিন** or **গ্রুপের অন্য ডিভাইসে জমা করুন** chooses
+  between cash and moving the retained advance to one active same-group sibling
+  (whose `due` drops, with no cash out). Attached `ServicePart` rows are listed
+  with four one-click bulk actions — **সব পার্টস মহাজনে ফেরত**, **সব পার্টস
+  দোকানের স্টকে জমা**, **কাজের সময় নষ্ট হয়েছে**, **সব পার্টস খাতায় রাখি
+  (স্টকে যাবে না)** — committed atomically with the
+  return; the refund note also becomes the internal `returnReason`. New columns
+  `inspectionFee`/`returnReason` arrive in migration
+  `20261119130000_add_service_return_workflow`; CSV, restore and the Excel audit
+  sheet carry them and old snapshots default to `0`/`NULL`. The amount stays
+  bounded by জমা (`fee ≤ advance`, `refund + fee ≤ advance`), and receipts/PDFs
+  still hide every supplier price, damage loss and parts-shop name.
+  `scripts/service-return-workflow.js` (25 checks) pins all four scenarios.
+- **Top-level destinations, one page per job** — the navbar grew from
+  **সার্ভিস / প্রোডাক্ট / পার্টস** to **ড্যাশবোর্ড / সার্ভিস / প্রোডাক্ট /
+  পার্টস** (four equal buttons on a 4-column rail at 390px, no overflow);
+  `AppNavLinks` and `scripts/nav-links.test.ts` pin the order. The old
+  **প্রোডাক্ট ও স্টক** and **সার্ভিস পার্টস** tabs were lifted out of `/products`
+  into dedicated pages: `/products` is inventory/search only, and `/parts`
+  owns the **পার্টসের দোকান** manager (add/delete with confirmation, per-shop
+  all-time bill, **খাতা থেকে** names without a delete button) plus the
+  **সার্ভিস পার্টস** ledger. `laneLanding.js` L1/L8 and `responsive-check.js`
+  were updated first from two links to three, then to four for the Dashboard;
+  the moved flow was re-verified end-to-end (add → reload → delete → bill) on
+  `/parts`. Service keeps all its testids; only the destination moved.
+- **Parts page copy says what the marker and money mean** — the shop helper no
+  longer claims the bills are "ডানে"; it now says saved names are selectable in
+  the service form and the amounts come from all past part lines. The ledger's
+  filter/summary/badges use **চিহ্ন নেই / Paid চিহ্ন** instead of bare
+  Unpaid/Paid, the "paid" marker is now an emerald badge while unpaid is rose, and
+  append-only system stamps render as Bengali dates/times while the user's note
+  text stays verbatim (the raw stamp remains in the tooltip). A small
+  **↔ অ্যাকশন দেখতে টেবিল স্ক্রল করুন** hint appears below 640px so the inner
+  table scroll and both row actions are discoverable. No field, testid,
+  calculation, endpoint or stored value changed.
+- **Navbar blast radius shrunk instead of waived** — GitNexus marked
+  `AppNavLinks` **HIGH** because two archived, unimported shells (`Header.tsx`,
+  `ProductsHeader.tsx`) also called it. Those shells no longer import the live
+  navbar (their files stay; a comment points to `AppHeader`), and the destination
+  list moved to `lib/nav-links.ts`, which `AppNavLinks` renders. `scripts/nav-links.test.ts`
+  pins the config (three unique keys/routes/labels) and the browser checks pin
+  the rendered links. After reindexing, `gitnexus impact AppNavLinks --upstream`
+  is **LOW** (1 direct caller, 2 processes) in both the CLI and the MCP index —
+  future button changes edit the pure-data module instead.
 
-**Tests** — default suites 13 → **17** and 312 → **374** checks across the
+- **Inventory dashboard reads at a glance** — the `/products` header now puts
+  the count badge beside the title and both actions on the right, while the
+  search field and category select share one toolbar above the status chips
+  (no horizontal scroll at 1280px). The four summary cards gained quiet corner
+  micro-icons; the amber low-stock card jumps straight to the **⚠️ কম স্টক**
+  chip, and the wallet eye explains its ten-second reveal with the exact
+  tooltip “দোকানের ক্রয়মূল্য ও ইনভেন্টরি মূল্য দেখুন (১০ সেকেন্ড)”. Empty views
+  now tell the truth: an untouched shop gets onboarding that still opens the
+  category manager, and a no-match search offers **ফিল্টার রিসেট করুন**. No
+  DB/schema, API or testid changed; `scripts/product-dashboard.js` grew 13→17.
+
+- **Optional customer address and per-device warranty** — every service row now
+  carries `customerAddress` (visit-level, up to 200 chars) and `warranty`
+  (per-device, up to 100 chars), both nullable so old rows, snapshots and
+  restores stay unchanged. The new-entry form puts **কাস্টমারের ঠিকানা** under the mobile number (empty placeholder)
+  and **ওয়ারেন্টির মেয়াদ** under IMEI with chips **নেই / ৭ দিন /
+  ১৫ দিন / ১ মাস / ৩ মাস / ৬ মাস** (saved values remain ASCII, e.g. `7 দিন`);
+  a grouped visit shares one address while
+  each device keeps its own warranty, and a product-sale anchor copies only the
+  address. Both search scopes — the header search and the in-list `svc-search` —
+  match the new text. Receipts print **ঠিকানা: …** / **ওয়ারেন্টি: …** only when
+  present; the group slip prints the address once in the header and each device
+  warranty in its itemized block. No shop cost, canonical expense code or IMEI
+  leaks into a customer copy. Migration
+  `20261121130000_add_customer_address_warranty` adds the two columns;
+  `scripts/customer-address-warranty.js` pins all 13 rules.
+
+**Tests** — default suites 13 → **41** and 312 → **749** checks across the
 unreleased work (+portable-keep, +laneG, +laneLanding, +header-calendar,
-Lane D 28→29, Lane F 8→22, the intermediate regressions and the
-backup-ledger check), design suite runs separately (19 checks). Full
-`npm test`: **17/17, 374/374, 0 FAIL**, live DB hash unchanged;
-`MANUAL-TEST.md` grew to **175** steps (new O11–O13).
++real-viewport, +service-part-resolution, +parts-date-shop-filter,
++service-return-workflow, +form-field-order, +product-dashboard,
++customer-address-warranty, +user-data-dir, +electron-env, +desktop-package,
++white-label, +cipher-sync, +settings-save-pipeline, +backup-restore-overhaul,
+++power-failure-resilience, +custom-db-path, Lane D 28→29, Lane F 8→22, the
++intermediate regressions and the backup-ledger check), design suite runs
++separately (19 checks). Full `npm test`: **41/41, 749/749, 0 FAIL**, live DB hash
++unchanged;
+`MANUAL-TEST.md` grew to **278** steps (new O11–O13, P1–P10, V1–V8, W1–W5,
+X1–X5, Y1–Y12 and Z1–Z9).
 
 ### v1.2.0 — grouped visits, delivery dates & safer returns
 
@@ -1487,7 +2548,7 @@ Windows as well; the run that proved it is at the end of this section.
   backups included.
 - The zip contains no `.db`, no `.env` and no backup; the live `prisma/dev.db`
   hash does not appear anywhere in it.
-- All **370** automated checks passed at that run (374 today, see §7), and the
+- All **370** automated checks passed at that run (564 today, see §7), and the
   live database is byte-identical.
 
 **Native Windows run (20 Oct 2026).** The package has now been built *and*
@@ -1510,8 +2571,8 @@ screenshots were written to a literal `/tmp` (which is `D:\tmp` on Windows), and
 the backup/restore routes normalize `\` to `/` before `VACUUM INTO`/`ATTACH`.
 The launchers URL-escape spaces in the database path (`%20`) as well. That first
 Windows run was **9/9 suites, 200/200 checks, 0 JS errors**, with the live
-`prisma/dev.db` byte-identical. The current run (post-v1.2.0) is **17/17
-suites, 374/374 checks** plus the separately-run design contract (19 checks);
+`prisma/dev.db` byte-identical. The current run (post-v1.2.0 + unreleased) is **41/41
+suites, 749/749 checks** plus the separately-run design contract (19 checks);
 the earlier v1.1.2 packaged window was also driven by hand for the shop test
 above. Since v1.2.0 the package was rebuilt on Windows with the shop database
 preserved across rebuilds (`portable-keep` suite): `out/MAHER/` is 122.3 MB and

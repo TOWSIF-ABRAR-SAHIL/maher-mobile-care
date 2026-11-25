@@ -189,12 +189,23 @@ export interface ValidatedProductCreate extends ValidatedProduct {
   openingStock: number;
 }
 
-function parseProductCore(raw: Record<string, unknown>): ValidatedProduct {
+function parseProductCore(
+  raw: Record<string, unknown>,
+  existing?: { sku: string | null; barcode: string | null }
+): ValidatedProduct {
   const categoryId = parseInventoryInt(raw.categoryId, "ক্যাটাগরি", { min: 1 });
   return {
     name: requiredInventoryText(raw.name, "প্রোডাক্টের নাম"),
-    sku: normalizeCode(raw.sku),
-    barcode: normalizeCode(raw.barcode),
+    // Omitted codes keep their stored value: a hidden field in the UI must
+    // never silently erase SKU/barcode history.
+    sku:
+      raw.sku === undefined
+        ? existing?.sku ?? null
+        : normalizeCode(raw.sku),
+    barcode:
+      raw.barcode === undefined
+        ? existing?.barcode ?? null
+        : normalizeCode(raw.barcode),
     categoryId,
     brand: optionalInventoryText(raw.brand, "ব্র্যান্ড", MAX_BRAND_LENGTH),
     description: optionalInventoryText(
@@ -230,8 +241,11 @@ export function validateProductCreate(body: unknown): ValidatedProductCreate {
 }
 
 /** Update body: stock is intentionally absent — only movements change it. */
-export function validateProductUpdate(body: unknown): ValidatedProduct {
-  return parseProductCore(readBody(body));
+export function validateProductUpdate(
+  body: unknown,
+  existing?: { sku: string | null; barcode: string | null }
+): ValidatedProduct {
+  return parseProductCore(readBody(body), existing);
 }
 
 /** Stock operation body (used by the stock dialog / API in phase B). */

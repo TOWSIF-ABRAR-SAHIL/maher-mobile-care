@@ -1,7 +1,6 @@
-import { AppNavLinks } from "@/components/AppNavLinks";
-
-/** Compact navy header for the inventory page. Keeps the same brand block
- *  and module switcher as the dashboard without inventing a second navbar. */
+/** Archived legacy shell (not imported). The live brand block and module
+ *  switcher come from AppHeader → AppNavLinks; do not reintroduce a second
+ *  navbar here. */
 export function ProductsHeader() {
   return (
     <header className="sticky top-0 z-40 rounded-xl border-b border-maher-navy/60 bg-maher-navy px-3 py-2.5 text-white shadow-sm print:hidden">
@@ -14,7 +13,6 @@ export function ProductsHeader() {
             প্রোডাক্ট ইনভেন্টরি ও স্টক ম্যানেজমেন্ট
           </p>
         </div>
-        <AppNavLinks />
       </div>
     </header>
   );

@@ -1,12 +1,25 @@
-/* Shop identity for the customer receipt header.
- * Address/phone khali ache — dokan theke jene ekhane boshale
- * receipt-e auto chole ashbe. Khali thakle oi line print hobe na. */
+/**
+ * Platform identity vs. tenant identity.
+ *
+ * PLATFORM_BRAND is the white-label product (MSS): installer, window title,
+ * taskbar and vendor support only. SHOP is the *empty* tenant template — a
+ * fresh install must show onboarding, never a pre-filled store profile.
+ * Customer-facing text reads the live ShopSettings row and never falls back
+ * to a hardcoded shop name.
+ */
+
+export const PLATFORM_BRAND = {
+  name: "MSS",
+  windowTitle: "MSS (Mobile Service System)",
+  supportNumber: "01533315357",
+  supportUrl: "https://wa.me/8801533315357",
+} as const;
 
 export const SHOP = {
-  name: "MAHER MOBILE CARE",
-  tagline: "মোবাইল সার্ভিস ও মেরামত",
-  /** Navbar-only line: the receipt keeps the shorter service tagline above. */
-  chromeTagline: "মোবাইল সার্ভিস ও বিক্রয় কেন্দ্র",
-  address: "D107 (Level 3), Sena Shopping Complex, Nabinagar, Ashulia 1344",
-  phone: "01717777755",
-};
+  name: "",
+  tagline: "",
+  /** Navbar-only line; empty until the shop owner configures the profile. */
+  chromeTagline: "",
+  address: "",
+  phone: "",
+} as const;
